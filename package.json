@@ -1,0 +1,30 @@
+{
+  "name": "trellis",
+  "version": "0.1.0",
+  "description": "Lightweight CLI for managing plans with dependencies",
+  "type": "module",
+  "bin": {
+    "trellis": "./dist/trellis.cjs"
+  },
+  "files": ["dist"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "build:prod": "node build.mjs --minify",
+    "test": "vitest run",
+    "dev": "vitest"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^1.1.4",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
