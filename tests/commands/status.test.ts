@@ -194,4 +194,19 @@ describe('status command', () => {
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.plans).toHaveLength(2);
   });
+
+  it('shows chunk summary line', () => {
+    const { root } = createFixture([
+      { id: 'contracts/core', title: 'Core', status: 'not_started' },
+      { id: 'contracts/auth', title: 'Auth', status: 'not_started' },
+      { id: 'impl/parser', title: 'Parser', status: 'not_started' },
+    ]);
+    process.cwd = () => root;
+
+    statusCommand({});
+
+    const output = logs.join('\n');
+    expect(output).toContain('Chunks:');
+    expect(output).toContain('discovered');
+  });
 });

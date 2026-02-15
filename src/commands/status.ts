@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { join } from 'path';
 import { loadConfig, scanPlans } from '../scanner.ts';
-import { buildGraph } from '../graph.ts';
+import { buildGraph, computeChunks } from '../graph.ts';
 import { padRight, pluralize, computeColumnWidth, filterPlans } from '../utils.ts';
 import type { Plan } from '../types.ts';
 
@@ -26,6 +26,8 @@ export function statusCommand(options: StatusOptions): void {
   }
 
   const graph = buildGraph(plans);
+  const chunkResult = computeChunks(plans, graph, { maxLines: config.chunk_max_lines, strategy: config.chunk_strategy });
+  const overBudgetCount = chunkResult.chunks.filter(c => c.totalLines > chunkResult.config.maxLines).length;
   let filtered = filterPlans(plans, options);
 
   // Visibility filtering: hide done/archived by default
@@ -43,6 +45,7 @@ export function statusCommand(options: StatusOptions): void {
     const output = {
       project: config.project,
       total: filtered.length,
+      chunks: { total: chunkResult.chunks.length, over_budget: overBudgetCount },
       plans: filtered.map(p => ({
         id: p.id,
         title: p.frontmatter.title,
@@ -122,6 +125,12 @@ export function statusCommand(options: StatusOptions): void {
     }
     console.log();
   }
+
+  // Chunk summary
+  const chunkSummary = overBudgetCount > 0
+    ? `Chunks: ${chunkResult.chunks.length} discovered (${overBudgetCount} over budget)`
+    : `Chunks: ${chunkResult.chunks.length} discovered`;
+  console.log(chalk.dim('  ' + chunkSummary));
 }
 
 function printPlanLine(p: Plan, idWidth: number): void {
