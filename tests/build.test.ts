@@ -19,6 +19,7 @@ describe('library build', () => {
     expect(typeof lib.buildGraph).toBe('function');
     expect(typeof lib.loadConfig).toBe('function');
     expect(typeof lib.filterPlans).toBe('function');
+    expect(typeof lib.Trellis).toBe('function');
     expect(lib.VALID_STATUSES).toContain('done');
   });
 
@@ -29,6 +30,7 @@ describe('library build', () => {
     expect(typeof lib.buildGraph).toBe('function');
     expect(typeof lib.loadConfig).toBe('function');
     expect(typeof lib.filterPlans).toBe('function');
+    expect(typeof lib.Trellis).toBe('function');
     expect(lib.VALID_STATUSES).toContain('done');
   });
 
@@ -48,6 +50,14 @@ describe('library build', () => {
     expect(dts).toContain('scanPlans');
     expect(dts).toContain('buildGraph');
     expect(dts).toContain('loadConfig');
+    // Trellis class and API types
+    expect(dts).toContain('Trellis');
+    expect(dts).toContain('StatusResult');
+    expect(dts).toContain('ReadyResult');
+    expect(dts).toContain('ShowResult');
+    expect(dts).toContain('UpdateResult');
+    expect(dts).toContain('LintResult');
+    expect(dts).toContain('GraphResult');
   });
 
   it('package.json exports point to existing files', () => {

@@ -84,6 +84,34 @@ describe('built artifact integration', () => {
     expect(ready).toContain('feature-b');
   });
 
+  it('Trellis class is constructable and functional from ESM bundle', () => {
+    const t = new lib.Trellis(tmpDir);
+    expect(t.config.project).toBe('dist-test');
+
+    const status = t.status({ showDone: true });
+    expect(status.total).toBe(3);
+    expect(status.byStatus.done).toHaveLength(1);
+    expect(status.byStatus.ready).toHaveLength(1);
+    expect(status.byStatus.blocked).toHaveLength(1);
+  });
+
+  it('full workflow: status → ready → update → verify unblock', () => {
+    const t = new lib.Trellis(tmpDir);
+
+    const ready = t.ready();
+    expect(ready.plans.map((p: any) => p.id)).toContain('feature-a');
+    expect(ready.next).toBe('feature-a');
+
+    const showB = t.show('feature-b');
+    expect(showB.blocked).toBe(true);
+
+    const updateResult = t.update('feature-a', 'done');
+    expect(updateResult.previousStatus).toBe('not_started');
+    expect(updateResult.newlyReady).toContain('feature-b');
+
+    expect(t.show('feature-b').ready).toBe(true);
+  });
+
   it('CJS require also works', () => {
     const cjsLib = require(resolve(__dirname, '../dist/index.cjs'));
     expect(typeof cjsLib.scanPlans).toBe('function');
