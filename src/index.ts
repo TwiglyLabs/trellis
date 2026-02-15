@@ -51,3 +51,21 @@ export { parseInputs, parseOutputs } from './contracts.ts';
 
 // --- Utilities ---
 export { VALID_STATUSES, filterPlans } from './utils.ts';
+
+// --- High-Level API ---
+export { Trellis } from './api.ts';
+export type {
+  StatusResult,
+  PlanSummary,
+  BlockedPlanSummary,
+  ReadyResult,
+  DependencyInfo,
+  ShowResult,
+  UpdateResult,
+  LintIssue,
+  LintResult,
+  GraphNode,
+  GraphEdge,
+  GraphResult,
+  EpicResult,
+} from './api.ts';

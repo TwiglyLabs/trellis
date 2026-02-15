@@ -44,4 +44,9 @@ describe('library exports', () => {
     const lib = await import('../src/index.ts');
     expect(typeof lib.filterPlans).toBe('function');
   });
+
+  it('exports Trellis class and API types', async () => {
+    const lib = await import('../src/index.ts');
+    expect(typeof lib.Trellis).toBe('function');
+  });
 });
