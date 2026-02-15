@@ -144,4 +144,81 @@ describe('show command', () => {
     expect(output).toContain('b');
     expect(output).toContain('c');
   });
+
+  it('shows contracts with --contracts flag', () => {
+    const { root } = createFixture([
+      { id: 'core', title: 'Core', status: 'not_started', directory: true,
+        outputsMd: '## Types\n- Person\n- Family\n',
+        inputsMd: '## From existing code\n\n### src/db.ts\n- DB connection\n' },
+    ]);
+    process.cwd = () => root;
+
+    showCommand('core', { contracts: true });
+
+    const output = logs.join('\n');
+    expect(output).toContain('Inputs:');
+    expect(output).toContain('src/db.ts');
+    expect(output).toContain('Outputs:');
+    expect(output).toContain('Types');
+    expect(output).toContain('Person');
+  });
+
+  it('shows (none) for missing contracts with --contracts flag', () => {
+    const { root } = createFixture([
+      { id: 'bare', title: 'Bare Plan', status: 'not_started' },
+    ]);
+    process.cwd = () => root;
+
+    showCommand('bare', { contracts: true });
+
+    const output = logs.join('\n');
+    expect(output).toContain('Inputs:');
+    expect(output).toContain('(none)');
+    expect(output).toContain('Outputs:');
+  });
+
+  it('does not show contracts without --contracts flag', () => {
+    const { root } = createFixture([
+      { id: 'core', title: 'Core', status: 'not_started', directory: true,
+        outputsMd: '## Types\n- Person\n' },
+    ]);
+    process.cwd = () => root;
+
+    showCommand('core');
+
+    const output = logs.join('\n');
+    expect(output).not.toContain('Inputs:');
+    expect(output).not.toContain('Outputs:');
+  });
+
+  it('includes contracts in JSON output with --contracts flag', () => {
+    const { root } = createFixture([
+      { id: 'core', title: 'Core', status: 'not_started', directory: true,
+        outputsMd: '## Types\n- Person\n- Family\n',
+        inputsMd: '## From plans\n\n### upstream\n- Data\n' },
+    ]);
+    process.cwd = () => root;
+
+    showCommand('core', { json: true, contracts: true });
+
+    const parsed = JSON.parse(logs.join(''));
+    expect(parsed.outputs).toBeDefined();
+    expect(parsed.outputs[0].heading).toBe('Types');
+    expect(parsed.outputs[0].items).toContain('Person');
+    expect(parsed.inputs).toBeDefined();
+  });
+
+  it('omits contracts from JSON output without --contracts flag', () => {
+    const { root } = createFixture([
+      { id: 'core', title: 'Core', status: 'not_started', directory: true,
+        outputsMd: '## Types\n- Person\n' },
+    ]);
+    process.cwd = () => root;
+
+    showCommand('core', { json: true });
+
+    const parsed = JSON.parse(logs.join(''));
+    expect(parsed.outputs).toBeUndefined();
+    expect(parsed.inputs).toBeUndefined();
+  });
 });

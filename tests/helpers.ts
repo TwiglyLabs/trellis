@@ -14,6 +14,9 @@ export interface FixturePlan {
   started_at?: string;
   completed_at?: string;
   body?: string;
+  directory?: boolean;
+  outputsMd?: string;
+  inputsMd?: string;
 }
 
 export function createFixture(plans: FixturePlan[]): { root: string; plansDir: string } {
@@ -63,7 +66,26 @@ export function createFixture(plans: FixturePlan[]): { root: string; plansDir: s
     }
 
     const content = `---\n${fmLines.join('\n')}\n---\n${plan.body || ''}\n`;
-    writeFileSync(join(dir, `${fileName}.md`), content);
+
+    if (plan.directory) {
+      // Create directory-based plan with README.md
+      const planDir = join(dir, fileName);
+      mkdirSync(planDir, { recursive: true });
+      writeFileSync(join(planDir, 'README.md'), content);
+
+      // Create inputs.md if provided
+      if (plan.inputsMd) {
+        writeFileSync(join(planDir, 'inputs.md'), plan.inputsMd);
+      }
+
+      // Create outputs.md if provided
+      if (plan.outputsMd) {
+        writeFileSync(join(planDir, 'outputs.md'), plan.outputsMd);
+      }
+    } else {
+      // Create single-file plan
+      writeFileSync(join(dir, `${fileName}.md`), content);
+    }
   }
 
   return { root, plansDir };

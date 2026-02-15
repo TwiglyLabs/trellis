@@ -1,6 +1,7 @@
 import { readdirSync, statSync, readFileSync, existsSync } from 'fs';
 import { join, relative, dirname, basename } from 'path';
 import { parseFrontmatter } from './frontmatter.ts';
+import { parseInputs, parseOutputs } from './contracts.ts';
 import type { Plan, TrellisConfig } from './types.ts';
 
 export function derivePlanId(filePath: string, plansDir: string): string {
@@ -51,13 +52,32 @@ function walkDir(dir: string, plansDir: string, plans: Plan[], readmeDirs: Set<s
       const content = readFileSync(fullPath, 'utf8');
       const result = parseFrontmatter(content);
       if (result) {
-        plans.push({
+        const plan: Plan = {
           id: derivePlanId(fullPath, plansDir),
           filePath: fullPath,
           frontmatter: result.frontmatter,
           body: result.body,
           lineCount: content.split('\n').length,
-        });
+        };
+
+        // Load contracts if this is a directory-based plan (README.md)
+        if (basename(fullPath) === 'README.md') {
+          const planDir = dirname(fullPath);
+          const inputsPath = join(planDir, 'inputs.md');
+          const outputsPath = join(planDir, 'outputs.md');
+
+          if (existsSync(inputsPath)) {
+            const inputsContent = readFileSync(inputsPath, 'utf8');
+            plan.inputs = parseInputs(inputsContent);
+          }
+
+          if (existsSync(outputsPath)) {
+            const outputsContent = readFileSync(outputsPath, 'utf8');
+            plan.outputs = parseOutputs(outputsContent);
+          }
+        }
+
+        plans.push(plan);
       }
     }
   }

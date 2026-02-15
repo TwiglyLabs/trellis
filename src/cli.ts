@@ -56,7 +56,8 @@ program
   .command('show <plan-id>')
   .description('Show plan details and dependency chain')
   .option('--json', 'Output as JSON')
-  .addHelpText('after', '\nExamples:\n  $ trellis show core-types\n  $ trellis show impl/parser\n  $ trellis show core-types --json')
+  .option('--contracts', 'Include input/output contracts')
+  .addHelpText('after', '\nExamples:\n  $ trellis show core-types\n  $ trellis show impl/parser\n  $ trellis show core-types --json\n  $ trellis show core-types --contracts\n  $ trellis show core-types --json --contracts')
   .action((planId, options) => showCommand(planId, options));
 
 program
@@ -89,6 +90,7 @@ program
   .option('--verbose', 'Show cross-chunk edges and size details')
   .option('--tag <tag>', 'Filter by tag')
   .option('--repo <repo>', 'Filter by repo')
+  .option('--strategy <strategy>', 'Chunk strategy: directory or topological')
   .addHelpText('after', '\nExamples:\n  $ trellis chunks\n  $ trellis chunks --json\n  $ trellis chunks --verbose\n  $ trellis chunks --tag foundation\n  $ trellis chunks --repo cloud')
   .action((options) => chunksCommand(options));
 

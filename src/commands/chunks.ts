@@ -10,6 +10,7 @@ interface ChunksOptions {
   verbose?: boolean;
   tag?: string;
   repo?: string;
+  strategy?: 'directory' | 'topological';
 }
 
 export function chunksCommand(options: ChunksOptions): void {
@@ -32,7 +33,8 @@ export function chunksCommand(options: ChunksOptions): void {
   }
 
   const graph = buildGraph(plans);
-  const result = computeChunks(plans, graph, { maxLines: config.chunk_max_lines });
+  const strategy = options.strategy ?? config.chunk_strategy;
+  const result = computeChunks(plans, graph, { maxLines: config.chunk_max_lines, strategy });
 
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));

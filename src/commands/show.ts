@@ -6,6 +6,7 @@ import { padRight, computeColumnWidth } from '../utils.ts';
 
 interface ShowOptions {
   json?: boolean;
+  contracts?: boolean;
 }
 
 export function showCommand(planId: string, options?: ShowOptions): void {
@@ -34,7 +35,7 @@ export function showCommand(planId: string, options?: ShowOptions): void {
   const criticalPath = computeCriticalPath(planId, graph);
 
   if (options?.json) {
-    const output = {
+    const output: Record<string, any> = {
       id: planId,
       filePath: plan.filePath,
       title: fm.title,
@@ -58,6 +59,10 @@ export function showCommand(planId: string, options?: ShowOptions): void {
       blocks: [...new Set([...directDeps, ...transitive])],
       critical_path: criticalPath,
     };
+    if (options?.contracts) {
+      output.inputs = plan.inputs ? plan.inputs.sections : null;
+      output.outputs = plan.outputs ? plan.outputs.sections : null;
+    }
     console.log(JSON.stringify(output, null, 2));
     return;
   }
@@ -107,6 +112,32 @@ export function showCommand(planId: string, options?: ShowOptions): void {
   if (criticalPath.length > 1) {
     console.log(`\n  Critical path (depth ${criticalPath.length}):`);
     console.log(`    ${criticalPath.join(' → ')}`);
+  }
+
+  if (options?.contracts) {
+    console.log(`\n  Inputs:`);
+    if (plan.inputs && plan.inputs.sections.length > 0) {
+      for (const section of plan.inputs.sections) {
+        console.log(`    ${section.heading}`);
+        for (const item of section.items) {
+          console.log(`      - ${item}`);
+        }
+      }
+    } else {
+      console.log(`    (none)`);
+    }
+
+    console.log(`\n  Outputs:`);
+    if (plan.outputs && plan.outputs.sections.length > 0) {
+      for (const section of plan.outputs.sections) {
+        console.log(`    ${section.heading}`);
+        for (const item of section.items) {
+          console.log(`      - ${item}`);
+        }
+      }
+    } else {
+      console.log(`    (none)`);
+    }
   }
 
   console.log();

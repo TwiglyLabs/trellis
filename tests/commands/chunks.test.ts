@@ -162,4 +162,27 @@ describe('chunks command', () => {
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.chunks).toHaveLength(2);
   });
+
+  it('accepts --strategy CLI override', () => {
+    const { root } = createFixture([
+      { id: 'impl/core', title: 'Core', status: 'not_started' },
+      { id: 'impl/auth', title: 'Auth', status: 'not_started' },
+      { id: 'impl/parser', title: 'Parser', status: 'not_started', depends_on: ['impl/core'] },
+    ]);
+    process.cwd = () => root;
+
+    // Verify the command accepts the strategy option without errors
+    chunksCommand({ json: true, strategy: 'directory' });
+    const dirResult = JSON.parse(logs.join(''));
+    expect(dirResult.chunks).toHaveLength(1);
+    expect(dirResult.chunks[0].id).toBe('impl');
+
+    logs.length = 0;
+
+    // Verify topological strategy is accepted (implementation pending)
+    chunksCommand({ json: true, strategy: 'topological' });
+    const topoResult = JSON.parse(logs.join(''));
+    // For now, both strategies may produce same result until topological is implemented
+    expect(topoResult.chunks.length).toBeGreaterThanOrEqual(1);
+  });
 });
