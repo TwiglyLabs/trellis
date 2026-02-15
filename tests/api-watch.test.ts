@@ -85,4 +85,46 @@ describe('Trellis.watch()', () => {
     trellis.unwatch();
     expect(trellis.isWatching).toBe(false);
   });
+
+  it('watch is idempotent (calling twice does not duplicate)', async () => {
+    let changeCount = 0;
+    trellis.on('change', () => changeCount++);
+
+    trellis.watch();
+    trellis.watch(); // second call should be a no-op
+
+    await new Promise(r => setTimeout(r, 50));
+    writePlan(plansDir, 'second', { title: 'Second', status: 'not_started' });
+
+    await Promise.race([
+      new Promise<void>(resolve => {
+        trellis.on('change', () => { if (changeCount >= 1) resolve(); });
+      }),
+      new Promise<void>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+    ]);
+
+    // Wait a bit to ensure no duplicate fires
+    await new Promise(r => setTimeout(r, 200));
+    expect(changeCount).toBe(1);
+  });
+
+  it('can restart watching after unwatch', async () => {
+    trellis.watch();
+    trellis.unwatch();
+
+    const changePromise = new Promise<any>(resolve => {
+      trellis.on('change', resolve);
+    });
+
+    trellis.watch();
+    await new Promise(r => setTimeout(r, 50));
+    writePlan(plansDir, 'restart', { title: 'Restart', status: 'not_started' });
+
+    const result = await Promise.race([
+      changePromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+    ]);
+
+    expect(result.nodes.length).toBeGreaterThanOrEqual(2);
+  });
 });

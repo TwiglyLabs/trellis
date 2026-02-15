@@ -217,6 +217,19 @@ describe('Trellis.show()', () => {
     const t = new Trellis(tmpDir);
     expect(t.show('nonexistent')).toBeNull();
   });
+
+  it('reports not_found for missing dependency', () => {
+    writePlan(plansDir, 'orphan', { title: 'Orphan', status: 'not_started', depends_on: ['ghost'] });
+
+    const t = new Trellis(tmpDir);
+    const result = t.show('orphan');
+
+    expect(result).not.toBeNull();
+    expect(result!.dependsOn).toHaveLength(1);
+    expect(result!.dependsOn[0].id).toBe('ghost');
+    expect(result!.dependsOn[0].status).toBe('not_found');
+    expect(result!.dependsOn[0].satisfied).toBe(false);
+  });
 });
 
 describe('Trellis.update()', () => {
@@ -255,6 +268,16 @@ describe('Trellis.update()', () => {
   it('throws on unknown plan', () => {
     const t = new Trellis(tmpDir);
     expect(() => t.update('nonexistent', 'done')).toThrow();
+  });
+
+  it('handles same-status update', () => {
+    writePlan(plansDir, 'a', { title: 'A', status: 'in_progress' });
+    const t = new Trellis(tmpDir);
+    const result = t.update('a', 'in_progress');
+
+    expect(result.previousStatus).toBe('in_progress');
+    expect(result.newStatus).toBe('in_progress');
+    expect(result.backward).toBe(false);
   });
 
   it('auto-refreshes after update', () => {
@@ -308,6 +331,35 @@ describe('Trellis.lint()', () => {
     const strict = t.lint({ strict: true });
     expect(relaxed.ok).toBe(true);
     expect(strict.ok).toBe(false);
+  });
+
+  it('detects cycles', () => {
+    writePlan(plansDir, 'x', { title: 'X', status: 'not_started', depends_on: ['y'] });
+    writePlan(plansDir, 'y', { title: 'Y', status: 'not_started', depends_on: ['x'] });
+
+    const t = new Trellis(tmpDir);
+    const result = t.lint();
+    expect(result.ok).toBe(false);
+    expect(result.errors.some(e => e.type === 'cycle')).toBe(true);
+  });
+
+  it('detects done plan with incomplete dependency', () => {
+    writePlan(plansDir, 'dep', { title: 'Dep', status: 'not_started' });
+    writePlan(plansDir, 'early-done', { title: 'Early Done', status: 'done', depends_on: ['dep'] });
+
+    const t = new Trellis(tmpDir);
+    const result = t.lint();
+    expect(result.ok).toBe(false);
+    expect(result.errors.some(e => e.type === 'inconsistency' && e.planId === 'early-done')).toBe(true);
+  });
+
+  it('warns on in_progress plan with incomplete dependency', () => {
+    writePlan(plansDir, 'dep', { title: 'Dep', status: 'not_started' });
+    writePlan(plansDir, 'eager', { title: 'Eager', status: 'in_progress', depends_on: ['dep'] });
+
+    const t = new Trellis(tmpDir);
+    const result = t.lint();
+    expect(result.warnings.some(w => w.type === 'incomplete_deps' && w.planId === 'eager')).toBe(true);
   });
 });
 
@@ -409,6 +461,17 @@ describe('Trellis.chunks()', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it('filters by tag and repo', () => {
+    writePlan(plansDir, 'contracts/types', { title: 'Types', status: 'done', tags: ['foundation'], repo: 'public' });
+    writePlan(plansDir, 'impl/core', { title: 'Core', status: 'not_started', tags: ['core'], repo: 'private' });
+
+    const t = new Trellis(tmpDir);
+    const byTag = t.chunks({ tag: 'foundation' });
+    const planIds = byTag.chunks.flatMap(c => c.plans.map(p => p.id));
+    expect(planIds).toContain('contracts/types');
+    expect(planIds).not.toContain('impl/core');
+  });
+
   it('returns chunk result', () => {
     writePlan(plansDir, 'contracts/types', { title: 'Types', status: 'done' });
     writePlan(plansDir, 'contracts/api', { title: 'API', status: 'not_started', depends_on: ['contracts/types'] });
@@ -419,5 +482,44 @@ describe('Trellis.chunks()', () => {
     expect(result.chunks.length).toBeGreaterThan(0);
     expect(Array.isArray(result.crossChunkEdges)).toBe(true);
     expect(typeof result.config.maxLines).toBe('number');
+  });
+});
+
+describe('Trellis: empty project', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    const project = createTestProject();
+    tmpDir = project.tmpDir;
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('all methods handle zero plans gracefully', () => {
+    const t = new Trellis(tmpDir);
+
+    const status = t.status();
+    expect(status.total).toBe(0);
+    expect(status.byStatus.ready).toHaveLength(0);
+
+    const ready = t.ready();
+    expect(ready.plans).toHaveLength(0);
+    expect(ready.next).toBeNull();
+
+    const lint = t.lint();
+    expect(lint.ok).toBe(true);
+    expect(lint.total).toBe(0);
+
+    const graph = t.graph();
+    expect(graph.nodes).toHaveLength(0);
+    expect(graph.edges).toHaveLength(0);
+
+    const epics = t.epic();
+    expect(epics).toHaveLength(0);
+
+    const chunks = t.chunks();
+    expect(chunks.chunks).toHaveLength(0);
   });
 });
