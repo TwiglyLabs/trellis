@@ -136,8 +136,10 @@ describe('lint command', () => {
 
   it('outputs clean JSON when no issues', () => {
     const { root } = createFixture([
-      { id: 'a', title: 'Plan A', status: 'done' },
-      { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
+      { id: 'a', title: 'Plan A', status: 'done', directory: true,
+        outputsMd: '## Types\n- Person\n' },
+      { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], directory: true,
+        inputsMd: '## From plans\n\n### a\n- Person type\n' },
     ]);
     process.cwd = () => root;
 
@@ -158,5 +160,94 @@ describe('lint command', () => {
     lintCommand();
 
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it('warns when plan has dependents but no outputs.md', () => {
+    const { root } = createFixture([
+      { id: 'core', title: 'Core', status: 'not_started' },
+      { id: 'parser', title: 'Parser', status: 'not_started', depends_on: ['core'] },
+    ]);
+    process.cwd = () => root;
+
+    lintCommand();
+
+    const output = logs.join('\n');
+    expect(output).toContain('core');
+    expect(output).toContain('has dependents but no outputs.md');
+  });
+
+  it('errors when inputs.md references plan not in depends_on', () => {
+    const { root } = createFixture([
+      { id: 'upstream', title: 'Upstream', status: 'not_started', directory: true,
+        outputsMd: '## Types\n- Person\n' },
+      { id: 'consumer', title: 'Consumer', status: 'not_started', directory: true,
+        inputsMd: '## From plans\n\n### upstream\n- Person type\n' },
+    ]);
+    process.cwd = () => root;
+
+    lintCommand();
+
+    const output = logs.join('\n');
+    expect(output).toContain('consumer');
+    expect(output).toContain('references "upstream" not in depends_on');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('warns when inputs.md references plan with no outputs.md', () => {
+    const { root } = createFixture([
+      { id: 'no-outputs', title: 'No Outputs', status: 'not_started' },
+      { id: 'consumer', title: 'Consumer', status: 'not_started', depends_on: ['no-outputs'], directory: true,
+        inputsMd: '## From plans\n\n### no-outputs\n- Something\n' },
+    ]);
+    process.cwd = () => root;
+
+    lintCommand();
+
+    const output = logs.join('\n');
+    expect(output).toContain('consumer');
+    expect(output).toContain('no-outputs which has no outputs.md');
+  });
+
+  it('passes when contracts are consistent', () => {
+    const { root } = createFixture([
+      { id: 'upstream', title: 'Upstream', status: 'not_started', directory: true,
+        outputsMd: '## Types\n- Person\n' },
+      { id: 'consumer', title: 'Consumer', status: 'not_started', depends_on: ['upstream'], directory: true,
+        inputsMd: '## From plans\n\n### upstream\n- Person type\n' },
+    ]);
+    process.cwd = () => root;
+
+    lintCommand();
+
+    const output = logs.join('\n');
+    expect(output).toContain('2 plans OK');
+  });
+
+  it('shows contract coverage in text output', () => {
+    const { root } = createFixture([
+      { id: 'core', title: 'Core', status: 'not_started', directory: true,
+        outputsMd: '## Types\n- Person\n' },
+      { id: 'parser', title: 'Parser', status: 'not_started', depends_on: ['core'] },
+      { id: 'standalone', title: 'Standalone', status: 'not_started' },
+    ]);
+    process.cwd = () => root;
+
+    lintCommand();
+
+    const output = logs.join('\n');
+    expect(output).toContain('Contract coverage: 100%');
+  });
+
+  it('includes contract_coverage in JSON output', () => {
+    const { root } = createFixture([
+      { id: 'core', title: 'Core', status: 'not_started' },
+      { id: 'parser', title: 'Parser', status: 'not_started', depends_on: ['core'] },
+    ]);
+    process.cwd = () => root;
+
+    lintCommand({ json: true });
+
+    const parsed = JSON.parse(logs.join(''));
+    expect(parsed.contract_coverage).toBe(0);
   });
 });

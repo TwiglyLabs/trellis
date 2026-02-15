@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { join } from 'path';
 import { loadConfig, scanPlans } from '../scanner.ts';
-import { detectCycles } from '../graph.ts';
+import { buildGraph, detectCycles } from '../graph.ts';
 import { validateFrontmatter } from '../frontmatter.ts';
 
 interface LintResult {
@@ -96,6 +96,43 @@ export function lintCommand(options?: { strict?: boolean; json?: boolean }): voi
     }
   }
 
+  // Contract checks
+  const graph = buildGraph(plans);
+  const planMap = new Map(plans.map(p => [p.id, p]));
+
+  for (const plan of plans) {
+    // Warning: plan has dependents but no outputs.md
+    const hasDependents = (graph.dependents.get(plan.id) ?? []).length > 0;
+    if (hasDependents && !plan.outputs) {
+      warnings.push({ plan_id: plan.id, type: 'missing_outputs', message: `${plan.id} has dependents but no outputs.md` });
+    }
+
+    // Check inputs.md references
+    if (plan.inputs) {
+      for (const refId of plan.inputs.fromPlans) {
+        // Error: inputs.md "From plans" references plan ID not in depends_on
+        const deps = plan.frontmatter.depends_on ?? [];
+        if (!deps.includes(refId)) {
+          errors.push({ plan_id: plan.id, type: 'orphaned_input_ref', message: `${plan.id} inputs.md references "${refId}" not in depends_on` });
+          plansWithErrors.add(plan.id);
+        }
+
+        // Warning: inputs.md references plan with no outputs.md
+        const upstream = planMap.get(refId);
+        if (upstream && !upstream.outputs) {
+          warnings.push({ plan_id: plan.id, type: 'missing_upstream_outputs', message: `${plan.id} inputs.md references ${refId} which has no outputs.md` });
+        }
+      }
+    }
+  }
+
+  // Contract coverage: percentage of plans with dependents that have outputs.md
+  const plansWithDependents = plans.filter(p => (graph.dependents.get(p.id) ?? []).length > 0);
+  const plansWithOutputs = plansWithDependents.filter(p => !!p.outputs);
+  const coveragePercent = plansWithDependents.length > 0
+    ? Math.round((plansWithOutputs.length / plansWithDependents.length) * 100)
+    : 100;
+
   if (options?.json) {
     console.log(JSON.stringify({
       ok: errors.length === 0 && (options?.strict ? warnings.length === 0 : true),
@@ -103,6 +140,7 @@ export function lintCommand(options?: { strict?: boolean; json?: boolean }): voi
       ok_count: plans.length - plansWithErrors.size,
       errors,
       warnings,
+      contract_coverage: coveragePercent,
     }, null, 2));
   } else {
     for (const e of errors) {
@@ -118,6 +156,7 @@ export function lintCommand(options?: { strict?: boolean; json?: boolean }): voi
     } else {
       console.log(`${chalk.green('✓')} ${okCount} of ${plans.length} plans OK`);
     }
+    console.log(`Contract coverage: ${coveragePercent}% (${plansWithOutputs.length}/${plansWithDependents.length} plans with dependents have outputs.md)`);
   }
 
   if (errors.length > 0) {
