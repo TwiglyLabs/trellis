@@ -64,7 +64,7 @@ export function updatePlanFile(filePath: string, updates: Partial<PlanFrontmatte
     throw new Error(`Cannot update ${filePath}: file has invalid YAML frontmatter`);
   }
 
-  const newData = { ...parsed.data, ...updates };
+  const newData: Record<string, unknown> = { ...parsed.data, ...updates };
 
   if (deleteFields) {
     for (const field of deleteFields) {

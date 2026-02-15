@@ -49,3 +49,27 @@ await esbuild.build({
 });
 
 chmodSync('dist/trellis.cjs', 0o755);
+
+// --- Library ESM build (no shebang, no viewer) ---
+await esbuild.build({
+  entryPoints: ['src/index.ts'],
+  bundle: true,
+  platform: 'node',
+  target: 'node20',
+  format: 'esm',
+  outfile: 'dist/index.mjs',
+  external: [],
+  minify: process.argv.includes('--minify'),
+});
+
+// --- Library CJS build ---
+await esbuild.build({
+  entryPoints: ['src/index.ts'],
+  bundle: true,
+  platform: 'node',
+  target: 'node20',
+  format: 'cjs',
+  outfile: 'dist/index.cjs',
+  external: [],
+  minify: process.argv.includes('--minify'),
+});
