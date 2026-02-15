@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildGraph, detectCycles, topologicalSort, transitiveDependents, newlyReady, computeCriticalPath, pickNext, computeChunks } from '../src/graph.ts';
-import type { Plan } from '../src/types.ts';
+import { buildGraph, detectCycles, topologicalSort, transitiveDependents, newlyReady, computeCriticalPath, pickNext, computeChunks, computeDepths, groupByTopologicalDepth, interfaceWidthSplit, chunkContractAggregation } from '../src/graph.ts';
+import type { Plan, PlanContract } from '../src/types.ts';
 
-function makePlan(id: string, status: string, depends_on: string[] = [], opts?: { tags?: string[]; body?: string }): Plan {
+function makePlan(id: string, status: string, depends_on: string[] = [], opts?: { tags?: string[]; body?: string; inputs?: PlanContract; outputs?: PlanContract }): Plan {
   return {
     id,
     filePath: `plans/${id}.md`,
@@ -14,6 +14,21 @@ function makePlan(id: string, status: string, depends_on: string[] = [], opts?: 
     },
     body: opts?.body ?? '',
     lineCount: (opts?.body ?? '').split('\n').length + 4, // +4 for frontmatter lines
+    inputs: opts?.inputs,
+    outputs: opts?.outputs,
+  };
+}
+
+function makeOutputs(sections: Array<{ heading: string; items: string[] }>): PlanContract {
+  return { raw: '', fromPlans: [], fromCode: [], sections: sections.map(s => ({ ...s })) };
+}
+
+function makeInputs(fromPlans: string[], sections?: Array<{ heading: string; items: string[]; source?: string }>): PlanContract {
+  return {
+    raw: '',
+    fromPlans,
+    fromCode: [],
+    sections: sections ?? fromPlans.map(p => ({ heading: p, items: [], source: p })),
   };
 }
 
@@ -564,5 +579,210 @@ describe('computeChunks', () => {
     expect(contractsChunk).toBeDefined();
     expect(contractsChunk!.planCount).toBe(2);
     expect(contractsChunk!.plans.map(p => p.id).sort()).toEqual(['contracts/core', 'impl/parser']);
+  });
+
+  it('uses topological strategy when specified', () => {
+    const plans = [
+      makePlan('impl/core', 'not_started'),
+      makePlan('impl/auth', 'not_started'),
+      makePlan('impl/parser', 'not_started', ['impl/core']),
+      makePlan('impl/validator', 'not_started', ['impl/core', 'impl/auth']),
+    ];
+    const graph = buildGraph(plans);
+    const result = computeChunks(plans, graph, { strategy: 'topological' });
+    expect(result.chunks.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('directory strategy remains default and backwards compatible', () => {
+    const plans = [
+      makePlan('contracts/core', 'not_started'),
+      makePlan('contracts/auth', 'not_started'),
+      makePlan('impl/parser', 'not_started', ['contracts/core']),
+    ];
+    const graph = buildGraph(plans);
+    const withDefault = computeChunks(plans, graph);
+    const withExplicit = computeChunks(plans, graph, { strategy: 'directory' });
+    expect(withDefault.chunks.map(c => c.id)).toEqual(withExplicit.chunks.map(c => c.id));
+  });
+});
+
+describe('computeDepths', () => {
+  it('assigns depth 0 to roots', () => {
+    const plans = [
+      makePlan('a', 'not_started'),
+      makePlan('b', 'not_started'),
+    ];
+    const graph = buildGraph(plans);
+    const depths = computeDepths(plans, graph);
+    expect(depths.get('a')).toBe(0);
+    expect(depths.get('b')).toBe(0);
+  });
+
+  it('assigns increasing depths along chains', () => {
+    const plans = [
+      makePlan('a', 'not_started'),
+      makePlan('b', 'not_started', ['a']),
+      makePlan('c', 'not_started', ['b']),
+    ];
+    const graph = buildGraph(plans);
+    const depths = computeDepths(plans, graph);
+    expect(depths.get('a')).toBe(0);
+    expect(depths.get('b')).toBe(1);
+    expect(depths.get('c')).toBe(2);
+  });
+
+  it('uses longest path for diamond dependencies', () => {
+    const plans = [
+      makePlan('root', 'not_started'),
+      makePlan('short', 'not_started', ['root']),
+      makePlan('mid', 'not_started', ['root']),
+      makePlan('long', 'not_started', ['mid']),
+      makePlan('end', 'not_started', ['short', 'long']),
+    ];
+    const graph = buildGraph(plans);
+    const depths = computeDepths(plans, graph);
+    expect(depths.get('root')).toBe(0);
+    expect(depths.get('short')).toBe(1);
+    expect(depths.get('mid')).toBe(1);
+    expect(depths.get('long')).toBe(2);
+    expect(depths.get('end')).toBe(3);
+  });
+});
+
+describe('groupByTopologicalDepth', () => {
+  it('groups plans by depth', () => {
+    const plans = [
+      makePlan('a', 'not_started'),
+      makePlan('b', 'not_started'),
+      makePlan('c', 'not_started', ['a']),
+      makePlan('d', 'not_started', ['a', 'b']),
+    ];
+    const graph = buildGraph(plans);
+    const groups = groupByTopologicalDepth(plans, graph);
+    const layer0 = groups.get('layer-0');
+    const layer1 = groups.get('layer-1');
+    expect(layer0).toBeDefined();
+    expect(layer1).toBeDefined();
+    expect([...layer0!].sort()).toEqual(['a', 'b']);
+    expect([...layer1!].sort()).toEqual(['c', 'd']);
+  });
+});
+
+describe('interfaceWidthSplit', () => {
+  it('splits oversized group at narrowest interface', () => {
+    const plans = [
+      makePlan('a', 'not_started', [], { body: 'x\n'.repeat(1500), outputs: makeOutputs([{ heading: 'A output', items: ['item1'] }]) }),
+      makePlan('b', 'not_started', ['a'], { body: 'x\n'.repeat(1500), outputs: makeOutputs([{ heading: 'B output', items: ['item1'] }]) }),
+      makePlan('c', 'not_started', ['b'], { body: 'x\n'.repeat(1500), outputs: makeOutputs([{ heading: 'C output', items: ['item1'] }]) }),
+      makePlan('d', 'not_started', ['c'], { body: 'x\n'.repeat(1500) }),
+    ];
+    const graph = buildGraph(plans);
+    const groups = new Map<string, Set<string>>();
+    groups.set('all', new Set(['a', 'b', 'c', 'd']));
+
+    interfaceWidthSplit(groups, plans, graph, 3500);
+
+    expect(groups.size).toBe(2);
+    for (const [, ids] of groups) {
+      let total = 0;
+      for (const id of ids) {
+        const p = graph.plans.get(id);
+        if (p) total += p.lineCount;
+      }
+      expect(total).toBeLessThanOrEqual(3500);
+    }
+  });
+
+  it('does not split groups within budget', () => {
+    const plans = [
+      makePlan('a', 'not_started', [], { body: 'x' }),
+      makePlan('b', 'not_started', ['a'], { body: 'x' }),
+    ];
+    const graph = buildGraph(plans);
+    const groups = new Map<string, Set<string>>();
+    groups.set('small', new Set(['a', 'b']));
+
+    interfaceWidthSplit(groups, plans, graph, 8000);
+    expect(groups.size).toBe(1);
+  });
+
+  it('falls back to edge count when no contracts', () => {
+    const plans = [
+      makePlan('a', 'not_started', [], { body: 'x\n'.repeat(2000) }),
+      makePlan('b', 'not_started', ['a'], { body: 'x\n'.repeat(2000) }),
+      makePlan('c', 'not_started', ['b'], { body: 'x\n'.repeat(2000) }),
+    ];
+    const graph = buildGraph(plans);
+    const groups = new Map<string, Set<string>>();
+    groups.set('all', new Set(['a', 'b', 'c']));
+
+    interfaceWidthSplit(groups, plans, graph, 5000);
+    expect(groups.size).toBe(2);
+  });
+
+  it('annotates group with advisory when split not possible', () => {
+    const plans = [
+      makePlan('a', 'not_started', [], { body: 'x\n'.repeat(5000) }),
+      makePlan('b', 'not_started', ['a'], { body: 'x\n'.repeat(5000) }),
+    ];
+    const graph = buildGraph(plans);
+    const groups = new Map<string, Set<string>>();
+    groups.set('big', new Set(['a', 'b']));
+
+    const advisories = interfaceWidthSplit(groups, plans, graph, 3000);
+    expect(advisories.size).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('chunkContractAggregation', () => {
+  it('computes cross-boundary contracts', () => {
+    const plans = [
+      makePlan('a', 'not_started', [], {
+        outputs: makeOutputs([
+          { heading: 'Types', items: ['Person', 'Family'] },
+          { heading: 'Store', items: ['TreeStore'] },
+        ]),
+      }),
+      makePlan('b', 'not_started', ['a'], {
+        inputs: makeInputs(['a'], [{ heading: 'a', items: ['Person type'], source: 'a' }]),
+      }),
+    ];
+    const graph = buildGraph(plans);
+
+    const chunks = [
+      { id: 'chunk-a', plans: [{ id: 'a', filePath: '', lines: 0 }], roots: ['a'], leaves: ['a'], planCount: 1, totalLines: 0, internalEdges: [] },
+      { id: 'chunk-b', plans: [{ id: 'b', filePath: '', lines: 0 }], roots: ['b'], leaves: ['b'], planCount: 1, totalLines: 0, internalEdges: [] },
+    ];
+
+    chunkContractAggregation(chunks, plans, graph);
+
+    const chunkA = chunks.find(c => c.id === 'chunk-a')!;
+    const chunkB = chunks.find(c => c.id === 'chunk-b')!;
+    expect(chunkA.chunkOutputs).toBeDefined();
+    expect(chunkA.chunkOutputs!.length).toBeGreaterThan(0);
+    expect(chunkB.chunkInputs).toBeDefined();
+    expect(chunkB.chunkInputs!.length).toBeGreaterThan(0);
+  });
+
+  it('skips internal edges', () => {
+    const plans = [
+      makePlan('a', 'not_started', [], {
+        outputs: makeOutputs([{ heading: 'Types', items: ['Person'] }]),
+      }),
+      makePlan('b', 'not_started', ['a'], {
+        inputs: makeInputs(['a']),
+      }),
+    ];
+    const graph = buildGraph(plans);
+
+    const chunks = [
+      { id: 'chunk-1', plans: [{ id: 'a', filePath: '', lines: 0 }, { id: 'b', filePath: '', lines: 0 }], roots: ['a'], leaves: ['b'], planCount: 2, totalLines: 0, internalEdges: [] },
+    ];
+
+    chunkContractAggregation(chunks, plans, graph);
+
+    const chunk = chunks[0];
+    expect(chunk.chunkOutputs ?? []).toHaveLength(0);
+    expect(chunk.chunkInputs ?? []).toHaveLength(0);
   });
 });

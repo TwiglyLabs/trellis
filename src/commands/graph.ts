@@ -2,7 +2,7 @@ import { createServer } from 'http';
 import { join } from 'path';
 import { execFile } from 'child_process';
 import { loadConfig, scanPlans } from '../scanner.ts';
-import { buildGraph } from '../graph.ts';
+import { buildGraph, computeChunks } from '../graph.ts';
 import viewerHtml from '../viewer/index.html';
 
 function getGraphData(cwd: string) {
@@ -10,6 +10,8 @@ function getGraphData(cwd: string) {
   const plansDir = join(cwd, config.plans_dir);
   const plans = scanPlans(plansDir);
   const graph = buildGraph(plans);
+  const strategy = config.chunk_strategy;
+  const chunkResult = computeChunks(plans, graph, { maxLines: config.chunk_max_lines, strategy });
 
   return {
     project: config.project,
@@ -25,7 +27,11 @@ function getGraphData(cwd: string) {
       description: p.frontmatter.description,
       filePath: p.filePath,
       body: p.body,
+      outputs: p.outputs?.raw,
+      inputs: p.inputs?.raw,
     })),
+    chunks: chunkResult.chunks,
+    crossChunkEdges: chunkResult.crossChunkEdges,
   };
 }
 

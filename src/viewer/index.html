@@ -21,6 +21,12 @@
   --group-bg: rgba(255,255,255,0.03);
   --group-border: rgba(255,255,255,0.1);
   --drawer-width: 420px;
+  --chunk-green: rgba(64,192,87,0.10);
+  --chunk-green-border: rgba(64,192,87,0.40);
+  --chunk-yellow: rgba(240,192,64,0.10);
+  --chunk-yellow-border: rgba(240,192,64,0.40);
+  --chunk-red: rgba(233,69,96,0.10);
+  --chunk-red-border: rgba(233,69,96,0.40);
 }
 @media (prefers-color-scheme: light) {
   :root {
@@ -38,6 +44,12 @@
     --status-archived: #7f8c8d;
     --group-bg: rgba(0,0,0,0.03);
     --group-border: rgba(0,0,0,0.15);
+    --chunk-green: rgba(39,174,96,0.08);
+    --chunk-green-border: rgba(39,174,96,0.35);
+    --chunk-yellow: rgba(230,126,34,0.08);
+    --chunk-yellow-border: rgba(230,126,34,0.35);
+    --chunk-red: rgba(231,76,60,0.08);
+    --chunk-red-border: rgba(231,76,60,0.35);
   }
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -139,8 +151,35 @@ svg {
   fill: none;
   stroke: var(--border);
   stroke-width: 1.5;
+  transition: stroke 0.15s, stroke-width 0.15s;
+}
+.edge.highlighted path {
+  stroke: var(--accent);
+  stroke-width: 3;
 }
 .edge marker path { fill: var(--border); }
+.chunk-box rect {
+  rx: 10;
+  ry: 10;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 3;
+  cursor: pointer;
+}
+.chunk-box text {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+}
+.edge-label text {
+  font-family: inherit;
+  font-size: 9px;
+  fill: var(--text-dim);
+  cursor: default;
+}
+.edge-label rect {
+  rx: 3;
+  ry: 3;
+}
 
 /* Side drawer */
 #drawer {
@@ -193,6 +232,27 @@ svg {
   line-height: 1;
 }
 #drawer-close:hover { color: var(--text); }
+#drawer-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#drawer-tabs button {
+  flex: 1;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-dim);
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 0;
+}
+#drawer-tabs button:hover { color: var(--text); }
+#drawer-tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
 #drawer-body {
   flex: 1;
   overflow-y: auto;
@@ -241,10 +301,49 @@ svg {
   border-top: 1px solid var(--border);
   margin: 12px 0;
 }
-#drawer-body a { color: var(--status-in-progress); }
+#drawer-body a { color: var(--status-in-progress); cursor: pointer; }
 #drawer-body strong { font-weight: 600; }
 #drawer-body em { font-style: italic; }
 #drawer-body img { max-width: 100%; }
+.drawer-warning {
+  background: rgba(240,192,64,0.15);
+  border: 1px solid rgba(240,192,64,0.3);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* Edge tooltip */
+#edge-tooltip {
+  display: none;
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  max-width: 340px;
+  font-size: 13px;
+  line-height: 1.5;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  pointer-events: none;
+}
+#edge-tooltip h4 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+#edge-tooltip ul {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+}
+#edge-tooltip li {
+  margin-bottom: 2px;
+  color: var(--text-dim);
+}
 </style>
 </head>
 <body>
@@ -273,10 +372,16 @@ svg {
         <h3 id="drawer-title"></h3>
         <div id="drawer-meta"></div>
       </div>
+      <div id="drawer-tabs">
+        <button class="active" data-tab="plan">Plan</button>
+        <button data-tab="outputs">Outputs</button>
+        <button data-tab="inputs">Inputs</button>
+      </div>
       <div id="drawer-body"></div>
     </div>
   </div>
 </div>
+<div id="edge-tooltip"></div>
 <script>
 /* __DAGRE_BUNDLE__ */
 </script>
@@ -294,6 +399,99 @@ svg {
   };
 
   var selected = null;
+  var activeTab = 'plan';
+  var showChunks = true;
+  var highlightedChunk = null;
+
+  // Build plan-to-chunk lookup
+  var planToChunk = {};
+  (DATA.chunks || []).forEach(function(chunk) {
+    chunk.plans.forEach(function(p) {
+      planToChunk[p.id] = chunk.id;
+    });
+  });
+
+  // Build cross-chunk edge index: for a chunk, find edges that touch it
+  function getChunkBoundaryEdges(chunkId) {
+    return (DATA.crossChunkEdges || []).filter(function(e) {
+      return e.fromChunk === chunkId || e.toChunk === chunkId;
+    });
+  }
+
+  // Compute interface width score for a chunk (Fix 3)
+  function chunkInterfaceWidth(chunk) {
+    var contractItems = 0;
+    if (chunk.chunkOutputs) {
+      contractItems += chunk.chunkOutputs.length;
+    }
+    if (chunk.chunkInputs) {
+      contractItems += chunk.chunkInputs.length;
+    }
+    if (contractItems > 0) {
+      // Contract-based thresholds: 5/15
+      if (contractItems <= 5) return 'green';
+      if (contractItems <= 15) return 'yellow';
+      return 'red';
+    }
+    // Fallback to edge count with lower thresholds: 2/6
+    var edges = getChunkBoundaryEdges(chunk.id);
+    if (edges.length <= 2) return 'green';
+    if (edges.length <= 6) return 'yellow';
+    return 'red';
+  }
+
+  // Get edge label text for a cross-chunk edge from contract sections
+  function getEdgeLabel(fromId, toId) {
+    var fromPlan = DATA.plans.find(function(p) { return p.id === fromId; });
+    if (!fromPlan || !fromPlan.outputs) return '';
+    var headings = [];
+    var lines = fromPlan.outputs.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf('## ') === 0) {
+        headings.push(lines[i].slice(3).trim());
+      }
+    }
+    if (headings.length === 0) return '';
+    var label = headings.join(', ');
+    if (label.length > 40) label = label.substring(0, 38) + '..';
+    return label;
+  }
+
+  // Get full tooltip content for a cross-chunk edge
+  function getEdgeTooltipHtml(fromId, toId) {
+    var fromPlan = DATA.plans.find(function(p) { return p.id === fromId; });
+    if (!fromPlan || !fromPlan.outputs) return '';
+    var html = '';
+    var currentHeading = null;
+    var items = [];
+    var lines = fromPlan.outputs.split('\n');
+
+    function flush() {
+      if (currentHeading) {
+        html += '<h4>' + escapeHtml(currentHeading) + '</h4>';
+        if (items.length > 0) {
+          html += '<ul>';
+          items.forEach(function(item) {
+            html += '<li>' + escapeHtml(item) + '</li>';
+          });
+          html += '</ul>';
+        }
+      }
+    }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (line.indexOf('## ') === 0) {
+        flush();
+        currentHeading = line.slice(3).trim();
+        items = [];
+      } else if (line.indexOf('- ') === 0 && currentHeading) {
+        items.push(line.slice(2).trim());
+      }
+    }
+    flush();
+    return html;
+  }
 
   function init() {
     document.getElementById('project-name').textContent = '— ' + DATA.project;
@@ -305,6 +503,26 @@ svg {
     document.getElementById('filter-repo').addEventListener('change', render);
     document.getElementById('group-by').addEventListener('change', render);
     document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+
+    // Tab click handlers
+    document.querySelectorAll('#drawer-tabs button').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        activeTab = btn.getAttribute('data-tab');
+        document.querySelectorAll('#drawer-tabs button').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        if (selected) renderDrawerBody(selected);
+      });
+    });
+
+    // Keyboard: 'c' toggles chunk boxes
+    document.addEventListener('keydown', function(e) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === 'c') {
+        showChunks = !showChunks;
+        highlightedChunk = null;
+        render();
+      }
+    });
   }
 
   function populateFilters() {
@@ -412,9 +630,44 @@ svg {
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
     var html = '';
+    var borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
+    var surfaceColor = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim();
 
     // Defs for arrow markers
-    html += '<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="' + getComputedStyle(document.documentElement).getPropertyValue('--border').trim() + '"/></marker></defs>';
+    html += '<defs>';
+    html += '<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="' + borderColor + '"/></marker>';
+    html += '<marker id="arrow-highlight" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="' + getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() + '"/></marker>';
+    html += '</defs>';
+
+    // Chunk bounding boxes (rendered first, behind everything)
+    if (showChunks && DATA.chunks && DATA.chunks.length > 0) {
+      DATA.chunks.forEach(function(chunk) {
+        var memberNodes = chunk.plans.filter(function(cp) {
+          return planIds.has(cp.id) && g.node(cp.id);
+        });
+        if (memberNodes.length === 0) return;
+
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        memberNodes.forEach(function(cp) {
+          var node = g.node(cp.id);
+          minX = Math.min(minX, node.x - node.width / 2);
+          minY = Math.min(minY, node.y - node.height / 2);
+          maxX = Math.max(maxX, node.x + node.width / 2);
+          maxY = Math.max(maxY, node.y + node.height / 2);
+        });
+
+        var pad = 20;
+        var color = chunkInterfaceWidth(chunk);
+        var fill = getComputedStyle(document.documentElement).getPropertyValue('--chunk-' + color).trim();
+        var stroke = getComputedStyle(document.documentElement).getPropertyValue('--chunk-' + color + '-border').trim();
+        var labelColor = stroke;
+
+        html += '<g class="chunk-box" data-chunk="' + escapeAttr(chunk.id) + '">';
+        html += '<rect x="' + (minX - pad) + '" y="' + (minY - pad - 14) + '" width="' + (maxX - minX + pad * 2) + '" height="' + (maxY - minY + pad * 2 + 14) + '" fill="' + fill + '" stroke="' + stroke + '"/>';
+        html += '<text x="' + (minX - pad + 6) + '" y="' + (minY - pad - 2) + '" fill="' + labelColor + '">' + escapeHtml(chunk.id) + '</text>';
+        html += '</g>';
+      });
+    }
 
     // Group backgrounds
     if (groupBy) {
@@ -441,7 +694,13 @@ svg {
       });
     }
 
-    // Edges
+    // Build cross-chunk edge lookup for edge rendering
+    var crossEdgeMap = {};
+    (DATA.crossChunkEdges || []).forEach(function(ce) {
+      crossEdgeMap[ce.from + '|' + ce.to] = ce;
+    });
+
+    // Edges — add data-from/data-to for click handler (Fix 2)
     g.edges().forEach(function(e) {
       var edge = g.edge(e);
       var points = edge.points;
@@ -449,8 +708,37 @@ svg {
       for (var i = 1; i < points.length; i++) {
         d += ' L ' + points[i].x + ' ' + points[i].y;
       }
-      html += '<g class="edge"><path d="' + d + '" marker-end="url(#arrow)"/></g>';
+      var isHighlighted = highlightedChunk && crossEdgeMap[e.v + '|' + e.w] &&
+        (crossEdgeMap[e.v + '|' + e.w].fromChunk === highlightedChunk || crossEdgeMap[e.v + '|' + e.w].toChunk === highlightedChunk);
+      var cls = 'edge' + (isHighlighted ? ' highlighted' : '');
+      var marker = isHighlighted ? 'url(#arrow-highlight)' : 'url(#arrow)';
+      html += '<g class="' + cls + '" data-from="' + escapeAttr(e.v) + '" data-to="' + escapeAttr(e.w) + '"><path d="' + d + '" marker-end="' + marker + '"/></g>';
     });
+
+    // Cross-chunk edge labels
+    if (showChunks) {
+      g.edges().forEach(function(e) {
+        var ce = crossEdgeMap[e.v + '|' + e.w];
+        if (!ce) return;
+        var label = getEdgeLabel(e.v, e.w);
+        if (!label) return;
+
+        var edge = g.edge(e);
+        var points = edge.points;
+        var mid = Math.floor(points.length / 2);
+        var mx = points[mid].x;
+        var my = points[mid].y;
+
+        // Estimate text width (rough: 5.5px per char at 9px font)
+        var textWidth = label.length * 5.5 + 8;
+        var textHeight = 16;
+
+        html += '<g class="edge-label" data-label-from="' + escapeAttr(e.v) + '" data-label-to="' + escapeAttr(e.w) + '">';
+        html += '<rect x="' + (mx - textWidth / 2) + '" y="' + (my - textHeight / 2) + '" width="' + textWidth + '" height="' + textHeight + '" fill="' + surfaceColor + '" stroke="' + borderColor + '" stroke-width="0.5" opacity="0.9"/>';
+        html += '<text x="' + mx + '" y="' + (my + 3) + '" text-anchor="middle">' + escapeHtml(label) + '</text>';
+        html += '</g>';
+      });
+    }
 
     // Nodes
     g.nodes().forEach(function(nid) {
@@ -464,7 +752,7 @@ svg {
       var hasTags = p.tags && p.tags.length > 0;
 
       html += '<g class="' + cls + '" data-id="' + p.id + '" transform="translate(0,0)">';
-      html += '<rect x="' + x + '" y="' + y + '" width="' + node.width + '" height="' + node.height + '" fill="' + getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() + '" stroke="' + color + '"/>';
+      html += '<rect x="' + x + '" y="' + y + '" width="' + node.width + '" height="' + node.height + '" fill="' + surfaceColor + '" stroke="' + color + '"/>';
       html += '<text x="' + node.x + '" y="' + (node.y - (hasTags ? 10 : 4)) + '" text-anchor="middle">' + escapeHtml(node.label) + '</text>';
       html += '<text class="status-badge" x="' + node.x + '" y="' + (node.y + (hasTags ? 4 : 14)) + '" text-anchor="middle" fill="' + color + '">' + (p.blocked ? 'blocked' : p.status) + '</text>';
       if (hasTags) {
@@ -477,23 +765,66 @@ svg {
 
     svg.innerHTML = html;
 
-    // Click handlers
+    // Click handlers for nodes
     svg.querySelectorAll('.node').forEach(function(el) {
-      el.addEventListener('click', function() {
+      el.addEventListener('click', function(evt) {
+        evt.stopPropagation();
         var id = el.getAttribute('data-id');
         selectPlan(id);
+      });
+    });
+
+    // Click handlers for chunk boxes (Fix 2)
+    svg.querySelectorAll('.chunk-box').forEach(function(el) {
+      el.addEventListener('click', function(evt) {
+        evt.stopPropagation();
+        var chunkId = el.getAttribute('data-chunk');
+        if (highlightedChunk === chunkId) {
+          highlightedChunk = null;
+        } else {
+          highlightedChunk = chunkId;
+        }
+        render();
+      });
+    });
+
+    // Hover handlers for edge labels (Reach 1: rich tooltip)
+    var tooltip = document.getElementById('edge-tooltip');
+    svg.querySelectorAll('.edge-label').forEach(function(el) {
+      el.addEventListener('mouseenter', function(evt) {
+        var fromId = el.getAttribute('data-label-from');
+        var toId = el.getAttribute('data-label-to');
+        var content = getEdgeTooltipHtml(fromId, toId);
+        if (!content) return;
+        tooltip.innerHTML = content;
+        tooltip.style.display = 'block';
+        var rect = el.getBoundingClientRect();
+        tooltip.style.left = (rect.left + rect.width / 2) + 'px';
+        tooltip.style.top = (rect.bottom + 8) + 'px';
+      });
+      el.addEventListener('mouseleave', function() {
+        tooltip.style.display = 'none';
       });
     });
   }
 
   function closeDrawer() {
     selected = null;
+    activeTab = 'plan';
+    document.querySelectorAll('#drawer-tabs button').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelector('#drawer-tabs button[data-tab="plan"]').classList.add('active');
     document.getElementById('drawer').classList.remove('open');
     render();
   }
 
-  function selectPlan(id) {
+  function selectPlan(id, tab) {
     selected = id;
+    if (tab) {
+      activeTab = tab;
+      document.querySelectorAll('#drawer-tabs button').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelector('#drawer-tabs button[data-tab="' + tab + '"]').classList.add('active');
+    }
+
     var plan = DATA.plans.find(function(p) { return p.id === id; });
     if (!plan) return;
 
@@ -538,14 +869,75 @@ svg {
 
     document.getElementById('drawer-meta').innerHTML = h;
 
-    // Render plan body as markdown
-    var body = plan.body || '';
-    var drawerBody = document.getElementById('drawer-body');
-    drawerBody.innerHTML = renderMarkdown(body);
-    drawerBody.scrollTop = 0;
-
+    renderDrawerBody(id);
     document.getElementById('drawer').classList.add('open');
     render();
+  }
+
+  function renderDrawerBody(planId) {
+    var plan = DATA.plans.find(function(p) { return p.id === planId; });
+    if (!plan) return;
+    var drawerBody = document.getElementById('drawer-body');
+
+    if (activeTab === 'plan') {
+      drawerBody.innerHTML = renderMarkdown(plan.body || '');
+    } else if (activeTab === 'outputs') {
+      if (plan.outputs) {
+        var outputHtml = renderMarkdown(plan.outputs);
+        // Add consumer info for each section
+        var chunk = (DATA.chunks || []).find(function(c) {
+          return c.plans.some(function(cp) { return cp.id === planId; });
+        });
+        if (chunk && chunk.chunkOutputs) {
+          var consumers = {};
+          chunk.chunkOutputs.forEach(function(item) {
+            if (item.planId === planId) {
+              consumers[item.heading] = item.consumedBy;
+            }
+          });
+          var keys = Object.keys(consumers);
+          if (keys.length > 0) {
+            outputHtml += '<hr><p><strong>Cross-chunk consumers:</strong></p><ul>';
+            keys.forEach(function(heading) {
+              outputHtml += '<li><em>' + escapeHtml(heading) + '</em>: ' + consumers[heading].map(function(id) {
+                return escapeHtml(id);
+              }).join(', ') + '</li>';
+            });
+            outputHtml += '</ul>';
+          }
+        }
+        drawerBody.innerHTML = outputHtml;
+      } else {
+        var hasDependents = DATA.plans.some(function(p) {
+          return (p.depends_on || []).includes(planId);
+        });
+        if (hasDependents) {
+          drawerBody.innerHTML = '<div class="drawer-warning">This plan has dependents but no outputs.md file. Consider adding one to define the contract.</div>';
+        } else {
+          drawerBody.innerHTML = '<p style="color:var(--text-dim)">No outputs defined for this plan.</p>';
+        }
+      }
+    } else if (activeTab === 'inputs') {
+      if (plan.inputs) {
+        drawerBody.innerHTML = renderMarkdown(plan.inputs);
+        // Make "From plans" references clickable
+        drawerBody.querySelectorAll('h3').forEach(function(h3El) {
+          var refId = h3El.textContent.trim();
+          var refPlan = DATA.plans.find(function(p) { return p.id === refId; });
+          if (refPlan) {
+            h3El.style.cursor = 'pointer';
+            h3El.style.color = getComputedStyle(document.documentElement).getPropertyValue('--status-in-progress').trim();
+            h3El.addEventListener('click', function() {
+              selectPlan(refId, 'outputs');
+            });
+          }
+        });
+      } else {
+        drawerBody.innerHTML = '<p style="color:var(--text-dim)">No inputs defined for this plan.</p>';
+      }
+    }
+
+    drawerBody.scrollTop = 0;
   }
 
   // Lightweight markdown renderer
@@ -671,6 +1063,14 @@ svg {
       .then(function(data) {
         DATA = data;
         selected = null;
+        highlightedChunk = null;
+        // Rebuild plan-to-chunk lookup
+        planToChunk = {};
+        (DATA.chunks || []).forEach(function(chunk) {
+          chunk.plans.forEach(function(p) {
+            planToChunk[p.id] = chunk.id;
+          });
+        });
         document.getElementById('drawer').classList.remove('open');
         render();
       })
@@ -683,6 +1083,10 @@ svg {
     var d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
+  }
+
+  function escapeAttr(s) {
+    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   init();

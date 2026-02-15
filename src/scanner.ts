@@ -100,12 +100,16 @@ export function loadConfig(cwd: string): TrellisConfig {
           const parsed = parseInt(value, 10);
           if (!isNaN(parsed) && parsed > 0) config.chunk_max_lines = parsed;
         }
+        if (key === 'chunk_strategy' && (value === 'topological' || value === 'directory')) {
+          config.chunk_strategy = value;
+        }
       }
     }
     return {
       project: config.project || basename(cwd),
       plans_dir: config.plans_dir || 'plans',
       chunk_max_lines: config.chunk_max_lines,
+      chunk_strategy: config.chunk_strategy,
     };
   }
 

@@ -240,6 +240,12 @@ export function pickNext(graph: GraphData, candidates?: Set<string>): string | n
 export interface ChunkPlan { id: string; filePath: string; lines: number }
 export interface ChunkEdge { from: string; to: string }
 export interface CrossChunkEdge extends ChunkEdge { fromChunk: string; toChunk: string }
+export interface ChunkBoundaryItem {
+  planId: string;
+  heading: string;
+  consumedBy: string[];
+}
+
 export interface Chunk {
   id: string;
   plans: ChunkPlan[];
@@ -248,6 +254,9 @@ export interface Chunk {
   planCount: number;
   totalLines: number;
   internalEdges: ChunkEdge[];
+  chunkInputs?: ChunkBoundaryItem[];
+  chunkOutputs?: ChunkBoundaryItem[];
+  advisory?: string;
 }
 export interface ChunkResult {
   chunks: Chunk[];
@@ -257,65 +266,57 @@ export interface ChunkResult {
 
 const DEFAULT_MAX_LINES = 8000;
 
-export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLines?: number }): ChunkResult {
-  const maxLines = options?.maxLines ?? DEFAULT_MAX_LINES;
+// --- Extracted chunk algorithm functions ---
 
-  if (plans.length === 0) {
-    return { chunks: [], crossChunkEdges: [], config: { maxLines, overrides: 0 } };
+function groupLines(ids: Set<string>, planMap: Map<string, Plan>): number {
+  let total = 0;
+  for (const id of ids) {
+    const p = planMap.get(id);
+    if (p) total += p.lineCount;
   }
+  return total;
+}
 
-  // Step 1: Group by first path segment
-  const groups = new Map<string, Set<string>>(); // groupKey -> set of plan IDs
+function crossEdgeCount(a: Set<string>, b: Set<string>, graph: GraphData): number {
+  let count = 0;
+  for (const id of a) {
+    for (const dep of graph.dependencies.get(id) ?? []) {
+      if (b.has(dep)) count++;
+    }
+    for (const dependent of graph.dependents.get(id) ?? []) {
+      if (b.has(dependent)) count++;
+    }
+  }
+  return count;
+}
+
+export function groupByDirectory(plans: Plan[]): Map<string, Set<string>> {
+  const groups = new Map<string, Set<string>>();
   for (const plan of plans) {
     const slash = plan.id.indexOf('/');
     const groupKey = slash === -1 ? `__root__${plan.id}` : plan.id.substring(0, slash);
     if (!groups.has(groupKey)) groups.set(groupKey, new Set());
     groups.get(groupKey)!.add(plan.id);
   }
+  return groups;
+}
 
-  // Helper: compute total lines for a set of plan IDs
+export function agglomerativeMerge(groups: Map<string, Set<string>>, graph: GraphData, maxLines: number): void {
   const planMap = graph.plans;
-  function groupLines(ids: Set<string>): number {
-    let total = 0;
-    for (const id of ids) {
-      const p = planMap.get(id);
-      if (p) total += p.lineCount;
-    }
-    return total;
-  }
-
-  // Helper: count cross-edges between two groups (both directions)
-  function crossEdges(a: Set<string>, b: Set<string>): number {
-    let count = 0;
-    for (const id of a) {
-      for (const dep of graph.dependencies.get(id) ?? []) {
-        if (b.has(dep)) count++;
-      }
-      for (const dependent of graph.dependents.get(id) ?? []) {
-        if (b.has(dependent)) count++;
-      }
-    }
-    return count;
-  }
-
-  // Step 2: Agglomerative merge
-  // Complexity: O(g^2 * p) per iteration where g = groups, p = plans per group.
-  // Fine for typical trellis projects (single-digit groups). May need optimization
-  // if a project has 100+ top-level directories.
   let groupKeys = [...groups.keys()];
   let merged = true;
   while (merged) {
     merged = false;
     let bestPair: [string, string] | null = null;
-    let bestEdges = 1; // threshold: must have >1 edge
+    let bestEdges = 1;
 
     for (let i = 0; i < groupKeys.length; i++) {
       for (let j = i + 1; j < groupKeys.length; j++) {
         const a = groups.get(groupKeys[i])!;
         const b = groups.get(groupKeys[j])!;
-        const edges = crossEdges(a, b);
+        const edges = crossEdgeCount(a, b, graph);
         if (edges > bestEdges) {
-          const combinedLines = groupLines(a) + groupLines(b);
+          const combinedLines = groupLines(a, planMap) + groupLines(b, planMap);
           if (combinedLines <= maxLines) {
             bestEdges = edges;
             bestPair = [groupKeys[i], groupKeys[j]];
@@ -334,18 +335,17 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
       merged = true;
     }
   }
+}
 
-  // Step 3: Manual overrides (chunk:name tags)
+export function applyOverrides(groups: Map<string, Set<string>>, plans: Plan[]): { overrideNames: Set<string>; overrides: number } {
   let overrides = 0;
   const overrideChunks = new Map<string, Set<string>>();
 
   for (const plan of plans) {
     const chunkTags = (plan.frontmatter.tags ?? []).filter(t => t.startsWith('chunk:'));
     if (chunkTags.length === 0) continue;
-    // Take only the first chunk: tag; ignore extras
     const chunkName = chunkTags[0].slice(6);
     overrides++;
-    // Remove from current group
     for (const [, groupSet] of groups) {
       groupSet.delete(plan.id);
     }
@@ -353,7 +353,6 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
     overrideChunks.get(chunkName)!.add(plan.id);
   }
 
-  // Add override chunks to groups
   for (const [name, ids] of overrideChunks) {
     if (groups.has(name)) {
       for (const id of ids) groups.get(name)!.add(id);
@@ -362,31 +361,23 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
     }
   }
 
-  // Step 4: Orphan assignment — plans in empty groups
-  const emptyKeys: string[] = [];
-  const orphans: string[] = [];
+  return { overrideNames: new Set(overrideChunks.keys()), overrides };
+}
+
+export function assignOrphans(groups: Map<string, Set<string>>, plans: Plan[], graph: GraphData): void {
   for (const [key, ids] of groups) {
-    if (ids.size === 0) {
-      emptyKeys.push(key);
-    }
-  }
-  // Actually, orphans are plans still in non-override groups that became empty
-  // after overrides removed all their members. But we track displacement differently:
-  // Remove empty groups first
-  for (const key of emptyKeys) {
-    groups.delete(key);
+    if (ids.size === 0) groups.delete(key);
   }
 
-  // Find plans not in any group (displaced by overrides into a chunk that then had them)
   const assignedPlans = new Set<string>();
   for (const [, ids] of groups) {
     for (const id of ids) assignedPlans.add(id);
   }
+  const orphans: string[] = [];
   for (const plan of plans) {
     if (!assignedPlans.has(plan.id)) orphans.push(plan.id);
   }
 
-  // Assign orphans to the chunk with most shared edges; ties go to smaller chunk
   for (const orphanId of orphans) {
     let bestKey: string | null = null;
     let bestSharedEdges = -1;
@@ -410,7 +401,6 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
     if (bestKey) {
       groups.get(bestKey)!.add(orphanId);
     } else if (groups.size > 0) {
-      // No edges at all — put in smallest group
       let smallestKey = [...groups.keys()][0];
       let smallestSize = groups.get(smallestKey)!.size;
       for (const [key, ids] of groups) {
@@ -422,9 +412,15 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
       groups.get(smallestKey)!.add(orphanId);
     }
   }
+}
 
-  // Build chunks from groups
-  const overrideNames = new Set(overrideChunks.keys());
+export function buildChunkObjects(
+  groups: Map<string, Set<string>>,
+  plans: Plan[],
+  graph: GraphData,
+  overrideNames: Set<string>,
+): { chunks: Chunk[]; crossChunkEdges: CrossChunkEdge[] } {
+  const planMap = graph.plans;
   const usedIds = new Set<string>();
   let seqCounter = 1;
   const chunks: Chunk[] = [];
@@ -432,12 +428,10 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
   for (const [groupKey, planIds] of groups) {
     if (planIds.size === 0) continue;
 
-    // Generate chunk ID
     let chunkId: string;
     if (overrideNames.has(groupKey)) {
       chunkId = groupKey;
     } else {
-      // Check if all plans share a common first path segment
       const segments = new Set<string>();
       for (const id of planIds) {
         const slash = id.indexOf('/');
@@ -450,7 +444,6 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
       }
     }
 
-    // Handle ID collisions
     let finalId = chunkId;
     let suffix = 2;
     while (usedIds.has(finalId)) {
@@ -458,7 +451,6 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
     }
     usedIds.add(finalId);
 
-    // Build chunk plan list
     const chunkPlans: ChunkPlan[] = [];
     for (const id of planIds) {
       const p = planMap.get(id);
@@ -466,7 +458,6 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
     }
     chunkPlans.sort((a, b) => a.id.localeCompare(b.id));
 
-    // Internal edges
     const internalEdges: ChunkEdge[] = [];
     for (const id of planIds) {
       for (const dep of graph.dependencies.get(id) ?? []) {
@@ -476,7 +467,6 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
       }
     }
 
-    // Roots: no internal deps; Leaves: no internal dependents
     const roots: string[] = [];
     const leaves: string[] = [];
     for (const id of planIds) {
@@ -504,7 +494,6 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
 
   chunks.sort((a, b) => a.id.localeCompare(b.id));
 
-  // Step 5: Cross-chunk edges
   const planToChunk = new Map<string, string>();
   for (const chunk of chunks) {
     for (const p of chunk.plans) {
@@ -512,8 +501,6 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
     }
   }
 
-  // Cross-chunk edges: for each plan, check if its dependencies land in a different chunk.
-  // Edge direction: from = depended-on plan, to = dependent plan (matches "provides -> consumes").
   const crossChunkEdges: CrossChunkEdge[] = [];
   for (const plan of plans) {
     const dependentChunk = planToChunk.get(plan.id);
@@ -524,6 +511,241 @@ export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLi
         crossChunkEdges.push({ from: dep, to: plan.id, fromChunk: depChunk, toChunk: dependentChunk });
       }
     }
+  }
+
+  return { chunks, crossChunkEdges };
+}
+
+// --- Topological strategy functions ---
+
+export function computeDepths(plans: Plan[], graph: GraphData): Map<string, number> {
+  const depths = new Map<string, number>();
+  const planIds = new Set(plans.map(p => p.id));
+
+  function getDepth(id: string): number {
+    if (depths.has(id)) return depths.get(id)!;
+    const deps = graph.dependencies.get(id) ?? [];
+    if (deps.length === 0) {
+      depths.set(id, 0);
+      return 0;
+    }
+    let maxDep = 0;
+    for (const dep of deps) {
+      if (planIds.has(dep)) {
+        maxDep = Math.max(maxDep, getDepth(dep) + 1);
+      }
+    }
+    depths.set(id, maxDep);
+    return maxDep;
+  }
+
+  for (const plan of plans) {
+    getDepth(plan.id);
+  }
+
+  return depths;
+}
+
+export function groupByTopologicalDepth(plans: Plan[], graph: GraphData): Map<string, Set<string>> {
+  const depths = computeDepths(plans, graph);
+  const groups = new Map<string, Set<string>>();
+
+  for (const plan of plans) {
+    const depth = depths.get(plan.id) ?? 0;
+    const key = `layer-${depth}`;
+    if (!groups.has(key)) groups.set(key, new Set());
+    groups.get(key)!.add(plan.id);
+  }
+
+  return groups;
+}
+
+export function interfaceWidthSplit(
+  groups: Map<string, Set<string>>,
+  plans: Plan[],
+  graph: GraphData,
+  maxLines: number,
+): Map<string, string> {
+  const advisories = new Map<string, string>();
+  const planMap = graph.plans;
+
+  const toProcess = [...groups.entries()];
+  for (const [groupKey, planIds] of toProcess) {
+    const total = groupLines(planIds, planMap);
+    if (total <= maxLines) continue;
+
+    const depths = computeDepths(plans.filter(p => planIds.has(p.id)), graph);
+    const ordered = [...planIds].sort((a, b) => {
+      const da = depths.get(a) ?? 0;
+      const db = depths.get(b) ?? 0;
+      if (da !== db) return da - db;
+      return a.localeCompare(b);
+    });
+
+    if (ordered.length < 2) {
+      advisories.set(groupKey, 'chunk resists reduction — consider decomposing plans');
+      continue;
+    }
+
+    let bestCut = -1;
+    let bestWidth = Infinity;
+
+    for (let cut = 1; cut < ordered.length; cut++) {
+      const leftIds = new Set(ordered.slice(0, cut));
+      const rightIds = new Set(ordered.slice(cut));
+
+      const leftLines = groupLines(leftIds, planMap);
+      const rightLines = groupLines(rightIds, planMap);
+      if (leftLines > maxLines || rightLines > maxLines) continue;
+
+      let width = 0;
+      for (const id of leftIds) {
+        const plan = planMap.get(id);
+        if (plan?.outputs) {
+          for (const section of plan.outputs.sections) {
+            for (const depId of graph.dependents.get(id) ?? []) {
+              if (rightIds.has(depId)) {
+                width += section.items.length || 1;
+                break;
+              }
+            }
+          }
+        } else {
+          for (const depId of graph.dependents.get(id) ?? []) {
+            if (rightIds.has(depId)) width++;
+          }
+        }
+      }
+      for (const id of rightIds) {
+        const plan = planMap.get(id);
+        if (plan?.outputs) {
+          for (const section of plan.outputs.sections) {
+            for (const depId of graph.dependents.get(id) ?? []) {
+              if (leftIds.has(depId)) {
+                width += section.items.length || 1;
+                break;
+              }
+            }
+          }
+        } else {
+          for (const depId of graph.dependents.get(id) ?? []) {
+            if (leftIds.has(depId)) width++;
+          }
+        }
+      }
+
+      if (width < bestWidth) {
+        bestWidth = width;
+        bestCut = cut;
+      }
+    }
+
+    if (bestCut === -1) {
+      advisories.set(groupKey, 'chunk resists reduction — consider decomposing plans');
+      continue;
+    }
+
+    const leftIds = new Set(ordered.slice(0, bestCut));
+    const rightIds = new Set(ordered.slice(bestCut));
+
+    groups.delete(groupKey);
+    groups.set(`${groupKey}a`, leftIds);
+    groups.set(`${groupKey}b`, rightIds);
+  }
+
+  return advisories;
+}
+
+export function chunkContractAggregation(chunks: Chunk[], plans: Plan[], graph: GraphData): void {
+  const planMap = new Map(plans.map(p => [p.id, p]));
+  const planToChunk = new Map<string, string>();
+  for (const chunk of chunks) {
+    for (const p of chunk.plans) {
+      planToChunk.set(p.id, chunk.id);
+    }
+  }
+
+  for (const chunk of chunks) {
+    const chunkOutputs: ChunkBoundaryItem[] = [];
+    const chunkInputs: ChunkBoundaryItem[] = [];
+    const memberIds = new Set(chunk.plans.map(p => p.id));
+
+    for (const cp of chunk.plans) {
+      const plan = planMap.get(cp.id);
+      if (!plan?.outputs) continue;
+
+      for (const section of plan.outputs.sections) {
+        const consumedBy: string[] = [];
+        for (const depId of graph.dependents.get(cp.id) ?? []) {
+          if (!memberIds.has(depId)) {
+            consumedBy.push(depId);
+          }
+        }
+        if (consumedBy.length > 0) {
+          chunkOutputs.push({ planId: cp.id, heading: section.heading, consumedBy });
+        }
+      }
+    }
+
+    for (const cp of chunk.plans) {
+      const plan = planMap.get(cp.id);
+      if (!plan?.inputs) continue;
+
+      for (const section of plan.inputs.sections) {
+        if (section.source && !memberIds.has(section.source)) {
+          chunkInputs.push({ planId: cp.id, heading: section.heading, consumedBy: [section.source] });
+        }
+      }
+    }
+
+    if (chunkOutputs.length > 0) chunk.chunkOutputs = chunkOutputs;
+    if (chunkInputs.length > 0) chunk.chunkInputs = chunkInputs;
+  }
+}
+
+export function computeChunks(plans: Plan[], graph: GraphData, options?: { maxLines?: number; strategy?: 'directory' | 'topological' }): ChunkResult {
+  const maxLines = options?.maxLines ?? DEFAULT_MAX_LINES;
+  const strategy = options?.strategy ?? 'directory';
+
+  if (plans.length === 0) {
+    return { chunks: [], crossChunkEdges: [], config: { maxLines, overrides: 0 } };
+  }
+
+  const groups = strategy === 'topological'
+    ? groupByTopologicalDepth(plans, graph)
+    : groupByDirectory(plans);
+
+  agglomerativeMerge(groups, graph, maxLines);
+
+  let advisories = new Map<string, string>();
+  const advisoryGroupPlans = new Map<string, Set<string>>();
+  if (strategy === 'topological') {
+    // Snapshot group membership before splits for advisory matching
+    for (const [key, ids] of groups) {
+      advisoryGroupPlans.set(key, new Set(ids));
+    }
+    advisories = interfaceWidthSplit(groups, plans, graph, maxLines);
+  }
+
+  const { overrideNames, overrides } = applyOverrides(groups, plans);
+  assignOrphans(groups, plans, graph);
+  const { chunks, crossChunkEdges } = buildChunkObjects(groups, plans, graph, overrideNames);
+
+  // Apply advisories to chunks by matching plan membership (Fix 4: precise matching)
+  for (const chunk of chunks) {
+    const chunkPlanIds = new Set(chunk.plans.map(p => p.id));
+    for (const [groupKey, message] of advisories) {
+      const originalPlans = advisoryGroupPlans.get(groupKey);
+      if (!originalPlans) continue;
+      const hasOverlap = [...originalPlans].some(id => chunkPlanIds.has(id));
+      if (hasOverlap) {
+        chunk.advisory = message;
+      }
+    }
+  }
+
+  if (strategy === 'topological') {
+    chunkContractAggregation(chunks, plans, graph);
   }
 
   return { chunks, crossChunkEdges, config: { maxLines, overrides } };
