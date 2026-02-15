@@ -1,9 +1,7 @@
 import chalk from 'chalk';
-import { join } from 'path';
-import { loadConfig, scanPlans } from '../scanner.ts';
-import { buildGraph, computeChunks } from '../graph.ts';
+import { Trellis } from '../api.ts';
 import type { ChunkResult } from '../graph.ts';
-import { pluralize, filterPlans, formatLines } from '../utils.ts';
+import { pluralize, formatLines } from '../utils.ts';
 
 interface ChunksOptions {
   json?: boolean;
@@ -14,30 +12,21 @@ interface ChunksOptions {
 }
 
 export function chunksCommand(options: ChunksOptions): void {
-  const cwd = process.cwd();
-  const config = loadConfig(cwd);
-  const plansDir = join(cwd, config.plans_dir);
-  let plans = scanPlans(plansDir);
+  const t = new Trellis(process.cwd());
 
-  if (options.tag || options.repo) {
-    plans = filterPlans(plans, { tag: options.tag, repo: options.repo });
-  }
-
-  if (plans.length === 0) {
-    if (options.json) {
-      console.log(JSON.stringify({ chunks: [], crossChunkEdges: [], config: { maxLines: config.chunk_max_lines ?? 8000, overrides: 0 } }, null, 2));
-    } else {
-      console.log('No plans found.');
-    }
-    return;
-  }
-
-  const graph = buildGraph(plans);
-  const strategy = options.strategy ?? config.chunk_strategy;
-  const result = computeChunks(plans, graph, { maxLines: config.chunk_max_lines, strategy });
+  const result = t.chunks({
+    tag: options.tag,
+    repo: options.repo,
+    strategy: options.strategy,
+  });
 
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (result.chunks.length === 0) {
+    console.log('No plans found.');
     return;
   }
 

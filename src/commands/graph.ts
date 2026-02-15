@@ -1,84 +1,74 @@
 import { createServer } from 'http';
-import { join } from 'path';
 import { execFile } from 'child_process';
-import { loadConfig, scanPlans } from '../scanner.ts';
-import { buildGraph, computeChunks } from '../graph.ts';
+import { Trellis } from '../api.ts';
 import viewerHtml from '../viewer/index.html';
 
 function getGraphData(cwd: string) {
-  const config = loadConfig(cwd);
-  const plansDir = join(cwd, config.plans_dir);
-  const plans = scanPlans(plansDir);
-  const graph = buildGraph(plans);
-  const strategy = config.chunk_strategy;
-  const chunkResult = computeChunks(plans, graph, { maxLines: config.chunk_max_lines, strategy });
+  const t = new Trellis(cwd);
+  const result = t.graph();
 
   return {
-    project: config.project,
-    plans: plans.map(p => ({
-      id: p.id,
-      title: p.frontmatter.title,
-      status: p.frontmatter.status,
-      blocked: graph.blocked.has(p.id),
-      ready: graph.ready.has(p.id),
-      depends_on: p.frontmatter.depends_on ?? [],
-      tags: p.frontmatter.tags ?? [],
-      repo: p.frontmatter.repo,
-      description: p.frontmatter.description,
-      filePath: p.filePath,
-      body: p.body,
-      outputs: p.outputs?.raw,
-      inputs: p.inputs?.raw,
+    project: result.project,
+    plans: result.nodes.map((n) => ({
+      id: n.id,
+      title: n.title,
+      status: n.status,
+      blocked: n.blocked,
+      ready: n.ready,
+      depends_on: n.dependsOn,
+      tags: n.tags,
+      repo: n.repo,
+      description: n.description,
+      filePath: t.show(n.id)?.filePath ?? '',
+      body: n.body,
+      outputs: n.outputs,
+      inputs: n.inputs,
     })),
-    chunks: chunkResult.chunks,
-    crossChunkEdges: chunkResult.crossChunkEdges,
+    chunks: result.chunks,
+    crossChunkEdges: result.crossChunkEdges,
   };
 }
 
 export function graphCommand(options: { port?: number; json?: boolean }): void {
   const cwd = process.cwd();
-  const config = loadConfig(cwd);
-  const plansDir = join(cwd, config.plans_dir);
-  const plans = scanPlans(plansDir);
+  const t = new Trellis(cwd);
+  const result = t.graph();
 
   if (options.json) {
-    const graph = buildGraph(plans);
-    const nodes = plans.map(p => ({
-      id: p.id,
-      title: p.frontmatter.title,
-      status: p.frontmatter.status,
-      blocked: graph.blocked.has(p.id),
-      ready: graph.ready.has(p.id),
-      depends_on: p.frontmatter.depends_on ?? [],
-      tags: p.frontmatter.tags ?? [],
-      repo: p.frontmatter.repo,
-      assignee: p.frontmatter.assignee,
+    const nodes = result.nodes.map((n) => ({
+      id: n.id,
+      title: n.title,
+      status: n.status,
+      blocked: n.blocked,
+      ready: n.ready,
+      depends_on: n.dependsOn,
+      tags: n.tags,
+      repo: n.repo,
+      assignee: n.assignee,
     }));
 
-    const edges: { from: string; to: string }[] = [];
-    for (const plan of plans) {
-      for (const dep of plan.frontmatter.depends_on ?? []) {
-        edges.push({ from: dep, to: plan.id });
-      }
-    }
+    const edges = result.edges.map((e) => ({
+      from: e.from,
+      to: e.to,
+    }));
 
     console.log(JSON.stringify({ nodes, edges }, null, 2));
     return;
   }
 
-  if (plans.length === 0) {
+  if (result.nodes.length === 0) {
     console.log('No plans found.');
     return;
   }
 
   const server = createServer((req, res) => {
     if (req.url === '/api/data') {
+      const freshData = getGraphData(cwd);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(getGraphData(cwd)));
+      res.end(JSON.stringify(freshData));
       return;
     }
 
-    // Serve HTML with injected data
     const data = getGraphData(cwd);
     const html = viewerHtml.replace(
       '__TRELLIS_DATA__',
@@ -105,7 +95,6 @@ export function graphCommand(options: { port?: number; json?: boolean }): void {
     console.log(`Serving DAG viewer at ${url}`);
     console.log('Press Ctrl+C to stop');
 
-    // Open browser
     const platform = process.platform;
     const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'start' : 'xdg-open';
     execFile(cmd, [url], (err) => {

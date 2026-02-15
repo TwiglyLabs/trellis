@@ -1,7 +1,6 @@
 import chalk from 'chalk';
-import { join, relative } from 'path';
-import { loadConfig, scanPlans } from '../scanner.ts';
-import { buildGraph, transitiveDependents, computeCriticalPath } from '../graph.ts';
+import { relative } from 'path';
+import { Trellis } from '../api.ts';
 import { padRight, computeColumnWidth } from '../utils.ts';
 
 interface ShowOptions {
@@ -10,14 +9,10 @@ interface ShowOptions {
 }
 
 export function showCommand(planId: string, options?: ShowOptions): void {
-  const cwd = process.cwd();
-  const config = loadConfig(cwd);
-  const plansDir = join(cwd, config.plans_dir);
-  const plans = scanPlans(plansDir);
-  const graph = buildGraph(plans);
+  const t = new Trellis(process.cwd());
+  const result = t.show(planId);
 
-  const plan = graph.plans.get(planId);
-  if (!plan) {
+  if (!result) {
     if (options?.json) {
       console.error(JSON.stringify({ error: `Plan "${planId}" not found.` }));
     } else {
@@ -27,81 +22,73 @@ export function showCommand(planId: string, options?: ShowOptions): void {
     return;
   }
 
-  const fm = plan.frontmatter;
-  const isBlocked = graph.blocked.has(planId);
-  const isReady = graph.ready.has(planId);
-  const directDeps = graph.dependents.get(planId) ?? [];
-  const transitive = transitiveDependents(planId, graph);
-  const criticalPath = computeCriticalPath(planId, graph);
-
   if (options?.json) {
     const output: Record<string, any> = {
-      id: planId,
-      filePath: plan.filePath,
-      title: fm.title,
-      status: fm.status,
-      blocked: isBlocked,
-      ready: isReady,
-      tags: fm.tags ?? [],
-      repo: fm.repo,
-      assignee: fm.assignee,
-      description: fm.description,
-      started_at: fm.started_at,
-      completed_at: fm.completed_at,
-      depends_on: (fm.depends_on ?? []).map(depId => {
-        const dep = graph.plans.get(depId);
-        return {
-          id: depId,
-          status: dep?.frontmatter.status ?? 'not_found',
-          satisfied: dep ? dep.frontmatter.status === 'done' : false,
-        };
-      }),
-      blocks: [...new Set([...directDeps, ...transitive])],
-      critical_path: criticalPath,
+      id: result.id,
+      filePath: result.filePath,
+      title: result.title,
+      status: result.status,
+      blocked: result.blocked,
+      ready: result.ready,
+      tags: result.tags,
+      repo: result.repo,
+      assignee: result.assignee,
+      description: result.description,
+      started_at: result.startedAt,
+      completed_at: result.completedAt,
+      depends_on: result.dependsOn.map((d) => ({
+        id: d.id,
+        status: d.status,
+        satisfied: d.satisfied,
+      })),
+      blocks: result.blocks,
+      critical_path: result.criticalPath,
     };
     if (options?.contracts) {
-      output.inputs = plan.inputs ? plan.inputs.sections : null;
-      output.outputs = plan.outputs ? plan.outputs.sections : null;
+      output.inputs = result.inputs;
+      output.outputs = result.outputs;
     }
     console.log(JSON.stringify(output, null, 2));
     return;
   }
 
-  let statusDisplay = fm.status;
-  if (isBlocked) statusDisplay += ' (blocked)';
-  else if (isReady) statusDisplay += ' (ready)';
+  let statusDisplay = result.status;
+  if (result.blocked) statusDisplay += ' (blocked)';
+  else if (result.ready) statusDisplay += ' (ready)';
 
   console.log();
-  console.log(`  ${chalk.bold(fm.title)}`);
-  console.log(`  Path:       ${relative(cwd, plan.filePath)}`);
+  console.log(`  ${chalk.bold(result.title)}`);
+  console.log(`  Path:       ${relative(process.cwd(), result.filePath)}`);
   console.log(`  Status:     ${statusDisplay}`);
-  if (fm.tags?.length) console.log(`  Tags:       ${fm.tags.join(', ')}`);
-  if (fm.repo) console.log(`  Repo:       ${fm.repo}`);
-  if (fm.assignee) console.log(`  Assignee:   ${fm.assignee}`);
-  if (fm.description) console.log(`  Desc:       ${fm.description}`);
+  if (result.tags.length) console.log(`  Tags:       ${result.tags.join(', ')}`);
+  if (result.repo) console.log(`  Repo:       ${result.repo}`);
+  if (result.assignee) console.log(`  Assignee:   ${result.assignee}`);
+  if (result.description) console.log(`  Desc:       ${result.description}`);
 
-  const deps = fm.depends_on ?? [];
-  if (deps.length > 0) {
-    const depWidth = computeColumnWidth(deps);
+  if (result.dependsOn.length > 0) {
+    const depWidth = computeColumnWidth(result.dependsOn.map((d) => d.id));
     console.log(`\n  Depends on:`);
-    for (const depId of deps) {
-      const dep = graph.plans.get(depId);
-      if (!dep) {
-        console.log(`    ${chalk.red('✗')} ${depId}  ${chalk.red('(not found)')}`);
+    for (const dep of result.dependsOn) {
+      if (dep.status === 'not_found') {
+        console.log(`    ${chalk.red('✗')} ${dep.id}  ${chalk.red('(not found)')}`);
       } else {
-        const isDone = dep.frontmatter.status === 'done';
+        const isDone = dep.satisfied;
         const icon = isDone ? chalk.green('✓') : chalk.red('✗');
         const blocking = isDone ? '' : chalk.red('    ← blocking');
-        console.log(`    ${icon} ${padRight(depId, depWidth)} ${dep.frontmatter.status}${blocking}`);
+        console.log(`    ${icon} ${padRight(dep.id, depWidth)} ${dep.status}${blocking}`);
       }
     }
   }
 
-  const transitiveOnly = transitive.filter(d => !directDeps.includes(d));
+  const directBlocks = result.blocks.filter((id) => {
+    const show = t.show(id);
+    return show?.dependsOn.some((d) => d.id === planId);
+  });
+  const transitiveOnly = result.blocks.filter((id) => !directBlocks.includes(id));
 
-  if (directDeps.length > 0 || transitiveOnly.length > 0) {
+  if (result.blocks.length > 0) {
     console.log(`\n  Blocks:`);
-    for (const id of directDeps) {
+    for (const id of directBlocks) {
       console.log(`    ${id}`);
     }
     for (const id of transitiveOnly) {
@@ -109,15 +96,15 @@ export function showCommand(planId: string, options?: ShowOptions): void {
     }
   }
 
-  if (criticalPath.length > 1) {
-    console.log(`\n  Critical path (depth ${criticalPath.length}):`);
-    console.log(`    ${criticalPath.join(' → ')}`);
+  if (result.criticalPath.length > 1) {
+    console.log(`\n  Critical path (depth ${result.criticalPath.length}):`);
+    console.log(`    ${result.criticalPath.join(' → ')}`);
   }
 
   if (options?.contracts) {
     console.log(`\n  Inputs:`);
-    if (plan.inputs && plan.inputs.sections.length > 0) {
-      for (const section of plan.inputs.sections) {
+    if (result.inputs && result.inputs.length > 0) {
+      for (const section of result.inputs) {
         console.log(`    ${section.heading}`);
         for (const item of section.items) {
           console.log(`      - ${item}`);
@@ -128,8 +115,8 @@ export function showCommand(planId: string, options?: ShowOptions): void {
     }
 
     console.log(`\n  Outputs:`);
-    if (plan.outputs && plan.outputs.sections.length > 0) {
-      for (const section of plan.outputs.sections) {
+    if (result.outputs && result.outputs.length > 0) {
+      for (const section of result.outputs) {
         console.log(`    ${section.heading}`);
         for (const item of section.items) {
           console.log(`      - ${item}`);

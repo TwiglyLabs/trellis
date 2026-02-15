@@ -1,9 +1,7 @@
 import chalk from 'chalk';
-import { join } from 'path';
-import { loadConfig, scanPlans } from '../scanner.ts';
-import { buildGraph, computeChunks } from '../graph.ts';
-import { padRight, pluralize, computeColumnWidth, filterPlans } from '../utils.ts';
-import type { Plan } from '../types.ts';
+import { Trellis } from '../api.ts';
+import { padRight, pluralize, computeColumnWidth } from '../utils.ts';
+import type { PlanSummary, BlockedPlanSummary } from '../api.ts';
 
 interface StatusOptions {
   tag?: string;
@@ -15,126 +13,134 @@ interface StatusOptions {
 }
 
 export function statusCommand(options: StatusOptions): void {
-  const cwd = process.cwd();
-  const config = loadConfig(cwd);
-  const plansDir = join(cwd, config.plans_dir);
-  const plans = scanPlans(plansDir);
+  const t = new Trellis(process.cwd());
 
-  if (plans.length === 0) {
-    console.log('No plans found.');
-    return;
-  }
-
-  const graph = buildGraph(plans);
-  const chunkResult = computeChunks(plans, graph, { maxLines: config.chunk_max_lines, strategy: config.chunk_strategy });
-  const overBudgetCount = chunkResult.chunks.filter(c => c.totalLines > chunkResult.config.maxLines).length;
-  let filtered = filterPlans(plans, options);
-
-  // Visibility filtering: hide done/archived by default
   const showDone = options.all || options.done;
   const showArchived = options.all || options.archived;
 
-  if (!showDone) {
-    filtered = filtered.filter(p => p.frontmatter.status !== 'done');
-  }
-  if (!showArchived) {
-    filtered = filtered.filter(p => p.frontmatter.status !== 'archived');
-  }
+  const result = t.status({
+    tag: options.tag,
+    repo: options.repo,
+    showDone,
+    showArchived,
+  });
 
   if (options.json) {
+    const allPlans = [
+      ...result.byStatus.ready,
+      ...result.byStatus.blocked,
+      ...result.byStatus.inProgress,
+      ...result.byStatus.draft,
+      ...result.byStatus.done,
+      ...result.byStatus.archived,
+    ];
+
     const output = {
-      project: config.project,
-      total: filtered.length,
-      chunks: { total: chunkResult.chunks.length, over_budget: overBudgetCount },
-      plans: filtered.map(p => ({
-        id: p.id,
-        title: p.frontmatter.title,
-        status: p.frontmatter.status,
-        blocked: graph.blocked.has(p.id),
-        ready: graph.ready.has(p.id),
-        depends_on: p.frontmatter.depends_on ?? [],
-        tags: p.frontmatter.tags ?? [],
-        repo: p.frontmatter.repo,
-        assignee: p.frontmatter.assignee,
-      })),
+      project: result.project,
+      total: allPlans.length,
+      chunks: {
+        total: result.chunks.total,
+        over_budget: result.chunks.overBudget,
+      },
+      plans: allPlans.map((p) => {
+        const base = {
+          id: p.id,
+          title: p.title,
+          status: p.status,
+          blocked: false,
+          ready: false,
+          depends_on: [],
+          tags: p.tags,
+          repo: p.repo,
+          assignee: p.assignee,
+        };
+        if ('waitingOn' in p) {
+          return { ...base, blocked: true, waiting_on: (p as BlockedPlanSummary).waitingOn };
+        }
+        if (result.byStatus.ready.includes(p as PlanSummary)) {
+          return { ...base, ready: true };
+        }
+        return base;
+      }),
     };
     console.log(JSON.stringify(output, null, 2));
     return;
   }
 
-  const readyPlans = filtered.filter(p => graph.ready.has(p.id));
-  const blockedPlans = filtered.filter(p => graph.blocked.has(p.id));
-  const inProgress = filtered.filter(p => p.frontmatter.status === 'in_progress');
-  const drafts = filtered.filter(p => p.frontmatter.status === 'draft');
-  const done = filtered.filter(p => p.frontmatter.status === 'done');
-  const archived = filtered.filter(p => p.frontmatter.status === 'archived');
+  const allPlans = [
+    ...result.byStatus.ready,
+    ...result.byStatus.blocked,
+    ...result.byStatus.inProgress,
+    ...result.byStatus.draft,
+    ...result.byStatus.done,
+    ...result.byStatus.archived,
+  ];
 
-  const idWidth = computeColumnWidth(filtered.map(p => p.id));
+  if (allPlans.length === 0) {
+    console.log('No plans found.');
+    return;
+  }
 
-  console.log(`\n${chalk.bold(config.project)} — ${pluralize(filtered.length, 'plan')}\n`);
+  const idWidth = computeColumnWidth(allPlans.map((p) => p.id));
 
-  if (readyPlans.length > 0) {
-    console.log(chalk.green.bold(`  READY (${readyPlans.length})`));
-    for (const p of readyPlans) {
+  console.log(`\n${chalk.bold(result.project)} — ${pluralize(allPlans.length, 'plan')}\n`);
+
+  if (result.byStatus.ready.length > 0) {
+    console.log(chalk.green.bold(`  READY (${result.byStatus.ready.length})`));
+    for (const p of result.byStatus.ready) {
       printPlanLine(p, idWidth);
     }
     console.log();
   }
 
-  if (blockedPlans.length > 0) {
-    console.log(chalk.red.bold(`  BLOCKED (${blockedPlans.length})`));
-    for (const p of blockedPlans) {
-      const waitingOn = (p.frontmatter.depends_on ?? [])
-        .filter(d => {
-          const dep = graph.plans.get(d);
-          return !dep || dep.frontmatter.status !== 'done';
-        });
-      console.log(`    ${chalk.white(padRight(p.id, idWidth))} ← waiting on: ${waitingOn.join(', ')}`);
+  if (result.byStatus.blocked.length > 0) {
+    console.log(chalk.red.bold(`  BLOCKED (${result.byStatus.blocked.length})`));
+    for (const p of result.byStatus.blocked) {
+      console.log(`    ${chalk.white(padRight(p.id, idWidth))} ← waiting on: ${p.waitingOn.join(', ')}`);
     }
     console.log();
   }
 
-  if (inProgress.length > 0) {
-    console.log(chalk.blue.bold(`  IN PROGRESS (${inProgress.length})`));
-    for (const p of inProgress) {
+  if (result.byStatus.inProgress.length > 0) {
+    console.log(chalk.blue.bold(`  IN PROGRESS (${result.byStatus.inProgress.length})`));
+    for (const p of result.byStatus.inProgress) {
       printPlanLine(p, idWidth);
     }
     console.log();
   }
 
-  if (drafts.length > 0) {
-    console.log(chalk.yellow.bold(`  DRAFT (${drafts.length})`));
-    for (const p of drafts) {
+  if (result.byStatus.draft.length > 0) {
+    console.log(chalk.yellow.bold(`  DRAFT (${result.byStatus.draft.length})`));
+    for (const p of result.byStatus.draft) {
       printPlanLine(p, idWidth);
     }
     console.log();
   }
 
-  if (done.length > 0) {
-    console.log(chalk.gray.bold(`  DONE (${done.length})`));
-    for (const p of done) {
+  if (result.byStatus.done.length > 0) {
+    console.log(chalk.gray.bold(`  DONE (${result.byStatus.done.length})`));
+    for (const p of result.byStatus.done) {
       printPlanLine(p, idWidth);
     }
     console.log();
   }
 
-  if (archived.length > 0) {
-    console.log(chalk.gray.bold(`  ARCHIVED (${archived.length})`));
-    for (const p of archived) {
+  if (result.byStatus.archived.length > 0) {
+    console.log(chalk.gray.bold(`  ARCHIVED (${result.byStatus.archived.length})`));
+    for (const p of result.byStatus.archived) {
       printPlanLine(p, idWidth);
     }
     console.log();
   }
 
-  // Chunk summary
-  const chunkSummary = overBudgetCount > 0
-    ? `Chunks: ${chunkResult.chunks.length} discovered (${overBudgetCount} over budget)`
-    : `Chunks: ${chunkResult.chunks.length} discovered`;
+  const chunkSummary = result.chunks.overBudget > 0
+    ? `Chunks: ${result.chunks.total} discovered (${result.chunks.overBudget} over budget)`
+    : `Chunks: ${result.chunks.total} discovered`;
   console.log(chalk.dim('  ' + chunkSummary));
 }
 
-function printPlanLine(p: Plan, idWidth: number): void {
-  const desc = p.frontmatter.description || p.frontmatter.title;
-  const tags = p.frontmatter.repo ? `[${p.frontmatter.repo}]` : '';
+function printPlanLine(p: PlanSummary, idWidth: number): void {
+  const desc = p.description || p.title;
+  const tags = p.repo ? `[${p.repo}]` : '';
   console.log(`    ${chalk.white(padRight(p.id, idWidth))} ${padRight(desc, 40)} ${chalk.dim(tags)}`);
 }
