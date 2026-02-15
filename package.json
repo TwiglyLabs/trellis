@@ -26,7 +26,8 @@
     "build": "node build.mjs && tsc -p tsconfig.lib.json",
     "build:prod": "node build.mjs --minify && tsc -p tsconfig.lib.json",
     "test": "vitest run",
-    "dev": "vitest"
+    "dev": "vitest",
+    "test:dist": "npm run build && vitest run tests/dist-integration.test.ts"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",
