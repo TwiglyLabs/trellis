@@ -1,0 +1,88 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { Trellis } from '../src/api.ts';
+
+function createTestProject() {
+  const tmpDir = join(tmpdir(), `trellis-watch-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const plansDir = join(tmpDir, 'plans');
+  mkdirSync(plansDir, { recursive: true });
+  writeFileSync(join(tmpDir, '.trellis'), 'project: test-project\nplans_dir: plans\n');
+  return { tmpDir, plansDir };
+}
+
+function writePlan(plansDir: string, id: string, frontmatter: Record<string, unknown>) {
+  const fm = Object.entries(frontmatter)
+    .map(([k, v]) => {
+      if (Array.isArray(v)) return `${k}:\n${v.map(i => `  - ${i}`).join('\n')}`;
+      return `${k}: ${v}`;
+    })
+    .join('\n');
+  const parts = id.split('/');
+  if (parts.length > 1) {
+    mkdirSync(join(plansDir, ...parts.slice(0, -1)), { recursive: true });
+  }
+  writeFileSync(join(plansDir, `${id}.md`), `---\n${fm}\n---\n\nBody for ${id}\n`);
+}
+
+describe('Trellis.watch()', () => {
+  let tmpDir: string;
+  let plansDir: string;
+  let trellis: Trellis;
+
+  beforeEach(() => {
+    const project = createTestProject();
+    tmpDir = project.tmpDir;
+    plansDir = project.plansDir;
+    writePlan(plansDir, 'initial', { title: 'Initial', status: 'not_started' });
+    trellis = new Trellis(tmpDir);
+  });
+
+  afterEach(() => {
+    trellis.unwatch();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('emits change event when a plan file is modified', async () => {
+    const changePromise = new Promise<any>((resolve) => {
+      trellis.on('change', resolve);
+    });
+
+    trellis.watch();
+
+    // Let watcher initialize
+    await new Promise(r => setTimeout(r, 50));
+    writePlan(plansDir, 'new-plan', { title: 'New Plan', status: 'not_started' });
+
+    const result = await Promise.race([
+      changePromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+    ]);
+
+    expect(result.nodes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('unwatch stops watching', async () => {
+    let changeCount = 0;
+    trellis.on('change', () => changeCount++);
+
+    trellis.watch();
+    await new Promise(r => setTimeout(r, 50));
+
+    trellis.unwatch();
+
+    writePlan(plansDir, 'after-unwatch', { title: 'After', status: 'not_started' });
+    await new Promise(r => setTimeout(r, 300));
+
+    expect(changeCount).toBe(0);
+  });
+
+  it('isWatching reflects state', () => {
+    expect(trellis.isWatching).toBe(false);
+    trellis.watch();
+    expect(trellis.isWatching).toBe(true);
+    trellis.unwatch();
+    expect(trellis.isWatching).toBe(false);
+  });
+});

@@ -1,4 +1,6 @@
 import { join } from 'path';
+import { EventEmitter } from 'events';
+import { watch as fsWatch, type FSWatcher } from 'fs';
 import { loadConfig, scanPlans } from './scanner.ts';
 import { buildGraph, detectCycles, transitiveDependents, computeCriticalPath, pickNext, computeChunks, newlyReady } from './graph.ts';
 import { validateFrontmatter, updatePlanFile } from './frontmatter.ts';
@@ -142,16 +144,51 @@ const STATUS_ORDER: Record<string, number> = {
   archived: 4,
 };
 
-export class Trellis {
+export class Trellis extends EventEmitter {
   readonly projectDir: string;
   readonly config: TrellisConfig;
 
   private _plans: Plan[] | null = null;
   private _graph: GraphData | null = null;
+  private _watcher: FSWatcher | null = null;
+  private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(projectDir: string) {
+    super();
     this.projectDir = projectDir;
     this.config = loadConfig(projectDir);
+  }
+
+  get isWatching(): boolean {
+    return this._watcher !== null;
+  }
+
+  watch(debounceMs = 100): void {
+    if (this._watcher) return;
+
+    const plansDir = join(this.projectDir, this.config.plans_dir);
+    this._watcher = fsWatch(plansDir, { recursive: true }, () => {
+      if (this._debounceTimer) clearTimeout(this._debounceTimer);
+      this._debounceTimer = setTimeout(() => {
+        this.refresh();
+        this.emit('change', this.graph());
+      }, debounceMs);
+    });
+
+    this._watcher.on('error', (err) => {
+      this.emit('error', err);
+    });
+  }
+
+  unwatch(): void {
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+    }
+    if (this._watcher) {
+      this._watcher.close();
+      this._watcher = null;
+    }
   }
 
   /** Force rescan from disk. Clears cached plans and graph. */
