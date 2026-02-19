@@ -19,11 +19,9 @@ function writePlan(plansDir: string, id: string, frontmatter: Record<string, unk
       return `${k}: ${v}`;
     })
     .join('\n');
-  const parts = id.split('/');
-  if (parts.length > 1) {
-    mkdirSync(join(plansDir, ...parts.slice(0, -1)), { recursive: true });
-  }
-  writeFileSync(join(plansDir, `${id}.md`), `---\n${fm}\n---\n\nBody for ${id}\n`);
+  const planDir = join(plansDir, id);
+  mkdirSync(planDir, { recursive: true });
+  writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n\nBody for ${id}\n`);
 }
 
 describe('Trellis.watch()', () => {

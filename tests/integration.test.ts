@@ -104,14 +104,14 @@ describe('integration: full workflow', () => {
 
     // Update extraction to done
     logs = [];
-    updateCommand('impl/extraction', 'done');
+    updateCommand('impl/extraction', 'done', { force: true });
     output = logs.join('\n');
     expect(output).toContain('impl/extraction → done');
     expect(output).toContain('Now ready');
     expect(output).toContain('impl/schema-v6');
 
     // Verify file was updated
-    const extractionContent = readFileSync(join(plansDir, 'impl', 'extraction.md'), 'utf8');
+    const extractionContent = readFileSync(join(plansDir, 'impl/extraction', 'README.md'), 'utf8');
     expect(extractionContent).toContain('status: done');
     expect(extractionContent).toContain('completed_at');
 
@@ -129,7 +129,7 @@ describe('integration: full workflow', () => {
 
     // Complete auth-service
     logs = [];
-    updateCommand('impl/auth-service', 'done');
+    updateCommand('impl/auth-service', 'done', { force: true });
     output = logs.join('\n');
     expect(output).toContain('Now ready');
     expect(output).toContain('impl/cloud-api');

@@ -1,9 +1,14 @@
 ---
 title: Plan Schema Definition
-status: not_started
+status: in_progress
 depends_on: []
-tags: [foundation, plan-management]
-description: Define canonical plan structure, required sections per file, and status lifecycle gates
+tags:
+  - foundation
+  - plan-management
+description: >-
+  Define canonical plan structure, required sections per file, and status
+  lifecycle gates
+started_at: '2026-02-19T02:32:46.896Z'
 ---
 
 # Plan Schema Definition

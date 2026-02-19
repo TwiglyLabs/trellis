@@ -47,3 +47,69 @@ export interface ValidationError {
   field: string;
   message: string;
 }
+
+// --- Plan Schema ---
+
+/** Well-known files in a plan directory */
+export enum PlanFile {
+  README = 'README.md',
+  IMPLEMENTATION = 'implementation.md',
+  INPUTS = 'inputs.md',
+  OUTPUTS = 'outputs.md',
+}
+
+/** Required ## headings per plan file */
+export const SECTION_REQUIREMENTS: Record<PlanFile, string[]> = {
+  [PlanFile.README]: ['Problem', 'Approach'],
+  [PlanFile.IMPLEMENTATION]: ['Steps', 'Testing', 'Done-when'],
+  [PlanFile.INPUTS]: ['From plans', 'From existing code'],  // at least one required
+  [PlanFile.OUTPUTS]: [],  // at least one ## heading required, but no specific names
+};
+
+/** What's required for each status transition */
+export interface StatusGate {
+  requiredFiles: PlanFile[];
+  requiredSections: Partial<Record<PlanFile, string[]>>;
+  /** Custom check name → description (e.g., outputs.md required if has dependents) */
+  conditionalChecks?: string[];
+}
+
+export const STATUS_GATES: Record<PlanStatus, StatusGate> = {
+  draft: {
+    requiredFiles: [PlanFile.README],
+    requiredSections: {
+      [PlanFile.README]: ['Problem'],
+    },
+  },
+  not_started: {
+    requiredFiles: [PlanFile.README, PlanFile.IMPLEMENTATION],
+    requiredSections: {
+      [PlanFile.README]: ['Problem', 'Approach'],
+      [PlanFile.IMPLEMENTATION]: ['Steps', 'Testing', 'Done-when'],
+    },
+  },
+  in_progress: {
+    requiredFiles: [PlanFile.README, PlanFile.IMPLEMENTATION],
+    requiredSections: {
+      [PlanFile.README]: ['Problem', 'Approach'],
+      [PlanFile.IMPLEMENTATION]: ['Steps', 'Testing', 'Done-when'],
+    },
+  },
+  done: {
+    requiredFiles: [PlanFile.README, PlanFile.IMPLEMENTATION],
+    requiredSections: {
+      [PlanFile.README]: ['Problem', 'Approach'],
+      [PlanFile.IMPLEMENTATION]: ['Steps', 'Testing', 'Done-when'],
+    },
+    conditionalChecks: ['outputs.md required if plan has dependents'],
+  },
+  archived: {
+    requiredFiles: [],
+    requiredSections: {},
+  },
+};
+
+export interface GateResult {
+  pass: boolean;
+  missing: string[];
+}

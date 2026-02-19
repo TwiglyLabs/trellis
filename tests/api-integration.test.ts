@@ -28,11 +28,9 @@ function createTestProject(plans: Record<string, Record<string, unknown>> = {}) 
         return `${k}: ${v}`;
       })
       .join('\n');
-    const parts = id.split('/');
-    if (parts.length > 1) {
-      mkdirSync(join(plansDir, ...parts.slice(0, -1)), { recursive: true });
-    }
-    writeFileSync(join(plansDir, `${id}.md`), `---\n${fm}\n---\n\nBody for ${id}\n`);
+    const planDir = join(plansDir, id);
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n\nBody for ${id}\n`);
   }
 
   return { tmpDir, plansDir };
@@ -116,7 +114,7 @@ describe('Consumer workflow: work on a plan', () => {
     expect(t.ready().plans.map(p => p.id)).toContain('feature-a');
     expect(t.show('feature-b')!.blocked).toBe(true);
 
-    const startResult: UpdateResult = t.update('feature-a', 'in_progress');
+    const startResult: UpdateResult = t.update('feature-a', 'in_progress', { force: true });
     expect(startResult.previousStatus).toBe('not_started');
     expect(startResult.newStatus).toBe('in_progress');
     expect(startResult.backward).toBe(false);
@@ -124,7 +122,7 @@ describe('Consumer workflow: work on a plan', () => {
     const afterStart = t.status({ showDone: true });
     expect(afterStart.byStatus.inProgress.map(p => p.id)).toContain('feature-a');
 
-    const doneResult: UpdateResult = t.update('feature-a', 'done');
+    const doneResult: UpdateResult = t.update('feature-a', 'done', { force: true });
     expect(doneResult.newlyReady).toContain('feature-b');
 
     expect(t.show('feature-b')!.blocked).toBe(false);
@@ -135,15 +133,15 @@ describe('Consumer workflow: work on a plan', () => {
   it('backward status transition clears timestamps', () => {
     const t = new Trellis(tmpDir);
 
-    t.update('feature-a', 'in_progress');
+    t.update('feature-a', 'in_progress', { force: true });
     const afterStart = t.show('feature-a')!;
     expect(afterStart.startedAt).toBeTruthy();
 
-    t.update('feature-a', 'done');
+    t.update('feature-a', 'done', { force: true });
     const afterDone = t.show('feature-a')!;
     expect(afterDone.completedAt).toBeTruthy();
 
-    const revertResult = t.update('feature-a', 'not_started');
+    const revertResult = t.update('feature-a', 'not_started', { force: true });
     expect(revertResult.backward).toBe(true);
 
     const afterRevert = t.show('feature-a')!;
@@ -290,8 +288,10 @@ describe('Consumer workflow: error paths', () => {
     mkdirSync(plansDir, { recursive: true });
     writeFileSync(join(tmpDir, '.trellis'), 'project: test-project\nplans_dir: plans\n');
 
-    writeFileSync(join(plansDir, 'good.md'), '---\ntitle: Good Plan\nstatus: not_started\n---\n\nBody\n');
-    writeFileSync(join(plansDir, 'corrupt.md'), '---\n: invalid yaml {{{\nstatus: [broken\n---\n\nBody\n');
+    mkdirSync(join(plansDir, 'good'), { recursive: true });
+    writeFileSync(join(plansDir, 'good', 'README.md'), '---\ntitle: Good Plan\nstatus: not_started\n---\n\nBody\n');
+    mkdirSync(join(plansDir, 'corrupt'), { recursive: true });
+    writeFileSync(join(plansDir, 'corrupt', 'README.md'), '---\n: invalid yaml {{{\nstatus: [broken\n---\n\nBody\n');
 
     try {
       const t = new Trellis(tmpDir);
@@ -452,7 +452,7 @@ describe('Consumer workflow: concurrent Trellis instances', () => {
       expect(t1.status().total).toBe(2);
       expect(t2.status().total).toBe(2);
 
-      t1.update('a', 'done');
+      t1.update('a', 'done', { force: true });
 
       // t2 still sees stale state until refresh
       const stale = t2.show('a')!;

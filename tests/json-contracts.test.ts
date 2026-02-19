@@ -300,7 +300,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      updateCommand('plan-c', 'done', { json: true });
+      updateCommand('plan-c', 'done', { json: true, force: true });
 
       const output = JSON.parse(logs[0]);
 
@@ -325,7 +325,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      updateCommand('plan-a', 'done', { json: true });
+      updateCommand('plan-a', 'done', { json: true, force: true });
 
       const output = JSON.parse(logs[0]);
       expect(output.newly_ready).toContain('plan-b');
@@ -338,7 +338,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      updateCommand('plan-a', 'in_progress', { json: true });
+      updateCommand('plan-a', 'in_progress', { json: true, force: true });
 
       const output = JSON.parse(logs[0]);
       expect(output.backward).toBe(true);

@@ -7,7 +7,10 @@ export type {
   Plan,
   TrellisConfig,
   ValidationError,
+  GateResult,
 } from './types.ts';
+
+export { PlanFile, SECTION_REQUIREMENTS, STATUS_GATES } from './types.ts';
 
 // --- Scanner ---
 export { scanPlans, loadConfig, derivePlanId } from './scanner.ts';
@@ -45,6 +48,9 @@ export {
   readPlanFile,
   updatePlanFile,
 } from './frontmatter.ts';
+
+// --- Schema ---
+export { detectSections, validateStatusGate } from './schema.ts';
 
 // --- Contracts ---
 export { parseInputs, parseOutputs } from './contracts.ts';

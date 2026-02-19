@@ -33,9 +33,9 @@ describe('update command', () => {
     ]);
     process.cwd = () => root;
 
-    updateCommand('a', 'in_progress');
+    updateCommand('a', 'in_progress', { force: true });
 
-    const content = readFileSync(join(plansDir, 'a.md'), 'utf8');
+    const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
     expect(content).toContain('status: in_progress');
     expect(content).toContain('started_at');
   });
@@ -46,9 +46,9 @@ describe('update command', () => {
     ]);
     process.cwd = () => root;
 
-    updateCommand('a', 'done');
+    updateCommand('a', 'done', { force: true });
 
-    const content = readFileSync(join(plansDir, 'a.md'), 'utf8');
+    const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
     expect(content).toContain('status: done');
     expect(content).toContain('completed_at');
   });
@@ -60,7 +60,7 @@ describe('update command', () => {
     ]);
     process.cwd = () => root;
 
-    updateCommand('a', 'done');
+    updateCommand('a', 'done', { force: true });
 
     const output = logs.join('\n');
     expect(output).toContain('Now ready');
@@ -93,7 +93,7 @@ describe('update command', () => {
     ]);
     process.cwd = () => root;
 
-    updateCommand('a', 'not_started');
+    updateCommand('a', 'not_started', { force: true });
 
     const output = logs.join('\n');
     expect(output).toContain('backward');
@@ -105,9 +105,9 @@ describe('update command', () => {
     ]);
     process.cwd = () => root;
 
-    updateCommand('a', 'not_started');
+    updateCommand('a', 'not_started', { force: true });
 
-    const content = readFileSync(join(plansDir, 'a.md'), 'utf8');
+    const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
     expect(content).toContain('status: not_started');
     expect(content).not.toContain('started_at');
   });
@@ -119,7 +119,7 @@ describe('update command', () => {
     ]);
     process.cwd = () => root;
 
-    updateCommand('a', 'done', { json: true });
+    updateCommand('a', 'done', { json: true, force: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.id).toBe('a');
@@ -156,9 +156,9 @@ describe('update command', () => {
     ]);
     process.cwd = () => root;
 
-    updateCommand('a', 'in_progress');
+    updateCommand('a', 'in_progress', { force: true });
 
-    const content = readFileSync(join(plansDir, 'a.md'), 'utf8');
+    const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
     expect(content).toContain('status: in_progress');
     expect(content).not.toContain('completed_at');
     // started_at should be preserved since we're still at/past in_progress

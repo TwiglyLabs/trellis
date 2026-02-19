@@ -49,7 +49,8 @@ program
   .command('update <plan-id> <status>')
   .description('Edit frontmatter in-place, show what unblocks')
   .option('--json', 'Output as JSON')
-  .addHelpText('after', '\nExamples:\n  $ trellis update core-types in_progress\n  $ trellis update impl/parser done\n  $ trellis update core-types done --json')
+  .option('--force', 'Bypass status gate validation')
+  .addHelpText('after', '\nExamples:\n  $ trellis update core-types in_progress\n  $ trellis update impl/parser done\n  $ trellis update core-types done --json\n  $ trellis update core-types in_progress --force')
   .action((planId, status, options) => updateCommand(planId, status, options));
 
 program

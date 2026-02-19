@@ -8,10 +8,9 @@ function createFixtureDir(): string {
   return mkdtempSync(join(tmpdir(), 'trellis-test-'));
 }
 
-function writePlan(dir: string, path: string, frontmatter: Record<string, any>, body = '') {
-  const fullPath = join(dir, path);
-  const parentDir = fullPath.substring(0, fullPath.lastIndexOf('/'));
-  mkdirSync(parentDir, { recursive: true });
+function writePlan(dir: string, planPath: string, frontmatter: Record<string, any>, body = '') {
+  const planDir = join(dir, planPath);
+  mkdirSync(planDir, { recursive: true });
 
   const fm = Object.entries(frontmatter)
     .map(([k, v]) => {
@@ -22,29 +21,25 @@ function writePlan(dir: string, path: string, frontmatter: Record<string, any>, 
     })
     .join('\n');
 
-  writeFileSync(fullPath, `---\n${fm}\n---\n${body}`);
+  writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n${body}`);
 }
 
 describe('derivePlanId', () => {
-  it('derives ID from single-file plan', () => {
-    expect(derivePlanId('/plans/contracts/core-types.md', '/plans')).toBe('contracts/core-types');
-  });
-
   it('derives ID from directory plan README', () => {
     expect(derivePlanId('/plans/impl/core-extraction/README.md', '/plans')).toBe('impl/core-extraction');
   });
 
-  it('handles top-level plans', () => {
-    expect(derivePlanId('/plans/quick-fix.md', '/plans')).toBe('quick-fix');
+  it('derives ID from top-level directory plan', () => {
+    expect(derivePlanId('/plans/quick-fix/README.md', '/plans')).toBe('quick-fix');
   });
 });
 
 describe('scanPlans', () => {
-  it('discovers single-file plans', () => {
+  it('discovers directory plans', () => {
     const dir = createFixtureDir();
     const plansDir = join(dir, 'plans');
-    writePlan(dir, 'plans/a.md', { title: 'Plan A', status: 'draft' });
-    writePlan(dir, 'plans/b.md', { title: 'Plan B', status: 'not_started' });
+    writePlan(dir, 'plans/a', { title: 'Plan A', status: 'draft' });
+    writePlan(dir, 'plans/b', { title: 'Plan B', status: 'not_started' });
 
     const plans = scanPlans(plansDir);
     expect(plans).toHaveLength(2);
@@ -54,8 +49,8 @@ describe('scanPlans', () => {
   it('discovers nested plans', () => {
     const dir = createFixtureDir();
     const plansDir = join(dir, 'plans');
-    writePlan(dir, 'plans/contracts/core.md', { title: 'Core', status: 'draft' });
-    writePlan(dir, 'plans/contracts/auth.md', { title: 'Auth', status: 'draft' });
+    writePlan(dir, 'plans/contracts/core', { title: 'Core', status: 'draft' });
+    writePlan(dir, 'plans/contracts/auth', { title: 'Auth', status: 'draft' });
 
     const plans = scanPlans(plansDir);
     expect(plans).toHaveLength(2);
@@ -65,8 +60,9 @@ describe('scanPlans', () => {
   it('discovers directory plans via README.md', () => {
     const dir = createFixtureDir();
     const plansDir = join(dir, 'plans');
-    writePlan(dir, 'plans/impl/extraction/README.md', { title: 'Extraction', status: 'in_progress' });
-    writePlan(dir, 'plans/impl/extraction/sub-file.md', { title: 'Sub File', status: 'draft' });
+    writePlan(dir, 'plans/impl/extraction', { title: 'Extraction', status: 'in_progress' });
+    // sub-file.md should NOT be picked up as a separate plan
+    writeFileSync(join(dir, 'plans/impl/extraction/sub-file.md'), '# Notes\nJust a sub-file.');
 
     const plans = scanPlans(plansDir);
     expect(plans).toHaveLength(1);
@@ -77,8 +73,9 @@ describe('scanPlans', () => {
     const dir = createFixtureDir();
     const plansDir = join(dir, 'plans');
     mkdirSync(plansDir, { recursive: true });
+    // stray notes.md with no parent directory README.md — not a plan
     writeFileSync(join(plansDir, 'notes.md'), '# Just notes\nNo frontmatter here.');
-    writePlan(dir, 'plans/real.md', { title: 'Real Plan', status: 'draft' });
+    writePlan(dir, 'plans/real', { title: 'Real Plan', status: 'draft' });
 
     const plans = scanPlans(plansDir);
     expect(plans).toHaveLength(1);
@@ -97,7 +94,7 @@ describe('scanPlans', () => {
   it('computes lineCount from file content', () => {
     const dir = createFixtureDir();
     const plansDir = join(dir, 'plans');
-    writePlan(dir, 'plans/test.md', { title: 'Test', status: 'draft' }, 'line1\nline2\nline3');
+    writePlan(dir, 'plans/test', { title: 'Test', status: 'draft' }, 'line1\nline2\nline3');
 
     const plans = scanPlans(plansDir);
     // frontmatter: ---\ntitle: Test\nstatus: draft\n---\nline1\nline2\nline3
@@ -107,7 +104,7 @@ describe('scanPlans', () => {
   it('preserves frontmatter data', () => {
     const dir = createFixtureDir();
     const plansDir = join(dir, 'plans');
-    writePlan(dir, 'plans/test.md', {
+    writePlan(dir, 'plans/test', {
       title: 'Test Plan',
       status: 'not_started',
       depends_on: ['a', 'b'],

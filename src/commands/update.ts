@@ -5,13 +5,14 @@ import type { PlanStatus } from '../types.ts';
 
 interface UpdateOptions {
   json?: boolean;
+  force?: boolean;
 }
 
 export function updateCommand(planId: string, status: string, options?: UpdateOptions): void {
   const t = new Trellis(process.cwd());
 
   try {
-    const result = t.update(planId, status as PlanStatus);
+    const result = t.update(planId, status as PlanStatus, { force: options?.force });
 
     if (options?.json) {
       const output = {

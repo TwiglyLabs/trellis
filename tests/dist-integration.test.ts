@@ -31,11 +31,9 @@ describe('built artifact integration', () => {
           return `${k}: ${v}`;
         })
         .join('\n');
-      const parts = id.split('/');
-      if (parts.length > 1) {
-        mkdirSync(join(plansDir, ...parts.slice(0, -1)), { recursive: true });
-      }
-      writeFileSync(join(plansDir, `${id}.md`), `---\n${fm}\n---\n\nBody for ${id}\n`);
+      const planDir = join(plansDir, id);
+      mkdirSync(planDir, { recursive: true });
+      writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n\nBody for ${id}\n`);
     }
     return { tmpDir, plansDir };
   }
@@ -105,7 +103,7 @@ describe('built artifact integration', () => {
     const showB = t.show('feature-b');
     expect(showB.blocked).toBe(true);
 
-    const updateResult = t.update('feature-a', 'done');
+    const updateResult = t.update('feature-a', 'done', { force: true });
     expect(updateResult.previousStatus).toBe('not_started');
     expect(updateResult.newlyReady).toContain('feature-b');
 

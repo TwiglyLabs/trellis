@@ -14,9 +14,10 @@ export interface FixturePlan {
   started_at?: string;
   completed_at?: string;
   body?: string;
-  directory?: boolean;
+  directory?: boolean; // ignored — all plans are directory-based now
   outputsMd?: string;
   inputsMd?: string;
+  implementationMd?: string;
 }
 
 export function createFixture(plans: FixturePlan[]): { root: string; plansDir: string } {
@@ -27,10 +28,9 @@ export function createFixture(plans: FixturePlan[]): { root: string; plansDir: s
   writeFileSync(join(root, '.trellis'), `project: test-project\nplans_dir: plans\n`);
 
   for (const plan of plans) {
-    const parts = plan.id.split('/');
-    const fileName = parts.pop()!;
-    const dir = join(plansDir, ...parts);
-    mkdirSync(dir, { recursive: true });
+    // All plans are directory-based: plans/<id>/README.md
+    const planDir = join(plansDir, plan.id);
+    mkdirSync(planDir, { recursive: true });
 
     const fmLines = [`title: ${plan.title}`, `status: ${plan.status}`];
 
@@ -66,25 +66,18 @@ export function createFixture(plans: FixturePlan[]): { root: string; plansDir: s
     }
 
     const content = `---\n${fmLines.join('\n')}\n---\n${plan.body || ''}\n`;
+    writeFileSync(join(planDir, 'README.md'), content);
 
-    if (plan.directory) {
-      // Create directory-based plan with README.md
-      const planDir = join(dir, fileName);
-      mkdirSync(planDir, { recursive: true });
-      writeFileSync(join(planDir, 'README.md'), content);
+    if (plan.inputsMd) {
+      writeFileSync(join(planDir, 'inputs.md'), plan.inputsMd);
+    }
 
-      // Create inputs.md if provided
-      if (plan.inputsMd) {
-        writeFileSync(join(planDir, 'inputs.md'), plan.inputsMd);
-      }
+    if (plan.outputsMd) {
+      writeFileSync(join(planDir, 'outputs.md'), plan.outputsMd);
+    }
 
-      // Create outputs.md if provided
-      if (plan.outputsMd) {
-        writeFileSync(join(planDir, 'outputs.md'), plan.outputsMd);
-      }
-    } else {
-      // Create single-file plan
-      writeFileSync(join(dir, `${fileName}.md`), content);
+    if (plan.implementationMd) {
+      writeFileSync(join(planDir, 'implementation.md'), plan.implementationMd);
     }
   }
 

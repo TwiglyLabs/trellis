@@ -294,7 +294,7 @@ describe('API-CLI consistency', () => {
       process.cwd = () => root;
 
       const api = new Trellis(root);
-      const apiResult = api.update('plan-c', 'done');
+      const apiResult = api.update('plan-c', 'done', { force: true });
 
       // Create new instance for CLI call (fresh state)
       process.cwd = () => root;
@@ -305,7 +305,7 @@ describe('API-CLI consistency', () => {
       ]);
       process.cwd = () => root2;
 
-      updateCommand('plan-c', 'done', { json: true });
+      updateCommand('plan-c', 'done', { json: true, force: true });
       const cliOutput = JSON.parse(logs[0]);
 
       expect(cliOutput.id).toBe(apiResult.id);
@@ -330,7 +330,7 @@ describe('API-CLI consistency', () => {
       process.cwd = () => root;
 
       const api = new Trellis(root);
-      const apiResult = api.update('plan-a', 'in_progress');
+      const apiResult = api.update('plan-a', 'in_progress', { force: true });
 
       // Create fresh fixture for CLI
       const { root: root2 } = createFixture([
@@ -338,7 +338,7 @@ describe('API-CLI consistency', () => {
       ]);
       process.cwd = () => root2;
 
-      updateCommand('plan-a', 'in_progress', { json: true });
+      updateCommand('plan-a', 'in_progress', { json: true, force: true });
       const cliOutput = JSON.parse(logs[0]);
 
       expect(cliOutput.backward).toBe(apiResult.backward);

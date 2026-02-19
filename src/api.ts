@@ -4,9 +4,10 @@ import { watch as fsWatch, type FSWatcher } from 'fs';
 import { loadConfig, scanPlans } from './scanner.ts';
 import { buildGraph, detectCycles, transitiveDependents, computeCriticalPath, pickNext, computeChunks, newlyReady } from './graph.ts';
 import { validateFrontmatter, updatePlanFile } from './frontmatter.ts';
+import { validateStatusGate } from './schema.ts';
 import { filterPlans, VALID_STATUSES } from './utils.ts';
 import type { GraphData, Chunk, CrossChunkEdge, ChunkResult } from './graph.ts';
-import type { Plan, PlanStatus, TrellisConfig, ContractSection, PlanFrontmatter } from './types.ts';
+import type { Plan, PlanStatus, TrellisConfig, ContractSection, PlanFrontmatter, GateResult } from './types.ts';
 
 // --- Return types ---
 
@@ -317,7 +318,7 @@ export class Trellis extends EventEmitter {
     };
   }
 
-  update(planId: string, status: PlanStatus): UpdateResult {
+  update(planId: string, status: PlanStatus, options?: { force?: boolean }): UpdateResult {
     if (!VALID_STATUSES.includes(status)) {
       throw new Error(`Invalid status "${status}". Must be one of: ${VALID_STATUSES.join(', ')}`);
     }
@@ -325,6 +326,16 @@ export class Trellis extends EventEmitter {
     const plan = this.graphData.plans.get(planId);
     if (!plan) {
       throw new Error(`Plan "${planId}" not found.`);
+    }
+
+    // Gate validation (skip with --force)
+    if (!options?.force) {
+      const hasDependents = (this.graphData.dependents.get(planId) ?? []).length > 0;
+      const gate = validateStatusGate(plan, status, hasDependents);
+      if (!gate.pass) {
+        const details = gate.missing.map(m => `  - ${m}`).join('\n');
+        throw new Error(`Cannot transition "${planId}" to ${status}:\n${details}\n\nUse --force to bypass.`);
+      }
     }
 
     const previousStatus = plan.frontmatter.status;

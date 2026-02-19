@@ -19,11 +19,9 @@ function writePlan(plansDir: string, id: string, frontmatter: Record<string, unk
       return `${k}: ${v}`;
     })
     .join('\n');
-  const parts = id.split('/');
-  if (parts.length > 1) {
-    mkdirSync(join(plansDir, ...parts.slice(0, -1)), { recursive: true });
-  }
-  writeFileSync(join(plansDir, `${id}.md`), `---\n${fm}\n---\n\nBody for ${id}\n`);
+  const planDir = join(plansDir, id);
+  mkdirSync(planDir, { recursive: true });
+  writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n\nBody for ${id}\n`);
 }
 
 describe('Trellis class', () => {
@@ -251,7 +249,7 @@ describe('Trellis.update()', () => {
     writePlan(plansDir, 'b', { title: 'B', status: 'not_started', depends_on: ['a'] });
 
     const t = new Trellis(tmpDir);
-    const result = t.update('a', 'done');
+    const result = t.update('a', 'done', { force: true });
 
     expect(result.id).toBe('a');
     expect(result.previousStatus).toBe('not_started');
@@ -273,7 +271,7 @@ describe('Trellis.update()', () => {
   it('handles same-status update', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'in_progress' });
     const t = new Trellis(tmpDir);
-    const result = t.update('a', 'in_progress');
+    const result = t.update('a', 'in_progress', { force: true });
 
     expect(result.previousStatus).toBe('in_progress');
     expect(result.newStatus).toBe('in_progress');
@@ -284,7 +282,7 @@ describe('Trellis.update()', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'not_started' });
     const t = new Trellis(tmpDir);
 
-    t.update('a', 'in_progress');
+    t.update('a', 'in_progress', { force: true });
     const result = t.status({ showDone: true, showArchived: true });
     expect(result.byStatus.inProgress).toHaveLength(1);
   });

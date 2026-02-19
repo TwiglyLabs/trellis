@@ -114,7 +114,7 @@ describe('show command', () => {
     expect(parsed.depends_on).toEqual([{ id: 'a', status: 'done', satisfied: true }]);
     expect(parsed.blocks).toEqual(['c']);
     expect(parsed.critical_path).toEqual(['a', 'b']);
-    expect(parsed.filePath).toContain('plans/b.md');
+    expect(parsed.filePath).toContain('plans/b/README.md');
   });
 
   it('outputs JSON error for missing plan', () => {

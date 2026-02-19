@@ -5,22 +5,18 @@ import { parseInputs, parseOutputs } from './contracts.ts';
 import type { Plan, TrellisConfig } from './types.ts';
 
 export function derivePlanId(filePath: string, plansDir: string): string {
+  // Plans are always directories — filePath points to the README.md
   const rel = relative(plansDir, filePath);
-  if (basename(filePath) === 'README.md') {
-    return dirname(rel).replace(/\\/g, '/');
-  }
-  return rel.replace(/\.md$/, '').replace(/\\/g, '/');
+  return dirname(rel).replace(/\\/g, '/');
 }
 
 export function scanPlans(plansDir: string): Plan[] {
   const plans: Plan[] = [];
-  const readmeDirs = new Set<string>();
-
-  walkDir(plansDir, plansDir, plans, readmeDirs);
+  walkDir(plansDir, plansDir, plans);
   return plans;
 }
 
-function walkDir(dir: string, plansDir: string, plans: Plan[], readmeDirs: Set<string>): void {
+function walkDir(dir: string, plansDir: string, plans: Plan[]): void {
   let entries: string[];
   try {
     entries = readdirSync(dir);
@@ -28,58 +24,51 @@ function walkDir(dir: string, plansDir: string, plans: Plan[], readmeDirs: Set<s
     return;
   }
 
-  // First pass: find README.md files to mark their directories
-  for (const entry of entries) {
-    const fullPath = join(dir, entry);
-    const stat = statSync(fullPath);
-    if (!stat.isDirectory() && entry === 'README.md') {
-      readmeDirs.add(dir);
-    }
-  }
-
   for (const entry of entries) {
     const fullPath = join(dir, entry);
     const stat = statSync(fullPath);
 
     if (stat.isDirectory()) {
-      walkDir(fullPath, plansDir, plans, readmeDirs);
-    } else if (entry.endsWith('.md')) {
-      // Skip non-README .md files in directories that have a README.md
-      if (entry !== 'README.md' && readmeDirs.has(dir)) {
-        continue;
-      }
+      // Check if this directory is a plan (has README.md)
+      const readmePath = join(fullPath, 'README.md');
+      if (existsSync(readmePath)) {
+        const content = readFileSync(readmePath, 'utf8');
+        const result = parseFrontmatter(content);
+        if (result) {
+          const plan: Plan = {
+            id: derivePlanId(readmePath, plansDir),
+            filePath: readmePath,
+            frontmatter: result.frontmatter,
+            body: result.body,
+            lineCount: content.split('\n').length,
+          };
 
-      const content = readFileSync(fullPath, 'utf8');
-      const result = parseFrontmatter(content);
-      if (result) {
-        const plan: Plan = {
-          id: derivePlanId(fullPath, plansDir),
-          filePath: fullPath,
-          frontmatter: result.frontmatter,
-          body: result.body,
-          lineCount: content.split('\n').length,
-        };
-
-        // Load contracts if this is a directory-based plan (README.md)
-        if (basename(fullPath) === 'README.md') {
-          const planDir = dirname(fullPath);
-          const inputsPath = join(planDir, 'inputs.md');
-          const outputsPath = join(planDir, 'outputs.md');
-
+          // Load contracts
+          const inputsPath = join(fullPath, 'inputs.md');
+          const outputsPath = join(fullPath, 'outputs.md');
           if (existsSync(inputsPath)) {
-            const inputsContent = readFileSync(inputsPath, 'utf8');
-            plan.inputs = parseInputs(inputsContent);
+            plan.inputs = parseInputs(readFileSync(inputsPath, 'utf8'));
           }
-
           if (existsSync(outputsPath)) {
-            const outputsContent = readFileSync(outputsPath, 'utf8');
-            plan.outputs = parseOutputs(outputsContent);
+            plan.outputs = parseOutputs(readFileSync(outputsPath, 'utf8'));
           }
-        }
 
-        plans.push(plan);
+          // Load implementation.md content for lineCount aggregation
+          const implPath = join(fullPath, 'implementation.md');
+          if (existsSync(implPath)) {
+            const implContent = readFileSync(implPath, 'utf8');
+            plan.lineCount += implContent.split('\n').length;
+          }
+
+          plans.push(plan);
+        }
+        // Don't recurse into plan directories — they are leaf nodes
+      } else {
+        // Not a plan directory — recurse to find plans deeper
+        walkDir(fullPath, plansDir, plans);
       }
     }
+    // Single .md files at any level are ignored — plans must be directories
   }
 }
 

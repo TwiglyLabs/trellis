@@ -40,9 +40,9 @@ describe('library API integration', () => {
         return `${k}: ${v}`;
       })
       .join('\n');
-    const dir = join(plansDir, ...id.split('/').slice(0, -1));
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(plansDir, `${id}.md`), `---\n${fm}\n---\n\nPlan body for ${id}\n`);
+    const planDir = join(plansDir, id);
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n\nPlan body for ${id}\n`);
   }
 
   it('loads config from directory', () => {
