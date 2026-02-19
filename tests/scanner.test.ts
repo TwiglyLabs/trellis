@@ -197,6 +197,8 @@ describe('loadConfig', () => {
 
     const config = loadConfig(dir);
     expect(config.manifest).toBe('git@github.com:twiglylabs/twiglylabs.git');
+    expect(config.project).toBe('trellis');
+    expect(config.plans_dir).toBe('plans');
   });
 
   it('returns undefined manifest when not in config', () => {

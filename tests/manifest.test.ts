@@ -377,6 +377,18 @@ status: draft
     expect(result.has('trellis')).toBe(false);
     expect(result.has('canopy')).toBe(true);
     expect(result.has('acorn')).toBe(true);
+
+    // Verify plan content is correctly keyed by alias
+    const canopyPlans = result.get('canopy')!;
+    expect(canopyPlans).toHaveLength(1);
+    expect(canopyPlans[0].id).toBe('plan-c');
+    expect(canopyPlans[0].repoAlias).toBe('canopy');
+    expect(canopyPlans[0].frontmatter.title).toBe('Remote Plan');
+
+    const acornPlans = result.get('acorn')!;
+    expect(acornPlans).toHaveLength(1);
+    expect(acornPlans[0].id).toBe('plan-a');
+    expect(acornPlans[0].repoAlias).toBe('acorn');
   });
 
   it('warns on failed fetch for a repo', () => {
