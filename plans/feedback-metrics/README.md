@@ -1,6 +1,6 @@
 ---
 title: Feedback & Metrics
-status: not_started
+status: done
 depends_on: []
 tags:
   - process
@@ -8,6 +8,8 @@ tags:
 description: >-
   Capture turnaround data on plan execution so the process can be calibrated
   over time
+started_at: '2026-02-19T05:04:16.555Z'
+completed_at: '2026-02-19T05:11:44.212Z'
 ---
 
 # Feedback & Metrics

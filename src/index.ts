@@ -1,6 +1,7 @@
 // --- Types ---
 export type {
   PlanStatus,
+  Deviation,
   PlanFrontmatter,
   ContractSection,
   PlanContract,
@@ -99,4 +100,6 @@ export type {
   ArchiveResult,
   FetchResult,
   RepoFetchStatus,
+  PlanMetric,
+  MetricsResult,
 } from './api.ts';

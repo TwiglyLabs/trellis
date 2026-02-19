@@ -12,6 +12,13 @@ import { PlanFile } from './types.ts';
 import type { GraphData, Chunk, CrossChunkEdge, ChunkResult } from './graph.ts';
 import type { Plan, PlanStatus, TrellisConfig, ContractSection, PlanFrontmatter, GateResult } from './types.ts';
 
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
 // --- Return types ---
 
 export interface PlanSummary {
@@ -190,6 +197,26 @@ export interface FetchResult {
   totalPlans: number;
 }
 
+export interface PlanMetric {
+  id: string;
+  title: string;
+  completed_at: string;
+  cycle_time_hours: number | null;
+  queue_time_hours: number | null;
+  lines: number;
+  tags: string[];
+  epic: string | null;
+  sessions: number | null;
+  deviation: string | null;
+}
+
+export interface MetricsResult {
+  plans: PlanMetric[];
+  total_completed: number;
+  median_cycle_time_hours: number | null;
+  plans_per_epic: Record<string, number>;
+}
+
 export type CreateOptions = {
   title: string;
   description?: string;
@@ -198,7 +225,7 @@ export type CreateOptions = {
 };
 
 // Valid frontmatter field names for set()
-const EDITABLE_FIELDS = ['title', 'description', 'depends_on', 'tags', 'repo', 'assignee'] as const;
+const EDITABLE_FIELDS = ['title', 'description', 'depends_on', 'tags', 'repo', 'assignee', 'sessions', 'deviation'] as const;
 const LIST_FIELDS = ['depends_on', 'tags'] as const;
 
 // Map from short file name to PlanFile enum
@@ -433,6 +460,9 @@ export class Trellis extends EventEmitter {
     const updates: Partial<PlanFrontmatter> = { status };
     const deleteFields: string[] = [];
 
+    if (status === 'not_started' && !plan.frontmatter.not_started_at) {
+      updates.not_started_at = new Date().toISOString();
+    }
     if (status === 'in_progress' && !plan.frontmatter.started_at) {
       updates.started_at = new Date().toISOString();
     }
@@ -440,6 +470,9 @@ export class Trellis extends EventEmitter {
       updates.completed_at = new Date().toISOString();
     }
     if (backward) {
+      if (newOrder < STATUS_ORDER.not_started && plan.frontmatter.not_started_at) {
+        deleteFields.push('not_started_at');
+      }
       if (newOrder < STATUS_ORDER.in_progress && plan.frontmatter.started_at) {
         deleteFields.push('started_at');
       }
@@ -760,6 +793,73 @@ export class Trellis extends EventEmitter {
     return computeChunks(plans, this.graphData, { maxLines: this.config.chunk_max_lines, strategy });
   }
 
+  metrics(options?: { since?: string }): MetricsResult {
+    const donePlans = this.plans.filter(p => p.frontmatter.status === 'done');
+
+    let filtered = donePlans;
+    if (options?.since) {
+      const sinceDate = new Date(options.since);
+      if (isNaN(sinceDate.getTime())) {
+        throw new Error(`Invalid date: "${options.since}"`);
+      }
+      filtered = donePlans.filter(p => {
+        if (!p.frontmatter.completed_at) return false;
+        return new Date(p.frontmatter.completed_at) >= sinceDate;
+      });
+    }
+
+    // Sort by completion date (newest first)
+    filtered.sort((a, b) => {
+      const aDate = a.frontmatter.completed_at ? new Date(a.frontmatter.completed_at).getTime() : 0;
+      const bDate = b.frontmatter.completed_at ? new Date(b.frontmatter.completed_at).getTime() : 0;
+      return bDate - aDate;
+    });
+
+    const plans: PlanMetric[] = filtered.map(p => {
+      const fm = p.frontmatter;
+      const completedAt = fm.completed_at ? new Date(fm.completed_at).getTime() : null;
+      const startedAt = fm.started_at ? new Date(fm.started_at).getTime() : null;
+      const notStartedAt = fm.not_started_at ? new Date(fm.not_started_at).getTime() : null;
+
+      const cycleTimeHours = (completedAt && startedAt) ? (completedAt - startedAt) / 3_600_000 : null;
+      const queueTimeHours = (startedAt && notStartedAt) ? (startedAt - notStartedAt) / 3_600_000 : null;
+
+      const epicTag = (fm.tags ?? []).find(t => t.startsWith('epic:'));
+      const epic = epicTag ? epicTag.slice(5) : null;
+
+      return {
+        id: p.id,
+        title: fm.title,
+        completed_at: fm.completed_at ?? '',
+        cycle_time_hours: cycleTimeHours !== null ? Math.round(cycleTimeHours * 10) / 10 : null,
+        queue_time_hours: queueTimeHours !== null ? Math.round(queueTimeHours * 10) / 10 : null,
+        lines: p.lineCount,
+        tags: fm.tags ?? [],
+        epic,
+        sessions: fm.sessions ?? null,
+        deviation: fm.deviation ?? null,
+      };
+    });
+
+    // Aggregate stats
+    const cycleTimes = plans.map(p => p.cycle_time_hours).filter((v): v is number => v !== null);
+    const medianCycleTime = median(cycleTimes);
+
+    const plansPerEpic: Record<string, number> = {};
+    for (const p of plans) {
+      if (p.epic) {
+        plansPerEpic[p.epic] = (plansPerEpic[p.epic] ?? 0) + 1;
+      }
+    }
+
+    return {
+      plans,
+      total_completed: plans.length,
+      median_cycle_time_hours: medianCycleTime,
+      plans_per_epic: plansPerEpic,
+    };
+  }
+
   create(id: string, opts: CreateOptions): CreateResult {
     if (!opts.title) {
       throw new Error('title is required');
@@ -850,6 +950,19 @@ export class Trellis extends EventEmitter {
         newValue = deps;
       } else if (isList) {
         newValue = Array.isArray(value) ? value : [value];
+      } else if (field === 'sessions') {
+        const raw = typeof value === 'string' ? value : value[0];
+        const num = Number(raw);
+        if (!Number.isInteger(num) || num < 1) {
+          throw new Error(`"sessions" must be a positive integer, got "${raw}".`);
+        }
+        newValue = num as any;
+      } else if (field === 'deviation') {
+        const raw = typeof value === 'string' ? value : value[0];
+        if (raw !== 'none' && raw !== 'minor' && raw !== 'major') {
+          throw new Error(`"deviation" must be "none", "minor", or "major", got "${raw}".`);
+        }
+        newValue = raw;
       } else {
         newValue = typeof value === 'string' ? value : value[0];
       }

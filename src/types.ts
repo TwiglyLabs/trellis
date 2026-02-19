@@ -1,5 +1,7 @@
 export type PlanStatus = 'draft' | 'not_started' | 'in_progress' | 'done' | 'archived';
 
+export type Deviation = 'none' | 'minor' | 'major';
+
 export interface PlanFrontmatter {
   title: string;
   status: PlanStatus;
@@ -10,6 +12,9 @@ export interface PlanFrontmatter {
   assignee?: string;
   started_at?: string;
   completed_at?: string;
+  not_started_at?: string;
+  sessions?: number;
+  deviation?: Deviation;
 }
 
 export interface ContractSection {

@@ -13,6 +13,7 @@ import { setCommand } from './commands/set.ts';
 import { renameCommand } from './commands/rename.ts';
 import { archiveCommand } from './commands/archive.ts';
 import { fetchCommand } from './commands/fetch.ts';
+import { metricsCommand } from './commands/metrics.ts';
 import { setupHooksCommand } from './commands/setup-hooks.ts';
 import { startMcpServer } from './mcp.ts';
 
@@ -57,6 +58,7 @@ program
   .description('Edit frontmatter in-place, show what unblocks')
   .option('--json', 'Output as JSON')
   .option('--force', 'Bypass status gate validation')
+  .option('-y, --yes', 'Skip retro prompts on done transition')
   .addHelpText('after', '\nExamples:\n  $ trellis update core-types in_progress\n  $ trellis update impl/parser done\n  $ trellis update core-types done --json\n  $ trellis update core-types in_progress --force')
   .action((planId, status, options) => updateCommand(planId, status, options));
 
@@ -153,6 +155,14 @@ program
   .option('--json', 'Output as JSON')
   .addHelpText('after', '\nExamples:\n  $ trellis fetch\n  $ trellis fetch --json')
   .action((options) => fetchCommand(options));
+
+program
+  .command('metrics')
+  .description('Show cycle time, queue time, and session data for completed plans')
+  .option('--json', 'Output as JSON')
+  .option('--since <date>', 'Filter to plans completed after this date')
+  .addHelpText('after', '\nExamples:\n  $ trellis metrics\n  $ trellis metrics --json\n  $ trellis metrics --since 2026-02-01')
+  .action((options) => metricsCommand(options));
 
 program
   .command('setup-hooks')

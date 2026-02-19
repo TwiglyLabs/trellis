@@ -40,27 +40,27 @@ describe('update command', () => {
     expect(content).toContain('started_at');
   });
 
-  it('sets completed_at when done', () => {
+  it('sets completed_at when done', async () => {
     const { root, plansDir } = createFixture([
       { id: 'a', title: 'Plan A', status: 'in_progress' },
     ]);
     process.cwd = () => root;
 
-    updateCommand('a', 'done', { force: true });
+    await updateCommand('a', 'done', { force: true, yes: true });
 
     const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
     expect(content).toContain('status: done');
     expect(content).toContain('completed_at');
   });
 
-  it('shows newly ready plans', () => {
+  it('shows newly ready plans', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
     ]);
     process.cwd = () => root;
 
-    updateCommand('a', 'done', { force: true });
+    await updateCommand('a', 'done', { force: true, yes: true });
 
     const output = logs.join('\n');
     expect(output).toContain('Now ready');
@@ -109,17 +109,19 @@ describe('update command', () => {
 
     const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
     expect(content).toContain('status: not_started');
-    expect(content).not.toContain('started_at');
+    // started_at should be cleared, but not_started_at should be set
+    expect(content).not.toMatch(/^started_at:/m);
+    expect(content).toContain('not_started_at');
   });
 
-  it('outputs JSON on success', () => {
+  it('outputs JSON on success', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
     ]);
     process.cwd = () => root;
 
-    updateCommand('a', 'done', { json: true, force: true });
+    await updateCommand('a', 'done', { json: true, force: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.id).toBe('a');

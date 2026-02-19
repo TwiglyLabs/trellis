@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { createInterface } from 'readline';
 import { Trellis } from '../api.ts';
 import { padRight, computeColumnWidth } from '../utils.ts';
 import type { PlanStatus } from '../types.ts';
@@ -6,9 +7,20 @@ import type { PlanStatus } from '../types.ts';
 interface UpdateOptions {
   json?: boolean;
   force?: boolean;
+  yes?: boolean;
 }
 
-export function updateCommand(planId: string, status: string, options?: UpdateOptions): void {
+function prompt(question: string, defaultVal: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise(resolve => {
+    rl.question(`${question} [${defaultVal}]: `, answer => {
+      rl.close();
+      resolve(answer.trim() || defaultVal);
+    });
+  });
+}
+
+export async function updateCommand(planId: string, status: string, options?: UpdateOptions): Promise<void> {
   const t = new Trellis(process.cwd());
 
   try {
@@ -40,6 +52,23 @@ export function updateCommand(planId: string, status: string, options?: UpdateOp
         if (readyPlan) {
           console.log(`    ${chalk.white(padRight(id, idWidth))} ${readyPlan.title}`);
         }
+      }
+    }
+
+    // Prompt for retro data when transitioning to done
+    if (result.newStatus === 'done' && !options?.yes && !options?.json) {
+      console.log(chalk.dim('\n  Quick retro (press Enter to skip):'));
+      const sessionsRaw = await prompt('  Sessions', '');
+      const deviationRaw = await prompt('  Deviation (none/minor/major)', '');
+
+      if (sessionsRaw) {
+        const num = Number(sessionsRaw);
+        if (Number.isInteger(num) && num >= 1) {
+          t.set(planId, 'sessions', String(num));
+        }
+      }
+      if (deviationRaw && ['none', 'minor', 'major'].includes(deviationRaw)) {
+        t.set(planId, 'deviation', deviationRaw);
       }
     }
   } catch (error) {
