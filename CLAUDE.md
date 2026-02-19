@@ -85,8 +85,10 @@ npm install
 npm run build        # esbuild bundle
 npm test             # vitest
 npm run dev          # watch mode
-node dist/trellis.js # run locally
+trellis              # use the installed binary (not node dist/trellis.cjs)
 ```
+
+**Important:** Always use the `trellis` command (installed at `/opt/homebrew/bin/trellis`), not `node dist/trellis.cjs`.
 
 ## Design Principles
 

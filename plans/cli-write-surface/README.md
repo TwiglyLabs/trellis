@@ -1,10 +1,17 @@
 ---
 title: CLI Write Surface & MCP Server
-status: not_started
+status: done
 depends_on:
   - plan-schema
-tags: [cli, mcp, plan-management]
-description: Add trellis CLI commands and an MCP server — the data layer API for plan management
+tags:
+  - cli
+  - mcp
+  - plan-management
+description: >-
+  Add trellis CLI commands and an MCP server — the data layer API for plan
+  management
+started_at: '2026-02-19T02:50:04.733Z'
+completed_at: '2026-02-19T03:18:25.379Z'
 ---
 
 # CLI Write Surface & MCP Server

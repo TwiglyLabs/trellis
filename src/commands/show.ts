@@ -6,10 +6,68 @@ import { padRight, computeColumnWidth } from '../utils.ts';
 interface ShowOptions {
   json?: boolean;
   contracts?: boolean;
+  file?: string;
+  section?: string;
+  raw?: boolean;
 }
 
 export function showCommand(planId: string, options?: ShowOptions): void {
   const t = new Trellis(process.cwd());
+
+  // --file / --section mode: granular content read
+  if (options?.file || options?.section) {
+    // Map --contracts to --file for backward compat
+    const file = options.file;
+    const section = options.section;
+
+    if (section && !file) {
+      const msg = '--section requires --file';
+      if (options?.json) {
+        console.error(JSON.stringify({ error: msg }));
+      } else {
+        console.error(msg);
+      }
+      process.exitCode = 1;
+      return;
+    }
+
+    try {
+      const result = t.readSection(planId, file, section);
+      if (options?.json) {
+        console.log(JSON.stringify({ id: planId, file, section, content: result.content }, null, 2));
+      } else {
+        console.log(result.content);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (options?.json) {
+        console.error(JSON.stringify({ error: message }));
+      } else {
+        console.error(message);
+      }
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  // --raw mode: dump all plan content
+  if (options?.raw) {
+    try {
+      const result = t.readSection(planId);
+      console.log(result.content);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (options?.json) {
+        console.error(JSON.stringify({ error: message }));
+      } else {
+        console.error(message);
+      }
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  // Standard show mode
   const result = t.show(planId);
 
   if (!result) {
@@ -21,6 +79,9 @@ export function showCommand(planId: string, options?: ShowOptions): void {
     process.exitCode = 1;
     return;
   }
+
+  // Backward compat: --contracts maps to including inputs/outputs in JSON
+  const showContracts = options?.contracts;
 
   if (options?.json) {
     const output: Record<string, any> = {
@@ -44,7 +105,7 @@ export function showCommand(planId: string, options?: ShowOptions): void {
       blocks: result.blocks,
       critical_path: result.criticalPath,
     };
-    if (options?.contracts) {
+    if (showContracts) {
       output.inputs = result.inputs;
       output.outputs = result.outputs;
     }
@@ -101,7 +162,7 @@ export function showCommand(planId: string, options?: ShowOptions): void {
     console.log(`    ${result.criticalPath.join(' → ')}`);
   }
 
-  if (options?.contracts) {
+  if (showContracts) {
     console.log(`\n  Inputs:`);
     if (result.inputs && result.inputs.length > 0) {
       for (const section of result.inputs) {

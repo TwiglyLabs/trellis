@@ -29,6 +29,79 @@ export function detectSections(content: string): string[] {
 }
 
 /**
+ * Find ## heading boundaries in markdown content, respecting fenced code blocks.
+ * Returns array of { name, contentStart, contentEnd } where contentStart is the
+ * char offset after the heading line's newline, and contentEnd is the char offset
+ * of the next ## heading line (or content.length).
+ */
+function findSectionBoundaries(content: string): Array<{ name: string; headingStart: number; contentStart: number; contentEnd: number }> {
+  const sections: Array<{ name: string; headingStart: number; contentStart: number; contentEnd: number }> = [];
+  const lines = content.split('\n');
+  let inCodeBlock = false;
+  let offset = 0;
+
+  for (const line of lines) {
+    if (/^(`{3,}|~{3,})/.test(line.trim())) {
+      inCodeBlock = !inCodeBlock;
+    } else if (!inCodeBlock) {
+      const match = line.match(/^##\s+(.+)$/);
+      if (match) {
+        // Close previous section
+        if (sections.length > 0) {
+          sections[sections.length - 1].contentEnd = offset;
+        }
+        sections.push({
+          name: match[1].trim(),
+          headingStart: offset,
+          contentStart: offset + line.length + 1, // after the heading line + newline
+          contentEnd: content.length, // will be updated when next section found
+        });
+      }
+    }
+    offset += line.length + 1; // +1 for the \n
+  }
+
+  return sections;
+}
+
+/**
+ * Read content of a specific section from markdown body (post-frontmatter).
+ * Returns section content between its ## heading and the next ## heading (or EOF).
+ * Returns null if the section is not found. Returns full content if no section specified.
+ * Subheadings (###, ####) are treated as part of the parent ## section.
+ */
+export function readSection(content: string, sectionName?: string): string | null {
+  if (sectionName === undefined) return content;
+
+  const sections = findSectionBoundaries(content);
+  const section = sections.find(s => s.name === sectionName);
+  if (!section) return null;
+
+  return content.slice(section.contentStart, section.contentEnd);
+}
+
+/**
+ * Write content into a specific section of markdown body (post-frontmatter).
+ * Replaces everything between the ## heading and the next ## heading.
+ * If the section doesn't exist, appends it at the end.
+ */
+export function writeSection(content: string, sectionName: string, newContent: string): string {
+  const sections = findSectionBoundaries(content);
+  const section = sections.find(s => s.name === sectionName);
+
+  if (section) {
+    // Replace content between heading and next heading
+    const before = content.slice(0, section.contentStart);
+    const after = content.slice(section.contentEnd);
+    return before + newContent + after;
+  }
+
+  // Section not found — append
+  const separator = content.length > 0 && !content.endsWith('\n') ? '\n\n' : '\n';
+  return content + separator + `## ${sectionName}\n${newContent}`;
+}
+
+/**
  * Validate whether a plan meets the gate requirements for a target status.
  *
  * @param plan - The plan to validate

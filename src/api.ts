@@ -1,11 +1,13 @@
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { EventEmitter } from 'events';
-import { watch as fsWatch, type FSWatcher } from 'fs';
+import { watch as fsWatch, type FSWatcher, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'fs';
+import matter from 'gray-matter';
 import { loadConfig, scanPlans } from './scanner.ts';
 import { buildGraph, detectCycles, transitiveDependents, computeCriticalPath, pickNext, computeChunks, newlyReady } from './graph.ts';
-import { validateFrontmatter, updatePlanFile } from './frontmatter.ts';
-import { validateStatusGate } from './schema.ts';
+import { parseFrontmatter, validateFrontmatter, updatePlanFile } from './frontmatter.ts';
+import { validateStatusGate, readSection, writeSection } from './schema.ts';
 import { filterPlans, VALID_STATUSES } from './utils.ts';
+import { PlanFile } from './types.ts';
 import type { GraphData, Chunk, CrossChunkEdge, ChunkResult } from './graph.ts';
 import type { Plan, PlanStatus, TrellisConfig, ContractSection, PlanFrontmatter, GateResult } from './types.ts';
 
@@ -133,6 +135,76 @@ export interface EpicResult {
   draft: number;
   progress: number;
   plans?: PlanSummary[];
+}
+
+export interface CreateResult {
+  id: string;
+  filePath: string;
+}
+
+export interface SetResult {
+  id: string;
+  field: string;
+  value: string | string[];
+  previousValue: string | string[] | undefined;
+}
+
+export interface WriteSectionResult {
+  id: string;
+  file: string;
+  section: string;
+  content: string;
+}
+
+export interface ReadSectionResult {
+  id: string;
+  file?: string;
+  section?: string;
+  content: string;
+}
+
+export interface RenameResult {
+  oldId: string;
+  newId: string;
+  referencesUpdated: string[];
+}
+
+export interface ArchiveResult {
+  id: string;
+  previousStatus: PlanStatus;
+  newStatus: 'archived';
+}
+
+export type CreateOptions = {
+  title: string;
+  description?: string;
+  depends_on?: string[];
+  tags?: string[];
+};
+
+// Valid frontmatter field names for set()
+const EDITABLE_FIELDS = ['title', 'description', 'depends_on', 'tags', 'repo', 'assignee'] as const;
+const LIST_FIELDS = ['depends_on', 'tags'] as const;
+
+// Map from short file name to PlanFile enum
+const FILE_NAME_MAP: Record<string, PlanFile> = {
+  readme: PlanFile.README,
+  implementation: PlanFile.IMPLEMENTATION,
+  inputs: PlanFile.INPUTS,
+  outputs: PlanFile.OUTPUTS,
+};
+
+/** Validate that a plan ID is a safe, single directory name. */
+function validatePlanId(id: string): void {
+  if (!id || id.trim() !== id) {
+    throw new Error(`Invalid plan ID "${id}". Must be a non-empty, trimmed string.`);
+  }
+  if (/[\/\\]/.test(id) || id === '.' || id === '..' || id.startsWith('.')) {
+    throw new Error(`Invalid plan ID "${id}". Must be a simple directory name (no slashes, no leading dot).`);
+  }
+  if (/[<>:"|?*\x00-\x1f]/.test(id)) {
+    throw new Error(`Invalid plan ID "${id}". Contains invalid characters.`);
+  }
 }
 
 // --- Trellis class ---
@@ -574,5 +646,249 @@ export class Trellis extends EventEmitter {
     }
     const strategy = filters?.strategy ?? this.config.chunk_strategy;
     return computeChunks(plans, this.graphData, { maxLines: this.config.chunk_max_lines, strategy });
+  }
+
+  create(id: string, opts: CreateOptions): CreateResult {
+    if (!opts.title) {
+      throw new Error('title is required');
+    }
+
+    validatePlanId(id);
+
+    const plansDir = join(this.projectDir, this.config.plans_dir);
+    const planDir = join(plansDir, id);
+
+    if (existsSync(planDir)) {
+      throw new Error(`Plan "${id}" already exists.`);
+    }
+
+    // Validate depends_on references
+    if (opts.depends_on?.length) {
+      for (const dep of opts.depends_on) {
+        if (!this.graphData.plans.has(dep)) {
+          throw new Error(`Dependency "${dep}" not found.`);
+        }
+      }
+    }
+
+    mkdirSync(planDir, { recursive: true });
+
+    const data: Record<string, any> = { title: opts.title, status: 'draft' };
+    if (opts.description) data.description = opts.description;
+    if (opts.depends_on?.length) data.depends_on = opts.depends_on;
+    if (opts.tags?.length) data.tags = opts.tags;
+
+    const body = '\n## Problem\n\n\n## Approach\n\n';
+    const content = matter.stringify(body, data);
+    const filePath = join(planDir, 'README.md');
+    writeFileSync(filePath, content);
+
+    this.refresh();
+
+    return { id, filePath };
+  }
+
+  set(planId: string, field: string, value: string | string[], mode: 'replace' | 'add' | 'remove' = 'replace'): SetResult {
+    const plan = this.graphData.plans.get(planId);
+    if (!plan) throw new Error(`Plan "${planId}" not found.`);
+
+    if (field === 'status') {
+      throw new Error('Cannot set "status" — use update() for status transitions.');
+    }
+
+    if (!(EDITABLE_FIELDS as readonly string[]).includes(field)) {
+      throw new Error(`Unknown field "${field}". Editable fields: ${EDITABLE_FIELDS.join(', ')}`);
+    }
+
+    const isList = (LIST_FIELDS as readonly string[]).includes(field);
+    const fm = plan.frontmatter as Record<string, any>;
+    const previousValue = fm[field];
+
+    if (mode !== 'replace' && !isList) {
+      throw new Error(`Field "${field}" is not a list — cannot use ${mode} mode.`);
+    }
+
+    let newValue: string | string[];
+
+    if (mode === 'add') {
+      const current = Array.isArray(fm[field]) ? [...fm[field]] : [];
+      const toAdd = Array.isArray(value) ? value : [value];
+      // Validate depends_on references
+      if (field === 'depends_on') {
+        for (const dep of toAdd) {
+          if (!this.graphData.plans.has(dep)) {
+            throw new Error(`Dependency "${dep}" not found.`);
+          }
+        }
+      }
+      newValue = [...current, ...toAdd];
+    } else if (mode === 'remove') {
+      const current = Array.isArray(fm[field]) ? [...fm[field]] : [];
+      const toRemove = Array.isArray(value) ? value : [value];
+      newValue = current.filter((item: string) => !toRemove.includes(item));
+    } else {
+      // replace mode
+      if (field === 'depends_on') {
+        const deps = Array.isArray(value) ? value : [value];
+        for (const dep of deps) {
+          if (!this.graphData.plans.has(dep)) {
+            throw new Error(`Dependency "${dep}" not found.`);
+          }
+        }
+        newValue = deps;
+      } else if (isList) {
+        newValue = Array.isArray(value) ? value : [value];
+      } else {
+        newValue = typeof value === 'string' ? value : value[0];
+      }
+    }
+
+    updatePlanFile(plan.filePath, { [field]: newValue } as Partial<PlanFrontmatter>);
+    this.refresh();
+
+    return { id: planId, field, value: newValue, previousValue };
+  }
+
+  writeSection(planId: string, file: string, section: string, content: string): WriteSectionResult {
+    const plan = this.graphData.plans.get(planId);
+    if (!plan) throw new Error(`Plan "${planId}" not found.`);
+
+    const fileName = FILE_NAME_MAP[file];
+    if (!fileName) throw new Error(`Invalid file "${file}". Must be one of: ${Object.keys(FILE_NAME_MAP).join(', ')}`);
+
+    const planDir = dirname(plan.filePath);
+    const filePath = join(planDir, fileName);
+
+    if (fileName === PlanFile.README) {
+      // For README, we need to preserve frontmatter
+      const raw = readFileSync(filePath, 'utf8');
+      const parsed = matter(raw);
+      const newBody = writeSection(parsed.content, section, content);
+      const updated = matter.stringify(newBody, parsed.data);
+      writeFileSync(filePath, updated);
+    } else {
+      // For non-README files, create if missing (only inputs/outputs)
+      let existing = '';
+      if (existsSync(filePath)) {
+        existing = readFileSync(filePath, 'utf8');
+      } else if (fileName === PlanFile.INPUTS || fileName === PlanFile.OUTPUTS) {
+        // Create the file
+        existing = '';
+      } else {
+        throw new Error(`File ${fileName} does not exist for plan "${planId}".`);
+      }
+      const updated = writeSection(existing, section, content);
+      writeFileSync(filePath, updated);
+    }
+
+    this.refresh();
+    return { id: planId, file, section, content };
+  }
+
+  readSection(planId: string, file?: string, section?: string): ReadSectionResult {
+    const plan = this.graphData.plans.get(planId);
+    if (!plan) throw new Error(`Plan "${planId}" not found.`);
+
+    if (!file) {
+      // Return all plan files concatenated
+      const planDir = dirname(plan.filePath);
+      let result = '';
+      for (const [name, fileName] of Object.entries(FILE_NAME_MAP)) {
+        const filePath = join(planDir, fileName);
+        if (existsSync(filePath)) {
+          let content = readFileSync(filePath, 'utf8');
+          // Strip frontmatter from README
+          if (fileName === PlanFile.README) {
+            const parsed = parseFrontmatter(content);
+            if (parsed) content = parsed.body;
+          }
+          if (result) result += '\n---\n\n';
+          result += `# ${name}\n\n${content}`;
+        }
+      }
+      return { id: planId, content: result };
+    }
+
+    const fileName = FILE_NAME_MAP[file];
+    if (!fileName) throw new Error(`Invalid file "${file}". Must be one of: ${Object.keys(FILE_NAME_MAP).join(', ')}`);
+
+    const planDir = dirname(plan.filePath);
+    const filePath = join(planDir, fileName);
+
+    if (!existsSync(filePath)) {
+      throw new Error(`File ${fileName} does not exist for plan "${planId}".`);
+    }
+
+    let content = readFileSync(filePath, 'utf8');
+
+    // For README, strip frontmatter for the body
+    if (fileName === PlanFile.README) {
+      const parsed = parseFrontmatter(content);
+      if (parsed) content = parsed.body;
+    }
+
+    if (!section) {
+      return { id: planId, file, content };
+    }
+
+    const sectionContent = readSection(content, section);
+    if (sectionContent === null) {
+      throw new Error(`Section "${section}" not found in ${fileName} for plan "${planId}".`);
+    }
+
+    return { id: planId, file, section, content: sectionContent };
+  }
+
+  rename(oldId: string, newId: string): RenameResult {
+    validatePlanId(newId);
+
+    const plan = this.graphData.plans.get(oldId);
+    if (!plan) throw new Error(`Plan "${oldId}" not found.`);
+
+    const plansDir = join(this.projectDir, this.config.plans_dir);
+    const newDir = join(plansDir, newId);
+
+    if (existsSync(newDir)) {
+      throw new Error(`Plan "${newId}" already exists.`);
+    }
+
+    const oldDir = dirname(plan.filePath);
+    renameSync(oldDir, newDir);
+
+    // Update depends_on references in all other plans
+    const referencesUpdated: string[] = [];
+    for (const [id, p] of this.graphData.plans) {
+      if (id === oldId) continue;
+      if (p.frontmatter.depends_on?.includes(oldId)) {
+        const newDeps = p.frontmatter.depends_on.map(d => d === oldId ? newId : d);
+        updatePlanFile(join(plansDir, id, 'README.md'), { depends_on: newDeps });
+        referencesUpdated.push(id);
+      }
+    }
+
+    this.refresh();
+    return { oldId, newId, referencesUpdated };
+  }
+
+  archive(planId: string): ArchiveResult {
+    const plan = this.graphData.plans.get(planId);
+    if (!plan) throw new Error(`Plan "${planId}" not found.`);
+
+    // Check for active dependents
+    const dependents = this.graphData.dependents.get(planId) ?? [];
+    const activeDependents = dependents.filter(depId => {
+      const dep = this.graphData.plans.get(depId);
+      return dep && dep.frontmatter.status !== 'done' && dep.frontmatter.status !== 'archived';
+    });
+
+    if (activeDependents.length > 0) {
+      throw new Error(`Cannot archive "${planId}" — has active dependents: ${activeDependents.join(', ')}`);
+    }
+
+    const previousStatus = plan.frontmatter.status;
+    updatePlanFile(plan.filePath, { status: 'archived' });
+    this.refresh();
+
+    return { id: planId, previousStatus, newStatus: 'archived' };
   }
 }

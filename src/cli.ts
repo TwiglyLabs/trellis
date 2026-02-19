@@ -8,6 +8,11 @@ import { lintCommand } from './commands/lint.ts';
 import { graphCommand } from './commands/graph.ts';
 import { epicCommand } from './commands/epic.ts';
 import { chunksCommand } from './commands/chunks.ts';
+import { createCommand } from './commands/create.ts';
+import { setCommand } from './commands/set.ts';
+import { renameCommand } from './commands/rename.ts';
+import { archiveCommand } from './commands/archive.ts';
+import { startMcpServer } from './mcp.ts';
 
 const program = new Command();
 
@@ -58,7 +63,10 @@ program
   .description('Show plan details and dependency chain')
   .option('--json', 'Output as JSON')
   .option('--contracts', 'Include input/output contracts')
-  .addHelpText('after', '\nExamples:\n  $ trellis show core-types\n  $ trellis show impl/parser\n  $ trellis show core-types --json\n  $ trellis show core-types --contracts\n  $ trellis show core-types --json --contracts')
+  .option('--file <file>', 'Read specific file (readme, implementation, inputs, outputs)')
+  .option('--section <section>', 'Read specific section (requires --file)')
+  .option('--raw', 'Output raw plan content')
+  .addHelpText('after', '\nExamples:\n  $ trellis show core-types\n  $ trellis show core-types --json\n  $ trellis show core-types --file implementation --section Steps\n  $ trellis show core-types --raw')
   .action((planId, options) => showCommand(planId, options));
 
 program
@@ -94,5 +102,46 @@ program
   .option('--strategy <strategy>', 'Chunk strategy: directory or topological')
   .addHelpText('after', '\nExamples:\n  $ trellis chunks\n  $ trellis chunks --json\n  $ trellis chunks --verbose\n  $ trellis chunks --tag foundation\n  $ trellis chunks --repo cloud')
   .action((options) => chunksCommand(options));
+
+program
+  .command('mcp')
+  .description('Start MCP server on stdio (for Claude Code integration)')
+  .action(async () => {
+    await startMcpServer();
+  });
+
+program
+  .command('create <id>')
+  .description('Scaffold a new plan directory')
+  .requiredOption('-t, --title <title>', 'Plan title')
+  .option('--depends-on <ids...>', 'Plan IDs this depends on')
+  .option('--tags <tags...>', 'Freeform tags')
+  .option('-d, --description <desc>', 'One-line description')
+  .option('--json', 'Output as JSON')
+  .addHelpText('after', '\nExamples:\n  $ trellis create my-plan --title "My Plan"\n  $ trellis create my-plan --title "Plan" --depends-on core-types --tags foundation')
+  .action((id, options) => createCommand(id, options));
+
+program
+  .command('set <plan-id> <field> [values...]')
+  .description('Update frontmatter fields')
+  .option('--add', 'Append to list field')
+  .option('--remove', 'Remove from list field')
+  .option('--json', 'Output as JSON')
+  .addHelpText('after', '\nExamples:\n  $ trellis set my-plan description "Updated desc"\n  $ trellis set my-plan tags new-tag --add\n  $ trellis set my-plan tags old-tag --remove')
+  .action((planId, field, values, options) => setCommand(planId, field, values, options));
+
+program
+  .command('rename <old-id> <new-id>')
+  .description('Rename plan and update all references')
+  .option('--json', 'Output as JSON')
+  .addHelpText('after', '\nExamples:\n  $ trellis rename old-name new-name')
+  .action((oldId, newId, options) => renameCommand(oldId, newId, options));
+
+program
+  .command('archive <plan-id>')
+  .description('Archive a plan (set status to archived)')
+  .option('--json', 'Output as JSON')
+  .addHelpText('after', '\nExamples:\n  $ trellis archive completed-plan')
+  .action((planId, options) => archiveCommand(planId, options));
 
 program.parse();

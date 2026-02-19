@@ -50,7 +50,7 @@ export {
 } from './frontmatter.ts';
 
 // --- Schema ---
-export { detectSections, validateStatusGate } from './schema.ts';
+export { detectSections, readSection, writeSection, validateStatusGate } from './schema.ts';
 
 // --- Contracts ---
 export { parseInputs, parseOutputs } from './contracts.ts';
@@ -74,4 +74,11 @@ export type {
   GraphEdge,
   GraphResult,
   EpicResult,
+  CreateResult,
+  CreateOptions,
+  SetResult,
+  WriteSectionResult,
+  ReadSectionResult,
+  RenameResult,
+  ArchiveResult,
 } from './api.ts';
