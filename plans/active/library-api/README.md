@@ -1,6 +1,6 @@
 ---
 title: Library API for Electron Consumption
-status: not_started
+status: done
 depends_on: []
 tags: [foundation]
 repo: trellis
