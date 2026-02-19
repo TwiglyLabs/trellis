@@ -1,9 +1,14 @@
 ---
 title: Chunk Reduction
-status: not_started
-tags: [chunking, contracts, graph]
+status: archived
+tags:
+  - chunking
+  - contracts
+  - graph
 depends_on: []
-description: Plan contracts (inputs/outputs), interface-width chunk splitting, and graph visualization of contract flow
+description: >-
+  Plan contracts (inputs/outputs), interface-width chunk splitting, and graph
+  visualization of contract flow
 ---
 
 # Chunk Reduction
