@@ -1,8 +1,12 @@
 ---
 title: Orchestration Foundations
-status: not_started
-tags: [orchestration, cli]
-description: Make trellis machine-consumable with JSON output, smart selection, filtering, and epic tracking
+status: archived
+tags:
+  - orchestration
+  - cli
+description: >-
+  Make trellis machine-consumable with JSON output, smart selection, filtering,
+  and epic tracking
 ---
 
 # Orchestration Foundations

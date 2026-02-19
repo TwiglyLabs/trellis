@@ -1,6 +1,6 @@
 ---
 title: Plan Review System
-status: not_started
+status: archived
 tags:
   - orchestration
   - cli
