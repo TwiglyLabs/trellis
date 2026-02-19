@@ -190,4 +190,20 @@ describe('loadConfig', () => {
     const config = loadConfig(dir);
     expect(config.chunk_max_lines).toBeUndefined();
   });
+
+  it('parses manifest field from config', () => {
+    const dir = createFixtureDir();
+    writeFileSync(join(dir, '.trellis'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:twiglylabs/twiglylabs.git\n');
+
+    const config = loadConfig(dir);
+    expect(config.manifest).toBe('git@github.com:twiglylabs/twiglylabs.git');
+  });
+
+  it('returns undefined manifest when not in config', () => {
+    const dir = createFixtureDir();
+    writeFileSync(join(dir, '.trellis'), 'project: test\nplans_dir: plans\n');
+
+    const config = loadConfig(dir);
+    expect(config.manifest).toBeUndefined();
+  });
 });

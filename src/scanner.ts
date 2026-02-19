@@ -92,6 +92,7 @@ export function loadConfig(cwd: string): TrellisConfig {
         if (key === 'chunk_strategy' && (value === 'topological' || value === 'directory')) {
           config.chunk_strategy = value;
         }
+        if (key === 'manifest') config.manifest = value;
       }
     }
     return {
@@ -99,6 +100,7 @@ export function loadConfig(cwd: string): TrellisConfig {
       plans_dir: config.plans_dir || 'plans',
       chunk_max_lines: config.chunk_max_lines,
       chunk_strategy: config.chunk_strategy,
+      manifest: config.manifest,
     };
   }
 

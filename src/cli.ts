@@ -12,6 +12,7 @@ import { createCommand } from './commands/create.ts';
 import { setCommand } from './commands/set.ts';
 import { renameCommand } from './commands/rename.ts';
 import { archiveCommand } from './commands/archive.ts';
+import { fetchCommand } from './commands/fetch.ts';
 import { setupHooksCommand } from './commands/setup-hooks.ts';
 import { startMcpServer } from './mcp.ts';
 
@@ -145,6 +146,13 @@ program
   .option('--json', 'Output as JSON')
   .addHelpText('after', '\nExamples:\n  $ trellis archive completed-plan')
   .action((planId, options) => archiveCommand(planId, options));
+
+program
+  .command('fetch')
+  .description('Fetch plan state from all project repos')
+  .option('--json', 'Output as JSON')
+  .addHelpText('after', '\nExamples:\n  $ trellis fetch\n  $ trellis fetch --json')
+  .action((options) => fetchCommand(options));
 
 program
   .command('setup-hooks')

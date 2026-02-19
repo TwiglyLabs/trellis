@@ -8,6 +8,8 @@ export type {
   TrellisConfig,
   ValidationError,
   GateResult,
+  RepoEntry,
+  ProjectManifest,
 } from './types.ts';
 
 export { PlanFile, SECTION_REQUIREMENTS, STATUS_GATES } from './types.ts';
@@ -52,6 +54,20 @@ export {
 // --- Schema ---
 export { detectSections, readSection, writeSection, validateStatusGate } from './schema.ts';
 
+// --- Manifest ---
+export type { GitExecutor, FetchRepoResult } from './manifest.ts';
+export {
+  parseManifest,
+  ensureRemote,
+  fetchRemote,
+  gitShow,
+  gitListTree,
+  discoverManifest,
+  fetchRepoPlans,
+  fetchProjectPlans,
+  checkVisibility,
+} from './manifest.ts';
+
 // --- Contracts ---
 export { parseInputs, parseOutputs } from './contracts.ts';
 
@@ -81,4 +97,6 @@ export type {
   ReadSectionResult,
   RenameResult,
   ArchiveResult,
+  FetchResult,
+  RepoFetchStatus,
 } from './api.ts';

@@ -33,6 +33,7 @@ export interface Plan {
   lineCount: number;
   inputs?: PlanContract;
   outputs?: PlanContract;
+  repoAlias?: string;
 }
 
 export interface TrellisConfig {
@@ -40,6 +41,18 @@ export interface TrellisConfig {
   plans_dir: string;
   chunk_max_lines?: number;
   chunk_strategy?: 'directory' | 'topological';
+  manifest?: string;
+}
+
+export interface RepoEntry {
+  url: string;
+  branch: string;
+  visibility: 'public' | 'private';
+}
+
+export interface ProjectManifest {
+  name: string;
+  repos: Record<string, RepoEntry>;
 }
 
 export interface ValidationError {

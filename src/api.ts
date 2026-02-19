@@ -7,6 +7,7 @@ import { buildGraph, detectCycles, transitiveDependents, computeCriticalPath, pi
 import { parseFrontmatter, validateFrontmatter, updatePlanFile } from './frontmatter.ts';
 import { validateStatusGate, detectSections, readSection, writeSection } from './schema.ts';
 import { filterPlans, VALID_STATUSES } from './utils.ts';
+import { discoverManifest, fetchProjectPlans, type GitExecutor } from './manifest.ts';
 import { PlanFile } from './types.ts';
 import type { GraphData, Chunk, CrossChunkEdge, ChunkResult } from './graph.ts';
 import type { Plan, PlanStatus, TrellisConfig, ContractSection, PlanFrontmatter, GateResult } from './types.ts';
@@ -174,6 +175,19 @@ export interface ArchiveResult {
   id: string;
   previousStatus: PlanStatus;
   newStatus: 'archived';
+}
+
+export interface RepoFetchStatus {
+  alias: string;
+  ok: boolean;
+  planCount: number;
+  error?: string;
+}
+
+export interface FetchResult {
+  project: string;
+  repos: RepoFetchStatus[];
+  totalPlans: number;
 }
 
 export type CreateOptions = {
@@ -966,6 +980,43 @@ export class Trellis extends EventEmitter {
 
     this.refresh();
     return { oldId, newId, referencesUpdated };
+  }
+
+  fetch(git?: GitExecutor): FetchResult {
+    if (!this.config.manifest) {
+      throw new Error('No manifest configured. Add "manifest: <git-url>" to .trellis');
+    }
+
+    const manifest = discoverManifest(this.config.manifest, this.projectDir, git);
+    if (!manifest) {
+      throw new Error('Failed to discover project manifest. Check manifest URL and network access.');
+    }
+
+    const remotePlans = fetchProjectPlans(manifest, this.config.project, this.projectDir, git);
+    const repos: RepoFetchStatus[] = [];
+    let totalPlans = 0;
+
+    for (const [alias, entry] of Object.entries(manifest.repos)) {
+      if (alias === this.config.project) continue;
+      const plans = remotePlans.get(alias);
+      if (plans) {
+        repos.push({ alias, ok: true, planCount: plans.length });
+        totalPlans += plans.length;
+      } else {
+        repos.push({ alias, ok: false, planCount: 0, error: `Failed to fetch plans from "${alias}"` });
+      }
+    }
+
+    return { project: manifest.name, repos, totalPlans };
+  }
+
+  projectPlans(git?: GitExecutor): Map<string, Plan[]> | null {
+    if (!this.config.manifest) return null;
+
+    const manifest = discoverManifest(this.config.manifest, this.projectDir, git);
+    if (!manifest) return null;
+
+    return fetchProjectPlans(manifest, this.config.project, this.projectDir, git);
   }
 
   archive(planId: string): ArchiveResult {
