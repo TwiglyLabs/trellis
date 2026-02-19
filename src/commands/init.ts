@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, basename } from 'path';
 import { createInterface } from 'readline';
+import { setupHooks } from './setup-hooks.ts';
 
 function prompt(question: string, defaultVal: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -51,6 +52,10 @@ export async function initCommand(options?: { yes?: boolean }): Promise<void> {
   if (existsSync(join(cwd, '.trellis'))) {
     console.log('.trellis already exists');
     setupMcpJson(cwd);
+    const hookResult = setupHooks(cwd);
+    for (const msg of hookResult.messages) {
+      console.log(msg);
+    }
     return;
   }
 
@@ -74,4 +79,10 @@ export async function initCommand(options?: { yes?: boolean }): Promise<void> {
   console.log(`Created .trellis and ${plansDir}/`);
 
   setupMcpJson(cwd);
+
+  // Install hooks
+  const hookResult = setupHooks(cwd);
+  for (const msg of hookResult.messages) {
+    console.log(msg);
+  }
 }

@@ -59,6 +59,7 @@ trellis init                       # scaffold .trellis config + plans/ directory
 trellis show <plan-id>             # show plan details and dependency chain
 trellis epic [name]                # show epic completion status
 trellis chunks                     # identify reviewable subgraphs
+trellis setup-hooks                # install Claude Code hooks + git pre-commit hook
 ```
 
 ## Frontmatter Schema
@@ -89,6 +90,43 @@ trellis              # use the installed binary (not node dist/trellis.cjs)
 ```
 
 **Important:** Always use the `trellis` command (installed at `/opt/homebrew/bin/trellis`), not `node dist/trellis.cjs`.
+
+## Plan Management (for agents)
+
+**Never use Edit, Write, or Bash to modify plan files.** Plans are managed exclusively through trellis MCP tools. Claude Code hooks will block direct file edits.
+
+### Which tool for which operation
+
+| Operation | MCP Tool |
+|---|---|
+| Create a new plan | `trellis_create` |
+| Read plan content or a section | `trellis_read_section` |
+| Write/update plan content | `trellis_write_section` |
+| Update metadata (title, tags, etc.) | `trellis_set` |
+| Change plan status | `trellis_update` |
+
+### Plan granularity
+
+Plans should be implementable in roughly half a context session. If a plan feels too big, split it. When reviewing plans, check granularity — flag plans that should be decomposed.
+
+### Workflow example
+
+```
+# Check what's ready to work on
+trellis ready
+
+# Read a plan's details
+trellis_read_section(plan_id="my-plan")
+
+# Start working on it
+trellis_update(plan_id="my-plan", status="in_progress")
+
+# Write implementation details
+trellis_write_section(plan_id="my-plan", file="implementation", section="Steps", content="...")
+
+# Mark it done when finished
+trellis_update(plan_id="my-plan", status="done")
+```
 
 ## Design Principles
 

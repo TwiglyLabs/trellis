@@ -1,6 +1,6 @@
 ---
 title: Agent Guardrails
-status: not_started
+status: done
 depends_on:
   - cli-write-surface
 tags:
@@ -10,6 +10,8 @@ tags:
 description: >-
   Prevent agents from directly editing plan files — enforce MCP-only interaction
   via hooks and instructions
+started_at: '2026-02-19T03:50:58.809Z'
+completed_at: '2026-02-19T03:56:53.859Z'
 ---
 
 # Agent Guardrails

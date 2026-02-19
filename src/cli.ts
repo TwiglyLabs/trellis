@@ -12,6 +12,7 @@ import { createCommand } from './commands/create.ts';
 import { setCommand } from './commands/set.ts';
 import { renameCommand } from './commands/rename.ts';
 import { archiveCommand } from './commands/archive.ts';
+import { setupHooksCommand } from './commands/setup-hooks.ts';
 import { startMcpServer } from './mcp.ts';
 
 const program = new Command();
@@ -144,5 +145,11 @@ program
   .option('--json', 'Output as JSON')
   .addHelpText('after', '\nExamples:\n  $ trellis archive completed-plan')
   .action((planId, options) => archiveCommand(planId, options));
+
+program
+  .command('setup-hooks')
+  .description('Install Claude Code hooks and git pre-commit hook')
+  .addHelpText('after', '\nExamples:\n  $ trellis setup-hooks')
+  .action(() => setupHooksCommand());
 
 program.parse();

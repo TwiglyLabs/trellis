@@ -97,4 +97,28 @@ describe('initCommand', () => {
     const mcp = JSON.parse(readFileSync(join(dir, '.mcp.json'), 'utf8'));
     expect(mcp.mcpServers.trellis).toBeDefined();
   });
+
+  it('installs Claude Code hooks on fresh init', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-init-'));
+    process.cwd = () => dir;
+
+    await initCommand({ yes: true });
+
+    expect(existsSync(join(dir, '.claude', 'settings.json'))).toBe(true);
+    const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
+    expect(settings.hooks?.PreToolUse).toHaveLength(1);
+    expect(settings.hooks.PreToolUse[0].matcher).toBe('Edit|Write');
+  });
+
+  it('installs Claude Code hooks when .trellis already exists', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-init-'));
+    writeFileSync(join(dir, '.trellis'), 'project: test\nplans_dir: plans\n');
+    mkdirSync(join(dir, 'plans'), { recursive: true });
+    process.cwd = () => dir;
+
+    await initCommand({ yes: true });
+
+    expect(existsSync(join(dir, '.claude', 'hooks', 'protect-plans.sh'))).toBe(true);
+    expect(logs.some(l => l.includes('Claude Code hooks'))).toBe(true);
+  });
 });
