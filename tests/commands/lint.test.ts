@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createFixture } from '../helpers.ts';
 import { lintCommand } from '../../src/commands/lint.ts';
 
+// Well-formed plan body and implementation for plans that should pass structural checks
+const VALID_BODY = '\n## Problem\n\nSome problem\n\n## Approach\n\nSome approach\n';
+const VALID_IMPL = '## Steps\n\nSome steps\n\n## Testing\n\nSome tests\n\n## Done-when\n\nSome criteria\n';
+
 describe('lint command', () => {
   let originalCwd: () => string;
   let logs: string[];
@@ -22,20 +26,25 @@ describe('lint command', () => {
 
   it('passes clean plans', () => {
     const { root } = createFixture([
-      { id: 'a', title: 'Plan A', status: 'done' },
-      { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
+      { id: 'a', title: 'Plan A', status: 'done', body: VALID_BODY, implementationMd: VALID_IMPL,
+        outputsMd: '## Types\n- Person\n' },
+      { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'],
+        body: VALID_BODY, implementationMd: VALID_IMPL,
+        inputsMd: '## From plans\n\n### a\n- types\n' },
     ]);
     process.cwd = () => root;
 
     lintCommand();
 
     const output = logs.join('\n');
-    expect(output).toContain('2 plans OK');
+    expect(output).toMatch(/^.*2 plans OK$/m);
+    expect(process.exitCode).toBeUndefined();
   });
 
   it('detects missing dependencies', () => {
     const { root } = createFixture([
-      { id: 'a', title: 'Plan A', status: 'not_started', depends_on: ['nonexistent'] },
+      { id: 'a', title: 'Plan A', status: 'not_started', depends_on: ['nonexistent'],
+        body: VALID_BODY, implementationMd: VALID_IMPL },
     ]);
     process.cwd = () => root;
 
@@ -48,8 +57,10 @@ describe('lint command', () => {
 
   it('detects done plans with incomplete deps', () => {
     const { root } = createFixture([
-      { id: 'a', title: 'Plan A', status: 'not_started' },
-      { id: 'b', title: 'Plan B', status: 'done', depends_on: ['a'] },
+      { id: 'a', title: 'Plan A', status: 'not_started', body: VALID_BODY, implementationMd: VALID_IMPL },
+      { id: 'b', title: 'Plan B', status: 'done', depends_on: ['a'],
+        body: VALID_BODY, implementationMd: VALID_IMPL,
+        inputsMd: '## From plans\n\n### a\n- types\n' },
     ]);
     process.cwd = () => root;
 
@@ -61,8 +72,10 @@ describe('lint command', () => {
 
   it('warns about in_progress with incomplete deps', () => {
     const { root } = createFixture([
-      { id: 'a', title: 'Plan A', status: 'not_started' },
-      { id: 'b', title: 'Plan B', status: 'in_progress', depends_on: ['a'] },
+      { id: 'a', title: 'Plan A', status: 'not_started', body: VALID_BODY, implementationMd: VALID_IMPL },
+      { id: 'b', title: 'Plan B', status: 'in_progress', depends_on: ['a'],
+        body: VALID_BODY, implementationMd: VALID_IMPL,
+        inputsMd: '## From plans\n\n### a\n- types\n' },
     ]);
     process.cwd = () => root;
 
@@ -74,10 +87,15 @@ describe('lint command', () => {
 
   it('counts multi-error plans correctly for okCount', () => {
     const { root } = createFixture([
-      { id: 'a', title: 'Plan A', status: 'done' },
-      { id: 'b', title: 'Plan B', status: 'done', depends_on: ['a'] },
+      { id: 'a', title: 'Plan A', status: 'done', body: VALID_BODY, implementationMd: VALID_IMPL,
+        outputsMd: '## Types\n- Person\n' },
+      { id: 'b', title: 'Plan B', status: 'done', depends_on: ['a'],
+        body: VALID_BODY, implementationMd: VALID_IMPL,
+        inputsMd: '## From plans\n\n### a\n- types\n' },
       // c has both a missing dep AND is done with incomplete dep
-      { id: 'c', title: 'Plan C', status: 'done', depends_on: ['nonexistent', 'a'] },
+      { id: 'c', title: 'Plan C', status: 'done', depends_on: ['nonexistent', 'a'],
+        body: VALID_BODY, implementationMd: VALID_IMPL,
+        inputsMd: '## From plans\n\n### a\n- types\n' },
     ]);
     process.cwd = () => root;
 
@@ -90,9 +108,11 @@ describe('lint command', () => {
 
   it('detects orphaned draft plans', () => {
     const { root } = createFixture([
-      { id: 'a', title: 'Plan A', status: 'draft' },
-      { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
-      { id: 'c', title: 'Plan C', status: 'draft' },
+      { id: 'a', title: 'Plan A', status: 'draft', body: '\n## Problem\n\nP\n' },
+      { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'],
+        body: VALID_BODY, implementationMd: VALID_IMPL,
+        inputsMd: '## From plans\n\n### a\n- types\n' },
+      { id: 'c', title: 'Plan C', status: 'draft', body: '\n## Problem\n\nP\n' },
     ]);
     process.cwd = () => root;
 
@@ -105,7 +125,7 @@ describe('lint command', () => {
 
   it('sets exit code with --strict and warnings', () => {
     const { root } = createFixture([
-      { id: 'a', title: 'Plan A', status: 'draft' },
+      { id: 'a', title: 'Plan A', status: 'draft', body: '\n## Problem\n\nP\n' },
     ]);
     process.cwd = () => root;
 
@@ -116,9 +136,10 @@ describe('lint command', () => {
 
   it('outputs JSON with errors and warnings', () => {
     const { root } = createFixture([
-      { id: 'a', title: 'Plan A', status: 'not_started', depends_on: ['nonexistent'] },
-      { id: 'b', title: 'Plan B', status: 'draft' },
-      { id: 'c', title: 'Plan C', status: 'done' },
+      { id: 'a', title: 'Plan A', status: 'not_started', depends_on: ['nonexistent'],
+        body: VALID_BODY, implementationMd: VALID_IMPL },
+      { id: 'b', title: 'Plan B', status: 'draft', body: '\n## Problem\n\nP\n' },
+      { id: 'c', title: 'Plan C', status: 'done', body: VALID_BODY, implementationMd: VALID_IMPL },
     ]);
     process.cwd = () => root;
 
@@ -132,13 +153,15 @@ describe('lint command', () => {
     expect(parsed.errors[0]).toHaveProperty('plan_id');
     expect(parsed.errors[0]).toHaveProperty('type');
     expect(parsed.errors[0]).toHaveProperty('message');
+    expect(parsed.structural).toBeDefined();
   });
 
   it('outputs clean JSON when no issues', () => {
     const { root } = createFixture([
-      { id: 'a', title: 'Plan A', status: 'done', directory: true,
+      { id: 'a', title: 'Plan A', status: 'done', body: VALID_BODY, implementationMd: VALID_IMPL,
         outputsMd: '## Types\n- Person\n' },
-      { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], directory: true,
+      { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'],
+        body: VALID_BODY, implementationMd: VALID_IMPL,
         inputsMd: '## From plans\n\n### a\n- Person type\n' },
     ]);
     process.cwd = () => root;
@@ -152,8 +175,9 @@ describe('lint command', () => {
   });
 
   it('does not set exit code without --strict for warnings only', () => {
+    // Draft plan with proper ## Problem — only generates orphan warning, no errors
     const { root } = createFixture([
-      { id: 'a', title: 'Plan A', status: 'draft' },
+      { id: 'a', title: 'Plan A', status: 'draft', body: '\n## Problem\n\nP\n' },
     ]);
     process.cwd = () => root;
 
@@ -164,8 +188,10 @@ describe('lint command', () => {
 
   it('warns when plan has dependents but no outputs.md', () => {
     const { root } = createFixture([
-      { id: 'core', title: 'Core', status: 'not_started' },
-      { id: 'parser', title: 'Parser', status: 'not_started', depends_on: ['core'] },
+      { id: 'core', title: 'Core', status: 'not_started', body: VALID_BODY, implementationMd: VALID_IMPL },
+      { id: 'parser', title: 'Parser', status: 'not_started', depends_on: ['core'],
+        body: VALID_BODY, implementationMd: VALID_IMPL,
+        inputsMd: '## From plans\n\n### core\n- types\n' },
     ]);
     process.cwd = () => root;
 
@@ -176,43 +202,13 @@ describe('lint command', () => {
     expect(output).toContain('has dependents but no outputs.md');
   });
 
-  it('errors when inputs.md references plan not in depends_on', () => {
-    const { root } = createFixture([
-      { id: 'upstream', title: 'Upstream', status: 'not_started', directory: true,
-        outputsMd: '## Types\n- Person\n' },
-      { id: 'consumer', title: 'Consumer', status: 'not_started', directory: true,
-        inputsMd: '## From plans\n\n### upstream\n- Person type\n' },
-    ]);
-    process.cwd = () => root;
-
-    lintCommand();
-
-    const output = logs.join('\n');
-    expect(output).toContain('consumer');
-    expect(output).toContain('references "upstream" not in depends_on');
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('warns when inputs.md references plan with no outputs.md', () => {
-    const { root } = createFixture([
-      { id: 'no-outputs', title: 'No Outputs', status: 'not_started' },
-      { id: 'consumer', title: 'Consumer', status: 'not_started', depends_on: ['no-outputs'], directory: true,
-        inputsMd: '## From plans\n\n### no-outputs\n- Something\n' },
-    ]);
-    process.cwd = () => root;
-
-    lintCommand();
-
-    const output = logs.join('\n');
-    expect(output).toContain('consumer');
-    expect(output).toContain('no-outputs which has no outputs.md');
-  });
-
   it('passes when contracts are consistent', () => {
     const { root } = createFixture([
-      { id: 'upstream', title: 'Upstream', status: 'not_started', directory: true,
+      { id: 'upstream', title: 'Upstream', status: 'not_started',
+        body: VALID_BODY, implementationMd: VALID_IMPL,
         outputsMd: '## Types\n- Person\n' },
-      { id: 'consumer', title: 'Consumer', status: 'not_started', depends_on: ['upstream'], directory: true,
+      { id: 'consumer', title: 'Consumer', status: 'not_started', depends_on: ['upstream'],
+        body: VALID_BODY, implementationMd: VALID_IMPL,
         inputsMd: '## From plans\n\n### upstream\n- Person type\n' },
     ]);
     process.cwd = () => root;
@@ -220,34 +216,7 @@ describe('lint command', () => {
     lintCommand();
 
     const output = logs.join('\n');
-    expect(output).toContain('2 plans OK');
-  });
-
-  it('shows contract coverage in text output', () => {
-    const { root } = createFixture([
-      { id: 'core', title: 'Core', status: 'not_started', directory: true,
-        outputsMd: '## Types\n- Person\n' },
-      { id: 'parser', title: 'Parser', status: 'not_started', depends_on: ['core'] },
-      { id: 'standalone', title: 'Standalone', status: 'not_started' },
-    ]);
-    process.cwd = () => root;
-
-    lintCommand();
-
-    const output = logs.join('\n');
-    expect(output).toContain('Contract coverage: 100%');
-  });
-
-  it('includes contract_coverage in JSON output', () => {
-    const { root } = createFixture([
-      { id: 'core', title: 'Core', status: 'not_started' },
-      { id: 'parser', title: 'Parser', status: 'not_started', depends_on: ['core'] },
-    ]);
-    process.cwd = () => root;
-
-    lintCommand({ json: true });
-
-    const parsed = JSON.parse(logs.join(''));
-    expect(parsed.contract_coverage).toBe(0);
+    expect(output).toMatch(/^.*2 plans OK$/m);
+    expect(process.exitCode).toBeUndefined();
   });
 });

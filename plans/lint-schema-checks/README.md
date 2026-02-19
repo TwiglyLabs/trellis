@@ -1,10 +1,17 @@
 ---
 title: Lint Schema Validation
-status: not_started
+status: done
 depends_on:
   - plan-schema
-tags: [cli, validation, plan-management]
-description: Extend trellis lint to validate plan structure against the schema — missing sections, file layout, status gate compliance
+tags:
+  - cli
+  - validation
+  - plan-management
+description: >-
+  Extend trellis lint to validate plan structure against the schema — missing
+  sections, file layout, status gate compliance
+started_at: '2026-02-19T03:23:34.879Z'
+completed_at: '2026-02-19T03:31:06.624Z'
 ---
 
 # Lint Schema Validation

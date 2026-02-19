@@ -12,7 +12,7 @@ function createTestProject() {
   return { tmpDir, plansDir };
 }
 
-function writePlan(plansDir: string, id: string, frontmatter: Record<string, unknown>) {
+function writePlan(plansDir: string, id: string, frontmatter: Record<string, unknown>, body?: string) {
   const fm = Object.entries(frontmatter)
     .map(([k, v]) => {
       if (Array.isArray(v)) return `${k}:\n${v.map(i => `  - ${i}`).join('\n')}`;
@@ -21,7 +21,7 @@ function writePlan(plansDir: string, id: string, frontmatter: Record<string, unk
     .join('\n');
   const planDir = join(plansDir, id);
   mkdirSync(planDir, { recursive: true });
-  writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n\nBody for ${id}\n`);
+  writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n${body ?? `\nBody for ${id}\n`}`);
 }
 
 describe('Trellis class', () => {
@@ -303,8 +303,12 @@ describe('Trellis.lint()', () => {
   });
 
   it('returns clean result for valid plans', () => {
-    writePlan(plansDir, 'a', { title: 'A', status: 'done' });
-    writePlan(plansDir, 'b', { title: 'B', status: 'not_started', depends_on: ['a'] });
+    writePlan(plansDir, 'a', { title: 'A', status: 'done' }, '\n## Problem\n\nP\n\n## Approach\n\nA\n');
+    writeFileSync(join(plansDir, 'a', 'implementation.md'), '## Steps\n\n## Testing\n\n## Done-when\n');
+    writeFileSync(join(plansDir, 'a', 'outputs.md'), '## Types\n- Person\n');
+    writePlan(plansDir, 'b', { title: 'B', status: 'not_started', depends_on: ['a'] }, '\n## Problem\n\nP\n\n## Approach\n\nA\n');
+    writeFileSync(join(plansDir, 'b', 'implementation.md'), '## Steps\n\n## Testing\n\n## Done-when\n');
+    writeFileSync(join(plansDir, 'b', 'inputs.md'), '## From plans\n\n### a\n- types\n');
 
     const t = new Trellis(tmpDir);
     const result = t.lint();
@@ -322,7 +326,7 @@ describe('Trellis.lint()', () => {
   });
 
   it('strict mode fails on warnings', () => {
-    writePlan(plansDir, 'a', { title: 'A', status: 'draft' });
+    writePlan(plansDir, 'a', { title: 'A', status: 'draft' }, '\n## Problem\n\nP\n');
 
     const t = new Trellis(tmpDir);
     const relaxed = t.lint();

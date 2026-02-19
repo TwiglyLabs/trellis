@@ -1,11 +1,11 @@
 import { join, dirname } from 'path';
 import { EventEmitter } from 'events';
-import { watch as fsWatch, type FSWatcher, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'fs';
+import { watch as fsWatch, type FSWatcher, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync } from 'fs';
 import matter from 'gray-matter';
 import { loadConfig, scanPlans } from './scanner.ts';
 import { buildGraph, detectCycles, transitiveDependents, computeCriticalPath, pickNext, computeChunks, newlyReady } from './graph.ts';
 import { parseFrontmatter, validateFrontmatter, updatePlanFile } from './frontmatter.ts';
-import { validateStatusGate, readSection, writeSection } from './schema.ts';
+import { validateStatusGate, detectSections, readSection, writeSection } from './schema.ts';
 import { filterPlans, VALID_STATUSES } from './utils.ts';
 import { PlanFile } from './types.ts';
 import type { GraphData, Chunk, CrossChunkEdge, ChunkResult } from './graph.ts';
@@ -93,7 +93,8 @@ export interface LintResult {
   okCount: number;
   errors: LintIssue[];
   warnings: LintIssue[];
-  contractCoverage: number;
+  structural: { errors: LintIssue[]; warnings: LintIssue[] };
+  fixed: string[];
 }
 
 export interface GraphNode {
@@ -449,13 +450,16 @@ export class Trellis extends EventEmitter {
     };
   }
 
-  lint(options?: { strict?: boolean }): LintResult {
+  lint(options?: { strict?: boolean; fix?: boolean }): LintResult {
     const plans = this.plans;
     const graph = this.graphData;
     const planIds = new Set(plans.map(p => p.id));
     const plansWithErrors = new Set<string>();
     const errors: LintIssue[] = [];
     const warnings: LintIssue[] = [];
+    const structuralErrors: LintIssue[] = [];
+    const structuralWarnings: LintIssue[] = [];
+    const fixed: string[] = [];
 
     // Cycles
     for (const cycle of detectCycles(plans)) {
@@ -517,41 +521,135 @@ export class Trellis extends EventEmitter {
       }
     }
 
-    // Contract checks
-    const planMap = new Map(plans.map(p => [p.id, p]));
-    for (const plan of plans) {
-      if ((graph.dependents.get(plan.id) ?? []).length > 0 && !plan.outputs) {
-        warnings.push({ planId: plan.id, type: 'missing_outputs', message: `${plan.id} has dependents but no outputs.md` });
+    // --- Structural checks ---
+
+    // Scan plans directory for malformed entries (single files, dirs without README.md)
+    const plansDir = join(this.projectDir, this.config.plans_dir);
+    if (existsSync(plansDir)) {
+      let entries: string[];
+      try { entries = readdirSync(plansDir); } catch { entries = []; }
+      for (const entry of entries) {
+        const fullPath = join(plansDir, entry);
+        try {
+          const stat = statSync(fullPath);
+          if (!stat.isDirectory() && entry.endsWith('.md')) {
+            structuralErrors.push({ planId: entry, type: 'single_file_plan', message: `${entry} is a single file, not a plan directory` });
+            plansWithErrors.add(entry);
+          } else if (stat.isDirectory() && !existsSync(join(fullPath, 'README.md'))) {
+            structuralErrors.push({ planId: entry, type: 'missing_readme', message: `${entry}/ is missing README.md` });
+            plansWithErrors.add(entry);
+          }
+        } catch { /* skip unreadable entries */ }
       }
-      if (plan.inputs) {
-        for (const refId of plan.inputs.fromPlans) {
-          if (!(plan.frontmatter.depends_on ?? []).includes(refId)) {
-            errors.push({ planId: plan.id, type: 'orphaned_input_ref', message: `${plan.id} inputs.md references "${refId}" not in depends_on` });
-            plansWithErrors.add(plan.id);
-          }
-          const upstream = planMap.get(refId);
-          if (upstream && !upstream.outputs) {
-            warnings.push({ planId: plan.id, type: 'missing_upstream_outputs', message: `${plan.id} inputs.md references ${refId} which has no outputs.md` });
-          }
+    }
+
+    for (const plan of plans) {
+      const planDir = dirname(plan.filePath);
+      const hasDependents = (graph.dependents.get(plan.id) ?? []).length > 0;
+      const hasDependsOn = (plan.frontmatter.depends_on ?? []).length > 0;
+
+      // File layout warnings
+      if (hasDependsOn && !existsSync(join(planDir, PlanFile.INPUTS))) {
+        structuralWarnings.push({ planId: plan.id, type: 'missing_inputs', message: `${plan.id} has depends_on but no inputs.md` });
+      }
+      if (hasDependents && !existsSync(join(planDir, PlanFile.OUTPUTS))) {
+        structuralWarnings.push({ planId: plan.id, type: 'missing_outputs', message: `${plan.id} has dependents but no outputs.md` });
+      }
+
+      // inputs.md section warning
+      if (existsSync(join(planDir, PlanFile.INPUTS))) {
+        const inputsContent = readFileSync(join(planDir, PlanFile.INPUTS), 'utf8');
+        const inputsSections = detectSections(inputsContent);
+        const hasFromPlans = inputsSections.includes('From plans');
+        const hasFromCode = inputsSections.includes('From existing code');
+        if (!hasFromPlans && !hasFromCode) {
+          structuralWarnings.push({ planId: plan.id, type: 'inputs_sections', message: `${plan.id} inputs.md missing "## From plans" or "## From existing code"` });
+        }
+      }
+
+      // Status gate compliance
+      const gate = validateStatusGate(plan, plan.frontmatter.status, hasDependents);
+      if (!gate.pass) {
+        for (const missing of gate.missing) {
+          structuralErrors.push({ planId: plan.id, type: 'gate_violation', message: `${plan.id}: ${missing}` });
+          plansWithErrors.add(plan.id);
+        }
+
+        // --fix: scaffold missing files and sections
+        if (options?.fix) {
+          this._fixStructuralIssues(plan, gate.missing, fixed);
         }
       }
     }
 
-    // Coverage
-    const withDependents = plans.filter(p => (graph.dependents.get(p.id) ?? []).length > 0);
-    const withOutputs = withDependents.filter(p => !!p.outputs);
-    const coverage = withDependents.length > 0 ? Math.round((withOutputs.length / withDependents.length) * 100) : 100;
-
-    const ok = errors.length === 0 && (options?.strict ? warnings.length === 0 : true);
+    const allErrors = [...errors, ...structuralErrors];
+    const allWarnings = [...warnings, ...structuralWarnings];
+    const ok = allErrors.length === 0 && (options?.strict ? allWarnings.length === 0 : true);
 
     return {
       ok,
       total: plans.length,
       okCount: plans.length - plansWithErrors.size,
-      errors,
-      warnings,
-      contractCoverage: coverage,
+      errors: allErrors,
+      warnings: allWarnings,
+      structural: { errors: structuralErrors, warnings: structuralWarnings },
+      fixed,
     };
+  }
+
+  private _fixStructuralIssues(plan: Plan, missing: string[], fixed: string[]): void {
+    const planDir = dirname(plan.filePath);
+
+    for (const item of missing) {
+      // Missing file: implementation.md
+      if (item === 'Missing file: implementation.md') {
+        const implPath = join(planDir, PlanFile.IMPLEMENTATION);
+        if (!existsSync(implPath)) {
+          writeFileSync(implPath, '## Steps\n\n\n## Testing\n\n\n## Done-when\n\n');
+          fixed.push(`${plan.id}: created implementation.md`);
+        }
+      }
+
+      // Missing file: outputs.md
+      if (item.startsWith('Missing file: outputs.md')) {
+        const outputsPath = join(planDir, PlanFile.OUTPUTS);
+        if (!existsSync(outputsPath)) {
+          writeFileSync(outputsPath, '## Outputs\n\n');
+          fixed.push(`${plan.id}: created outputs.md`);
+        }
+      }
+
+      // Missing sections in README.md
+      const readmeSectionMatch = item.match(/^README\.md: missing "## (.+)"$/);
+      if (readmeSectionMatch) {
+        const sectionName = readmeSectionMatch[1];
+        const raw = readFileSync(plan.filePath, 'utf8');
+        const parsed = matter(raw);
+        const sections = detectSections(parsed.content);
+        if (!sections.includes(sectionName)) {
+          const newBody = writeSection(parsed.content, sectionName, '\n');
+          const updated = matter.stringify(newBody, parsed.data);
+          writeFileSync(plan.filePath, updated);
+          fixed.push(`${plan.id}: added ## ${sectionName} to README.md`);
+        }
+      }
+
+      // Missing sections in implementation.md
+      const implSectionMatch = item.match(/^implementation\.md: missing "## (.+)"$/);
+      if (implSectionMatch) {
+        const sectionName = implSectionMatch[1];
+        const implPath = join(planDir, PlanFile.IMPLEMENTATION);
+        if (existsSync(implPath)) {
+          const content = readFileSync(implPath, 'utf8');
+          const sections = detectSections(content);
+          if (!sections.includes(sectionName)) {
+            const updated = writeSection(content, sectionName, '\n');
+            writeFileSync(implPath, updated);
+            fixed.push(`${plan.id}: added ## ${sectionName} to implementation.md`);
+          }
+        }
+      }
+    }
   }
 
   graph(): GraphResult {

@@ -411,7 +411,7 @@ describe('Consumer workflow: directory-based plans with contracts', () => {
     }
   });
 
-  it('lint() reports contract-related warnings', () => {
+  it('lint() reports structural warnings for missing outputs.md', () => {
     const tmpDir = join(tmpdir(), `trellis-lint-contracts-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const plansDir = join(tmpDir, 'plans');
     mkdirSync(plansDir, { recursive: true });
@@ -419,11 +419,15 @@ describe('Consumer workflow: directory-based plans with contracts', () => {
 
     mkdirSync(join(plansDir, 'upstream'), { recursive: true });
     writeFileSync(join(plansDir, 'upstream', 'README.md'),
-      '---\ntitle: Upstream\nstatus: done\n---\n\nNo outputs defined.\n');
+      '---\ntitle: Upstream\nstatus: not_started\n---\n\n## Problem\n\nP\n\n## Approach\n\nA\n');
+    writeFileSync(join(plansDir, 'upstream', 'implementation.md'),
+      '## Steps\n\n## Testing\n\n## Done-when\n');
 
     mkdirSync(join(plansDir, 'downstream'), { recursive: true });
     writeFileSync(join(plansDir, 'downstream', 'README.md'),
-      '---\ntitle: Downstream\nstatus: not_started\ndepends_on:\n  - upstream\n---\n\nNeeds upstream.\n');
+      '---\ntitle: Downstream\nstatus: not_started\ndepends_on:\n  - upstream\n---\n\n## Problem\n\nP\n\n## Approach\n\nA\n');
+    writeFileSync(join(plansDir, 'downstream', 'implementation.md'),
+      '## Steps\n\n## Testing\n\n## Done-when\n');
     writeFileSync(join(plansDir, 'downstream', 'inputs.md'),
       '## From plans\n### upstream\n- Some deliverable\n');
 
@@ -431,8 +435,9 @@ describe('Consumer workflow: directory-based plans with contracts', () => {
       const t = new Trellis(tmpDir);
       const lint = t.lint();
 
+      // Structural warning: upstream has dependents but no outputs.md
       expect(lint.warnings.some(w => w.type === 'missing_outputs' && w.planId === 'upstream')).toBe(true);
-      expect(lint.warnings.some(w => w.type === 'missing_upstream_outputs' && w.planId === 'downstream')).toBe(true);
+      expect(lint.structural.warnings.some(w => w.type === 'missing_outputs' && w.planId === 'upstream')).toBe(true);
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

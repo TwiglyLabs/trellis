@@ -71,10 +71,11 @@ program
 
 program
   .command('lint')
-  .description('Find cycles, missing deps, bad frontmatter')
+  .description('Find cycles, missing deps, bad frontmatter, and structural issues')
   .option('--strict', 'Exit with error on warnings too')
   .option('--json', 'Output as JSON')
-  .addHelpText('after', '\nExamples:\n  $ trellis lint\n  $ trellis lint --strict\n  $ trellis lint --json')
+  .option('--fix', 'Auto-scaffold missing files and sections')
+  .addHelpText('after', '\nExamples:\n  $ trellis lint\n  $ trellis lint --strict\n  $ trellis lint --json\n  $ trellis lint --fix')
   .action((options) => lintCommand(options));
 
 program

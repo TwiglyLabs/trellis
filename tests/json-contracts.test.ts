@@ -363,11 +363,12 @@ describe('JSON contracts', () => {
       expect(output).toHaveProperty('ok_count');
       expect(output).toHaveProperty('errors');
       expect(output).toHaveProperty('warnings');
-      expect(output).toHaveProperty('contract_coverage');
+      expect(output).toHaveProperty('structural');
 
       expect(typeof output.ok).toBe('boolean');
       expect(typeof output.ok_count).toBe('number');
-      expect(typeof output.contract_coverage).toBe('number');
+      expect(output.structural).toHaveProperty('errors');
+      expect(output.structural).toHaveProperty('warnings');
       expect(Array.isArray(output.errors)).toBe(true);
       expect(Array.isArray(output.warnings)).toBe(true);
     });
