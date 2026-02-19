@@ -59,6 +59,7 @@ trellis init                       # scaffold .trellis config + plans/ directory
 trellis show <plan-id>             # show plan details and dependency chain
 trellis epic [name]                # show epic completion status
 trellis chunks                     # identify reviewable subgraphs
+trellis metrics                    # cycle time, queue time, sessions for done plans
 trellis setup-hooks                # install Claude Code hooks + git pre-commit hook
 ```
 
@@ -74,8 +75,11 @@ tags: [foundation, public]         # optional: freeform tags
 repo: public                       # optional: target repo
 description: One-line summary      # optional
 assignee: agent-name               # optional
-started_at: 2026-02-11T10:00:00Z  # optional, auto-set by trellis update
-completed_at: 2026-02-12T15:30:00Z # optional, auto-set by trellis update
+not_started_at: 2026-02-10T09:00:00Z # optional, auto-set on → not_started
+started_at: 2026-02-11T10:00:00Z  # optional, auto-set on → in_progress
+completed_at: 2026-02-12T15:30:00Z # optional, auto-set on → done
+sessions: 2                        # optional, prompted on → done
+deviation: minor                   # optional: none | minor | major, prompted on → done
 ---
 ```
 
