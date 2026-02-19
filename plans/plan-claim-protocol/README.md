@@ -1,10 +1,16 @@
 ---
 title: Plan Claim Protocol
-status: draft
+status: not_started
 depends_on:
   - plan-schema
-tags: [cross-repo, workflow, agent, plan-management]
-description: Reusable GitHub Actions workflow for agents to safely claim plans without PR bypass
+tags:
+  - cross-repo
+  - workflow
+  - agent
+  - plan-management
+description: >-
+  Reusable GitHub Actions workflow for agents to safely claim plans without PR
+  bypass
 ---
 
 # Plan Claim Protocol

@@ -1,7 +1,10 @@
 ---
 title: Plan Review System
-status: draft
-tags: [orchestration, cli, review]
+status: not_started
+tags:
+  - orchestration
+  - cli
+  - review
 depends_on:
   - orchestration-foundations
 description: Chunk-based plan review with multi-agent synthesis for large plan sets
@@ -20,7 +23,7 @@ Large trellis projects (20+ plans, 20K+ lines) exceed a single context window. M
 3. **Parallel review** — dispatch subagents per chunk, synthesize findings
 4. **Structured output** — machine-readable findings for downstream tooling
 
-## Components
+## Approach
 
 ### Trellis Side: `trellis chunks` command
 

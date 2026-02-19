@@ -1,10 +1,15 @@
 ---
 title: Agent Guardrails
-status: draft
+status: not_started
 depends_on:
   - cli-write-surface
-tags: [enforcement, agent, plan-management]
-description: Prevent agents from directly editing plan files — enforce MCP-only interaction via hooks and instructions
+tags:
+  - enforcement
+  - agent
+  - plan-management
+description: >-
+  Prevent agents from directly editing plan files — enforce MCP-only interaction
+  via hooks and instructions
 ---
 
 # Agent Guardrails

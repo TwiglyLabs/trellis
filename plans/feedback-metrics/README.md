@@ -1,9 +1,13 @@
 ---
 title: Feedback & Metrics
-status: draft
+status: not_started
 depends_on: []
-tags: [process, plan-management]
-description: Capture turnaround data on plan execution so the process can be calibrated over time
+tags:
+  - process
+  - plan-management
+description: >-
+  Capture turnaround data on plan execution so the process can be calibrated
+  over time
 ---
 
 # Feedback & Metrics
