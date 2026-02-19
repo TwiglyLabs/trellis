@@ -2,7 +2,7 @@
 title: Cross-Repo Project Manifest
 status: draft
 depends_on:
-  - active/plan-schema
+  - plan-schema
 tags: [cross-repo, foundation, plan-management]
 description: Project manifest format, repo discovery, and git-based plan reader for cross-repo coordination
 ---

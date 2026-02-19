@@ -1,6 +1,6 @@
 # Trellis
 
-**Freshness:** 2026-02-11
+**Freshness:** 2026-02-18
 
 ## Purpose
 
@@ -19,11 +19,33 @@ No manifest file. The plan files ARE the source of truth.
 
 Each consuming project has a `plans/` directory with markdown files. Each plan file has YAML frontmatter with metadata (title, status, depends_on, tags). Trellis scans, parses frontmatter, and builds the DAG.
 
-A plan is either:
-- A single `.md` file with frontmatter
-- A directory with a `README.md` (for complex multi-file plans)
+A plan is always a directory with a `README.md` containing frontmatter. Single `.md` files are not recognized as plans. Plans live flat under `plans/` — no status-based subfolders.
 
-Plan ID = relative path from plans dir, minus extension.
+Plan ID = directory name relative to plans dir.
+
+### Plan Directory Structure
+
+```
+plans/<plan-id>/
+  README.md              # frontmatter + Problem + Approach
+  implementation.md      # Steps + Testing + Done-when
+  inputs.md              # optional: dependencies and consumed interfaces
+  outputs.md             # optional (required at done if plan has dependents)
+```
+
+### Status Gates
+
+`trellis update` enforces structural gates on status transitions:
+
+| Transition | Gate |
+|---|---|
+| → `draft` | README.md with `## Problem` |
+| → `not_started` | README.md has `## Problem` + `## Approach`. implementation.md with `## Steps`, `## Testing`, `## Done-when` |
+| → `in_progress` | Same as not_started (already specified) |
+| → `done` | outputs.md required if plan has dependents |
+| → `archived` | No gate |
+
+Use `--force` to bypass gates.
 
 ## Commands
 
@@ -35,6 +57,8 @@ trellis update <plan-id> <status>  # edit frontmatter in-place, show what unbloc
 trellis lint                       # find cycles, missing deps, bad frontmatter
 trellis init                       # scaffold .trellis config + plans/ directory
 trellis show <plan-id>             # show plan details and dependency chain
+trellis epic [name]                # show epic completion status
+trellis chunks                     # identify reviewable subgraphs
 ```
 
 ## Frontmatter Schema

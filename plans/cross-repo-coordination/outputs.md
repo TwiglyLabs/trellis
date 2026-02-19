@@ -17,7 +17,7 @@
 - `scanWorkspace(config)` function returning `Map<string, Plan[]>` (alias → plans)
 - Plans gain a `project` field indicating which project they belong to
 - Unified graph construction: `buildWorkspaceGraph(allPlans)` merging plans from all projects
-- Qualified IDs in the graph: `sdk:active/core-extraction` for cross-project, `active/core-extraction` for local
+- Qualified IDs in the graph: `sdk:core-extraction` for cross-project, `core-extraction` for local
 
 ## Cross-project dependency resolution
 - `trellis ready` checks cross-project dependencies even in project-local mode

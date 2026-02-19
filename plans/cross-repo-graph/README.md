@@ -2,7 +2,7 @@
 title: Unified Cross-Repo DAG
 status: draft
 depends_on:
-  - active/cross-repo-manifest
+  - cross-repo-manifest
 tags: [cross-repo, graph, plan-management]
 description: Qualified plan IDs, unified graph construction, and cross-repo-aware commands
 ---

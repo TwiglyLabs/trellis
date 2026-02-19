@@ -3,7 +3,7 @@ title: Plan Review System
 status: draft
 tags: [orchestration, cli, review]
 depends_on:
-  - active/orchestration-foundations
+  - orchestration-foundations
 description: Chunk-based plan review with multi-agent synthesis for large plan sets
 ---
 

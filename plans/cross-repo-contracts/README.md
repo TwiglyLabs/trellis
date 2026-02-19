@@ -2,7 +2,7 @@
 title: Cross-Repo Contract System
 status: archived
 depends_on:
-  - active/plan-schema
+  - plan-schema
 tags: [cross-repo, contracts, plan-management]
 description: Enable plans to declare dependencies on external contracts (npm exports, OpenAPI specs, etc.) verified through a plugin system
 ---

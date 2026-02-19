@@ -3,7 +3,7 @@
 ## Folder Structure
 
 ```
-plans/active/my-plan/
+plans/my-plan/
   README.md      # Plan frontmatter + implementation details
   inputs.md      # What this plan needs to start
   outputs.md     # What this plan delivers when done

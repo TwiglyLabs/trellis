@@ -2,7 +2,7 @@
 title: Cross-Repo Coordination
 status: archived
 depends_on:
-  - active/chunk-reduction
+  - chunk-reduction
 tags: [workspace, multi-repo, coordination]
 description: Enable trellis to track plan dependencies and contracts across multiple repositories
 ---
@@ -64,8 +64,8 @@ Plans reference cross-project dependencies with qualified IDs:
 
 ```yaml
 depends_on:
-  - active/migration-infrastructure      # same project (unchanged)
-  - sdk:active/core-extraction            # plan in sdk project
+  - migration-infrastructure              # same project (unchanged)
+  - sdk:core-extraction                   # plan in sdk project
   - meta:contracts/sync-protocol          # plan in meta project
 ```
 
@@ -76,7 +76,7 @@ In `inputs.md`, the same convention:
 ```markdown
 ## From plans
 
-### sdk:active/core-extraction
+### sdk:core-extraction
 - `Person`, `Claim`, `Source` entity types from `@acorn/core`
 - `AcornStore` interface
 
@@ -93,15 +93,15 @@ When running in workspace mode, `scanPlans` expands to scan all projects:
 scanWorkspace(workspaceConfig) → Map<projectAlias, Plan[]>
 ```
 
-The unified graph merges all plans with qualified IDs. A plan `core-extraction` in project `sdk` becomes `sdk:active/core-extraction` in the workspace graph. Within its own project, the unqualified `active/core-extraction` still works.
+The unified graph merges all plans with qualified IDs. A plan `core-extraction` in project `sdk` becomes `sdk:core-extraction` in the workspace graph. Within its own project, the unqualified `core-extraction` still works.
 
 ### 4. Cross-Project Contract Validation
 
 Extend existing lint checks to work across project boundaries:
 
-- **Error:** `depends_on` references `sdk:active/foo` but no plan with ID `active/foo` exists in the `sdk` project
-- **Error:** `inputs.md` references `sdk:active/core-extraction` but that plan has no `outputs.md`
-- **Warning:** `inputs.md` references a contract heading from `sdk:active/core-extraction/outputs.md` that doesn't exist (heading-level validation)
+- **Error:** `depends_on` references `sdk:foo` but no plan with ID `foo` exists in the `sdk` project
+- **Error:** `inputs.md` references `sdk:core-extraction` but that plan has no `outputs.md`
+- **Warning:** `inputs.md` references a contract heading from `sdk:core-extraction/outputs.md` that doesn't exist (heading-level validation)
 - **Warning:** plan has cross-project dependents but no `outputs.md`
 
 ### 5. Workspace Commands
@@ -129,7 +129,7 @@ Existing commands gain workspace awareness:
 - Reports per-project and workspace-level issues
 
 **`trellis show <qualified-id>`**
-- Works with qualified IDs: `trellis show sdk:active/core-extraction`
+- Works with qualified IDs: `trellis show sdk:core-extraction`
 - Shows cross-project dependents and dependencies
 
 ### 6. Project-Scoped Defaults
@@ -172,7 +172,7 @@ The key UX decision: **cross-project blocking is always checked**, even without 
 Per-project remotes (each `.trellis` listing siblings) means every project needs to know about every other project. N projects = N files to update when adding a project. A single workspace file is O(1) for additions and makes the topology explicit in one place.
 
 **Why qualified IDs, not global uniqueness?**
-Requiring globally unique plan IDs across all repos is fragile — two repos might independently create `active/setup`. Qualified IDs (`sdk:active/setup` vs `cloud:active/setup`) are unambiguous and self-documenting.
+Requiring globally unique plan IDs across all repos is fragile — two repos might independently create `setup`. Qualified IDs (`sdk:setup` vs `cloud:setup`) are unambiguous and self-documenting.
 
 **Why always check cross-project blocking?**
 The alternative is `trellis ready` in project mode ignoring cross-project deps. This is dangerous — an agent working in `acorn-cloud` would pick up a plan that's actually blocked by unfinished SDK work. Silent lies about readiness are worse than the cost of scanning siblings.

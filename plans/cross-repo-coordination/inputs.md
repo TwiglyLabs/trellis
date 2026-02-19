@@ -2,7 +2,7 @@
 
 ## From plans
 
-### active/chunk-reduction
+### chunk-reduction
 - Plan contract convention (`inputs.md`/`outputs.md` format)
 - `PlanContract` type with parsed sections, referenced plan IDs, referenced code paths
 - Contract-aware lint checks (foundation to extend for cross-project validation)

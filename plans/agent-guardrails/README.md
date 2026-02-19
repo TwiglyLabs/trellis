@@ -2,7 +2,7 @@
 title: Agent Guardrails
 status: draft
 depends_on:
-  - active/cli-write-surface
+  - cli-write-surface
 tags: [enforcement, agent, plan-management]
 description: Prevent agents from directly editing plan files — enforce MCP-only interaction via hooks and instructions
 ---

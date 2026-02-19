@@ -2,7 +2,7 @@
 title: Lint Schema Validation
 status: not_started
 depends_on:
-  - active/plan-schema
+  - plan-schema
 tags: [cli, validation, plan-management]
 description: Extend trellis lint to validate plan structure against the schema — missing sections, file layout, status gate compliance
 ---

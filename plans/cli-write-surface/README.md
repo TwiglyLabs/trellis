@@ -2,7 +2,7 @@
 title: CLI Write Surface & MCP Server
 status: not_started
 depends_on:
-  - active/plan-schema
+  - plan-schema
 tags: [cli, mcp, plan-management]
 description: Add trellis CLI commands and an MCP server — the data layer API for plan management
 ---
