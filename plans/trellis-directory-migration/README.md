@@ -1,11 +1,14 @@
 ---
 title: Migrate .trellis file to .trellis/ directory
-status: draft
+status: done
 description: >-
   Convert flat .trellis config file to a .trellis/ directory with config,
   .gitignore, and cache/ — prerequisite for cross-repo cache storage
 tags:
   - infrastructure
+not_started_at: '2026-02-20T22:38:00.174Z'
+started_at: '2026-02-20T22:46:57.356Z'
+completed_at: '2026-02-20T22:56:57.520Z'
 ---
 
 ## Problem
@@ -17,7 +20,6 @@ Cross-repo operations (coming in cross-repo-graph) need a cache directory for fe
 The `.trellis` file also locks us into a single flat namespace. A directory gives room for tracked config, ignored cache, and future extensibility without proliferating dotfiles.
 
 ## Approach
-
 ### New directory layout
 
 ```
@@ -29,34 +31,65 @@ The `.trellis` file also locks us into a single flat namespace. A directory give
     plans/
       canopy.json     # cached Plan[] for each sibling repo
       grove.json
-    meta.json         # fetch timestamps and TTL metadata
 ```
 
 `config` is tracked in git (same content as today's `.trellis` file). `cache/` is gitignored — it's local, ephemeral, and rebuilt on `trellis fetch`.
+
+Each cache file is self-describing — it wraps the payload with a `fetchedAt` timestamp:
+
+```json
+{
+  "data": { ... },
+  "fetchedAt": "2026-02-20T12:00:00.000Z"
+}
+```
+
+No separate `meta.json`. Staleness is determined from the `fetchedAt` field in the cache entry itself.
 
 ### Backward-compatible config loading
 
 `loadConfig()` detects whether `.trellis` is a file or directory:
 
-- **File** — reads it directly, same as today. No behavior change. Emits a one-time stderr hint: "Run `trellis init` to upgrade to directory format."
+- **File** — reads it directly, same as today. No behavior change. Emits a stderr hint on every invocation: "Tip: run `trellis init` to upgrade to directory format." (This runs once per command, not persisted — there's no local state to track "already shown.")
 - **Directory** — reads `.trellis/config` with the same key=value parser.
 
 This means every existing trellis project works unchanged after the upgrade. No forced migration.
 
 ### Init creates directory format
 
-`trellis init` creates `.trellis/` directory with `config` and `.gitignore`. Existing `trellis init` on a repo that already has a `.trellis` file offers to migrate (move file content to `.trellis/config`, create `.gitignore`).
+`trellis init` creates `.trellis/` directory with `config` and `.gitignore`.
+
+When `.trellis` already exists, init uses `statSync().isDirectory()` to distinguish:
+- **Directory** — already migrated. Run `setupMcpJson()` + `setupHooks()` idempotently, then return.
+- **File** — offer to migrate: move file content to `.trellis/config`, create `.gitignore`, preserve existing values. `--yes` auto-migrates without prompting.
 
 ### Cache utilities
 
+New `CacheEntry<T>` type:
+
+```typescript
+interface CacheEntry<T> {
+  data: T;
+  fetchedAt: string;  // ISO 8601
+}
+```
+
 `ensureCacheDir(projectDir): string` — creates `.trellis/cache/` if it doesn't exist, returns the path. Called lazily by cross-repo fetch operations, not eagerly on every command.
 
-`readCache(projectDir, key): T | null` — reads and JSON-parses a cache file. Returns null if missing or corrupt.
+`readCache<T>(projectDir, key): CacheEntry<T> | null` — reads and JSON-parses a cache file from `.trellis/cache/<key>.json`. Returns null if missing or corrupt. The caller unwraps `.data` for the payload and passes the whole entry to `isCacheStale()`.
 
-`writeCache(projectDir, key, data, ttl?): void` — writes JSON to cache with timestamp in `meta.json`.
+`writeCache<T>(projectDir, key, data: T): void` — wraps `data` in a `CacheEntry` with `fetchedAt: new Date().toISOString()` and writes to `.trellis/cache/<key>.json`. Creates subdirectories as needed (e.g., `cache/plans/`).
 
-`isCacheStale(projectDir, key, maxAge): boolean` — checks meta.json timestamp against maxAge (default 5 minutes).
+`isCacheStale<T>(entry: CacheEntry<T>, maxAgeMs?: number): boolean` — compares `entry.fetchedAt` against `maxAgeMs` (default 300000ms = 5 min). Returns true if stale. Takes the cache entry directly — no filesystem access needed.
 
-### Hook update
+Cache keys map to filenames: `manifest` → `manifest.json`, `plans/canopy` → `plans/canopy.json`. Plans are cached per-repo, keyed by the manifest alias.
 
-`protect-plans.sh` currently uses `[ -f "$dir/.trellis" ]` to find the project root. Updated to check for both file and directory: `[ -f "$dir/.trellis" ] || [ -f "$dir/.trellis/config" ]`.
+### Hook updates
+
+**Both** hook scripts in `setup-hooks/logic.ts` reference `.trellis`:
+
+1. **`PROTECT_PLANS_HOOK`** (Claude Code hook) — `find_project_root()` uses `[ -f "$dir/.trellis" ]`. The `PLANS_DIR` extraction uses `grep '^plans_dir:' "$PROJECT_ROOT/.trellis"`.
+
+2. **Pre-commit hook** — uses `[ ! -f ".trellis" ]` and `grep '^plans_dir:' ".trellis"`.
+
+Both must be updated to detect file-or-directory and read from the correct config path (`.trellis` if file, `.trellis/config` if directory).

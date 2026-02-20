@@ -1,6 +1,6 @@
 ---
 title: Plan Claim Protocol
-status: not_started
+status: draft
 depends_on:
   - plan-schema
 tags:

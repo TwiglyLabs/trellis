@@ -130,3 +130,58 @@ Existing commands gain project awareness:
 Even without `--project`, `trellis ready` checks cross-repo deps via cache. A plan blocked by upstream work in another repo does NOT show as ready. The `--project` flag controls *display scope*, not *resolution scope*.
 
 This means the first cross-repo query uses cache (or triggers a fetch if cache is empty/stale). `--offline` skips this entirely for speed when working locally.
+
+## Async context creation
+`createContext()` becomes async to support git-based fetching:
+
+```typescript
+async function createContext(projectDir: string): Promise<TrellisContext> {
+  const config = loadConfig(projectDir);         // sync
+  const localPlans = scanPlans(plansDir);        // sync
+  
+  let allPlans = localPlans;
+  if (config.manifest) {
+    // Cache manifest separately from plans
+    let manifest: ProjectManifest;
+    const cachedManifest = readCache<ProjectManifest>(projectDir, 'manifest');
+    if (cachedManifest && !isCacheStale(cachedManifest)) {
+      manifest = cachedManifest.data;
+    } else {
+      manifest = await discoverManifest(...);
+      writeCache(projectDir, 'manifest', manifest);
+    }
+
+    // Fetch plans per-repo, keyed by alias
+    const remotePlans: Plan[] = [];
+    for (const alias of Object.keys(manifest.repos)) {
+      const cached = readCache<Plan[]>(projectDir, `plans/${alias}`);
+      if (cached && !isCacheStale(cached)) {
+        remotePlans.push(...cached.data);
+      } else {
+        const plans = await fetchRepoPlans(manifest, alias, ...);
+        writeCache(projectDir, `plans/${alias}`, plans);
+        remotePlans.push(...plans);
+      }
+    }
+    allPlans = mergeWithRemote(localPlans, remotePlans);
+  }
+  
+  const graph = buildGraph(allPlans);
+  return { projectDir, config, plansDir, plans: allPlans, graph };
+}
+```
+
+Local-only repos (no `manifest` in config) resolve immediately — no awaits hit. Cross-repo repos use the `.trellis/cache/` directory (from trellis-directory-migration) with a 5-minute TTL. The actual git fetch only happens when cache is stale or on explicit `trellis fetch`.
+
+`readCache()` returns `CacheEntry<T> | null` (a `{ data, fetchedAt }` wrapper). `isCacheStale()` takes the entry directly and checks `fetchedAt` against the default 5-minute TTL. Callers unwrap `.data` for the payload.
+
+Commander action handlers and MCP handlers are already async, so the change is one `await` per command.
+
+## Cache strategy
+Cache lives in `.trellis/cache/` (from trellis-directory-migration prerequisite):
+- `manifest.json` — cached `ProjectManifest` from last fetch
+- `plans/<alias>.json` — cached `Plan[]` per repo, keyed by manifest alias
+- Each file is a `CacheEntry<T>` wrapper: `{ data: T, fetchedAt: string }`
+- Default TTL: 5 minutes (300000ms), checked via `isCacheStale(entry)`
+- `trellis fetch` forces a fresh fetch and updates all cache files
+- `--offline` flag skips fetch entirely, uses cache or local-only
