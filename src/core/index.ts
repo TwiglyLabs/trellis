@@ -12,9 +12,12 @@ export type {
   RepoEntry,
   ProjectManifest,
   StatusGate,
+  PlanSummary,
+  BlockedPlanSummary,
+  CreateOptions,
 } from './types.ts';
 
-export { PlanFile, SECTION_REQUIREMENTS, STATUS_GATES } from './types.ts';
+export { PlanFile, SECTION_REQUIREMENTS, STATUS_GATES, toSummary } from './types.ts';
 
 // --- Context ---
 export type { TrellisContext } from './context.ts';

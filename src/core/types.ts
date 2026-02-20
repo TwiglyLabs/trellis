@@ -131,3 +131,39 @@ export interface GateResult {
   pass: boolean;
   missing: string[];
 }
+
+// --- Shared API types ---
+
+export interface PlanSummary {
+  id: string;
+  title: string;
+  status: PlanStatus;
+  description?: string;
+  tags: string[];
+  repo?: string;
+  assignee?: string;
+}
+
+export interface BlockedPlanSummary extends PlanSummary {
+  waitingOn: string[];
+}
+
+export type CreateOptions = {
+  title: string;
+  description?: string;
+  depends_on?: string[];
+  tags?: string[];
+};
+
+/** Convert a Plan to a PlanSummary. */
+export function toSummary(p: Plan): PlanSummary {
+  return {
+    id: p.id,
+    title: p.frontmatter.title,
+    status: p.frontmatter.status,
+    description: p.frontmatter.description,
+    tags: p.frontmatter.tags ?? [],
+    repo: p.frontmatter.repo,
+    assignee: p.frontmatter.assignee,
+  };
+}

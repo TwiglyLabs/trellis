@@ -3,7 +3,12 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import matter from 'gray-matter';
 import type { GraphData } from '../../core/graph.ts';
 import { validatePlanId } from '../../core/index.ts';
-import type { CreateResult, CreateOptions } from '../../api.ts';
+import type { CreateOptions } from '../../core/types.ts';
+
+export interface CreateResult {
+  id: string;
+  filePath: string;
+}
 
 export interface ComputeCreateOptions {
   id: string;

@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { renameCommand } from './command.ts';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeRename } from './logic.ts';
+import { computeShow } from '../show/logic.ts';
 import { createFixture } from '../../__tests__/helpers.ts';
 
 describe('renameCommand', () => {
@@ -78,13 +80,13 @@ describe('renameCommand', () => {
   });
 });
 
-describe('Trellis.rename', () => {
+describe('computeRename', () => {
   it('renames plan directory', () => {
     const { root } = createFixture([
       { id: 'old-name', title: 'Plan', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    t.rename('old-name', 'new-name');
+    const ctx = createContext(root);
+    computeRename({ oldId: 'old-name', newId: 'new-name', plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} });
 
     expect(existsSync(join(root, 'plans', 'new-name', 'README.md'))).toBe(true);
     expect(existsSync(join(root, 'plans', 'old-name'))).toBe(false);
@@ -95,11 +97,11 @@ describe('Trellis.rename', () => {
       { id: 'upstream', title: 'Upstream', status: 'done', body: '\n## Problem\nText\n' },
       { id: 'downstream', title: 'Downstream', status: 'draft', depends_on: ['upstream'], body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    t.rename('upstream', 'renamed');
+    let ctx = createContext(root);
+    computeRename({ oldId: 'upstream', newId: 'renamed', plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} });
 
-    const t2 = new Trellis(root);
-    const plan = t2.show('downstream');
+    const ctx2 = createContext(root);
+    const plan = computeShow({ planId: 'downstream', graph: ctx2.graph });
     expect(plan?.dependsOn[0].id).toBe('renamed');
   });
 
@@ -108,21 +110,21 @@ describe('Trellis.rename', () => {
       { id: 'a', title: 'A', status: 'draft', body: '\n## Problem\nText\n' },
       { id: 'b', title: 'B', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    expect(() => t.rename('a', 'b')).toThrow('already exists');
+    const ctx = createContext(root);
+    expect(() => computeRename({ oldId: 'a', newId: 'b', plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('already exists');
   });
 
   it('rejects if source not found', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    expect(() => t.rename('nonexistent', 'new-name')).toThrow('not found');
+    const ctx = createContext(root);
+    expect(() => computeRename({ oldId: 'nonexistent', newId: 'new-name', plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('not found');
   });
 
   it('rename rejects path traversal in new ID', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    expect(() => t.rename('test', '../evil')).toThrow('Invalid plan ID');
+    const ctx = createContext(root);
+    expect(() => computeRename({ oldId: 'test', newId: '../evil', plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('Invalid plan ID');
   });
 });

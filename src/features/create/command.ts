@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeCreate } from './logic.ts';
 
 export function register(program: Command): void {
   program
@@ -24,15 +25,23 @@ interface CreateOptions {
 }
 
 export function createCommand(id: string, options: CreateOptions): void {
-  const t = new Trellis(process.cwd());
+  const ctx = createContext(process.cwd());
 
   try {
-    const result = t.create(id, {
-      title: options.title,
-      description: options.description,
-      depends_on: options.dependsOn,
-      tags: options.tags,
-    });
+    const result = computeCreate(
+      {
+        id,
+        opts: {
+          title: options.title,
+          description: options.description,
+          depends_on: options.dependsOn,
+          tags: options.tags,
+        },
+        plansDir: ctx.plansDir,
+        graph: ctx.graph,
+      },
+      { refresh: () => {} },
+    );
 
     if (options.json) {
       console.log(JSON.stringify({ id: result.id, filePath: result.filePath }, null, 2));

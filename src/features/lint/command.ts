@@ -1,6 +1,8 @@
 import chalk from 'chalk';
+import { join } from 'path';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeLint } from './logic.ts';
 
 export function register(program: Command): void {
   program
@@ -14,8 +16,14 @@ export function register(program: Command): void {
 }
 
 export function lintCommand(options?: { strict?: boolean; json?: boolean; fix?: boolean }): void {
-  const t = new Trellis(process.cwd());
-  const result = t.lint({ strict: options?.strict, fix: options?.fix });
+  const ctx = createContext(process.cwd());
+  const result = computeLint({
+    plans: ctx.plans,
+    graph: ctx.graph,
+    projectDir: ctx.projectDir,
+    plansDir: join(ctx.projectDir, ctx.config.plans_dir),
+    options: { strict: options?.strict, fix: options?.fix },
+  });
 
   if (options?.json) {
     console.log(JSON.stringify({

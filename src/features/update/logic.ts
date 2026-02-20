@@ -3,7 +3,14 @@ import {
 } from '../../core/index.ts';
 import type { PlanStatus, PlanFrontmatter } from '../../core/types.ts';
 import type { GraphData } from '../../core/graph.ts';
-import type { UpdateResult } from '../../api.ts';
+
+export interface UpdateResult {
+  id: string;
+  previousStatus: PlanStatus;
+  newStatus: PlanStatus;
+  backward: boolean;
+  newlyReady: string[];
+}
 
 const STATUS_ORDER: Record<string, number> = {
   draft: 0,

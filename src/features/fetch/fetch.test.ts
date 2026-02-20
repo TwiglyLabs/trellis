@@ -1,19 +1,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createFixture } from '../../__tests__/helpers.ts';
-import type { FetchResult } from '../../api.ts';
+import type { FetchResult } from './logic.ts';
 
-vi.mock('../../api.ts', async () => {
-  const actual = await vi.importActual<typeof import('../../api.ts')>('../../api.ts');
+vi.mock('../../core/index.ts', async () => {
+  const actual = await vi.importActual<typeof import('../../core/index.ts')>('../../core/index.ts');
   return {
     ...actual,
-    Trellis: vi.fn(),
+    createContext: vi.fn(),
+  };
+});
+
+vi.mock('./logic.ts', async () => {
+  const actual = await vi.importActual<typeof import('./logic.ts')>('./logic.ts');
+  return {
+    ...actual,
+    computeFetch: vi.fn(),
   };
 });
 
 import { fetchCommand } from './command.ts';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeFetch } from './logic.ts';
 
-const MockTrellis = vi.mocked(Trellis);
+const MockCreateContext = vi.mocked(createContext);
+const MockComputeFetch = vi.mocked(computeFetch);
 
 describe('fetch command', () => {
   const logs: string[] = [];
@@ -25,7 +35,8 @@ describe('fetch command', () => {
     errors.length = 0;
     vi.spyOn(console, 'log').mockImplementation((...args) => logs.push(args.join(' ')));
     vi.spyOn(console, 'error').mockImplementation((...args) => errors.push(args.join(' ')));
-    MockTrellis.mockReset();
+    MockCreateContext.mockReset();
+    MockComputeFetch.mockReset();
   });
 
   afterEach(() => {
@@ -34,26 +45,35 @@ describe('fetch command', () => {
     process.exitCode = undefined;
   });
 
-  function mockTrellis(config: { manifest?: string }, fetchResult?: FetchResult | Error) {
-    const instance = { config, fetch: vi.fn() } as any;
+  function mockContext(config: { manifest?: string }, fetchResult?: FetchResult | Error) {
+    const ctx = {
+      config: { ...config, project: 'test-project', plans_dir: 'plans' },
+      projectDir: '/test',
+      plansDir: '/test/plans',
+      plans: [],
+      graph: { nodes: [], edges: [], dependents: {}, dependencies: {} },
+    } as any;
+
+    MockCreateContext.mockReturnValue(ctx);
+
     if (fetchResult instanceof Error) {
-      instance.fetch.mockImplementation(() => { throw fetchResult; });
+      MockComputeFetch.mockImplementation(() => { throw fetchResult; });
     } else if (fetchResult) {
-      instance.fetch.mockReturnValue(fetchResult);
+      MockComputeFetch.mockReturnValue(fetchResult);
     }
-    MockTrellis.mockReturnValue(instance);
-    return instance;
+
+    return ctx;
   }
 
   it('prints no-manifest message when manifest is not configured', () => {
-    mockTrellis({});
+    mockContext({});
     fetchCommand({});
     expect(errors.join('\n')).toContain('No manifest configured');
     expect(process.exitCode).toBe(1);
   });
 
   it('prints no-manifest message as JSON', () => {
-    mockTrellis({});
+    mockContext({});
     fetchCommand({ json: true });
     const output = JSON.parse(errors.join(''));
     expect(output.error).toContain('No manifest configured');
@@ -61,7 +81,7 @@ describe('fetch command', () => {
   });
 
   it('reports per-repo status on success', () => {
-    mockTrellis({ manifest: 'git@github.com:org/meta.git' }, {
+    mockContext({ manifest: 'git@github.com:org/meta.git' }, {
       project: 'myproject',
       totalPlans: 5,
       repos: [
@@ -83,7 +103,7 @@ describe('fetch command', () => {
   });
 
   it('renders partial failures in human-readable output', () => {
-    mockTrellis({ manifest: 'git@github.com:org/meta.git' }, {
+    mockContext({ manifest: 'git@github.com:org/meta.git' }, {
       project: 'myproject',
       totalPlans: 2,
       repos: [
@@ -102,7 +122,7 @@ describe('fetch command', () => {
   });
 
   it('outputs JSON on success with --json', () => {
-    mockTrellis({ manifest: 'git@github.com:org/meta.git' }, {
+    mockContext({ manifest: 'git@github.com:org/meta.git' }, {
       project: 'myproject',
       totalPlans: 3,
       repos: [
@@ -122,7 +142,7 @@ describe('fetch command', () => {
   });
 
   it('outputs JSON with partial failures', () => {
-    mockTrellis({ manifest: 'git@github.com:org/meta.git' }, {
+    mockContext({ manifest: 'git@github.com:org/meta.git' }, {
       project: 'myproject',
       totalPlans: 1,
       repos: [
@@ -143,7 +163,7 @@ describe('fetch command', () => {
   });
 
   it('handles fetch error in human-readable mode', () => {
-    mockTrellis(
+    mockContext(
       { manifest: 'git@github.com:org/meta.git' },
       new Error('Failed to discover project manifest. Check manifest URL and network access.'),
     );
@@ -155,7 +175,7 @@ describe('fetch command', () => {
   });
 
   it('handles fetch error in JSON mode', () => {
-    mockTrellis(
+    mockContext(
       { manifest: 'git@github.com:org/meta.git' },
       new Error('Failed to discover project manifest. Check manifest URL and network access.'),
     );

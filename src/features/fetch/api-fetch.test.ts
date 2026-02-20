@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeFetch, computeProjectPlans } from './logic.ts';
 import { createFixture } from '../../__tests__/helpers.ts';
 import type { GitExecutor } from '../../core/manifest.ts';
 
-describe('Trellis.fetch()', () => {
+describe('computeFetch()', () => {
   const manifestYaml = `
 name: twiglylabs
 repos:
@@ -37,8 +38,8 @@ Something to do.
 
   it('throws when no manifest configured', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    expect(() => t.fetch()).toThrow('No manifest configured');
+    const ctx = createContext(root);
+    expect(() => computeFetch({ config: ctx.config, projectDir: ctx.projectDir })).toThrow('No manifest configured');
   });
 
   it('fetches remote plans from all sibling repos', () => {
@@ -48,7 +49,7 @@ Something to do.
     // Add manifest to config
     writeFileSync(join(root, '.trellis'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:twiglylabs/twiglylabs.git\n');
 
-    const t = new Trellis(root);
+    const ctx = createContext(root);
     const git = vi.fn<GitExecutor>();
 
     // discoverManifest: ensureRemote (get-url, add), fetch, gitShow
@@ -72,7 +73,7 @@ Something to do.
     git.mockReturnValueOnce(remotePlanReadme);     // git show acorn plan-a1
     git.mockReturnValueOnce(remotePlanReadme);     // git show acorn plan-a2
 
-    const result = t.fetch(git);
+    const result = computeFetch({ config: ctx.config, projectDir: ctx.projectDir, git });
     expect(result.project).toBe('twiglylabs');
     expect(result.totalPlans).toBe(3);
     expect(result.repos).toHaveLength(2); // canopy + acorn (trellis skipped)
@@ -85,7 +86,7 @@ Something to do.
     const { root } = createFixture([]);
     writeFileSync(join(root, '.trellis'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:twiglylabs/twiglylabs.git\n');
 
-    const t = new Trellis(root);
+    const ctx = createContext(root);
     const git = vi.fn<GitExecutor>();
 
     // discoverManifest succeeds
@@ -106,7 +107,7 @@ Something to do.
     git.mockReturnValueOnce('plan-a\n');
     git.mockReturnValueOnce(remotePlanReadme);
 
-    const result = t.fetch(git);
+    const result = computeFetch({ config: ctx.config, projectDir: ctx.projectDir, git });
     expect(result.repos.find(r => r.alias === 'canopy')?.ok).toBe(false);
     expect(result.repos.find(r => r.alias === 'acorn')?.ok).toBe(true);
     consoleSpy.mockRestore();
@@ -116,14 +117,14 @@ Something to do.
     const { root } = createFixture([]);
     writeFileSync(join(root, '.trellis'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:bad/repo.git\n');
 
-    const t = new Trellis(root);
+    const ctx = createContext(root);
     const git = vi.fn<GitExecutor>().mockReturnValue(null);
 
-    expect(() => t.fetch(git)).toThrow('Failed to discover project manifest');
+    expect(() => computeFetch({ config: ctx.config, projectDir: ctx.projectDir, git })).toThrow('Failed to discover project manifest');
   });
 });
 
-describe('Trellis.projectPlans()', () => {
+describe('computeProjectPlans()', () => {
   const manifestYaml = `
 name: twiglylabs
 repos:
@@ -149,15 +150,15 @@ status: draft
 
   it('returns null when no manifest configured', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    expect(t.projectPlans()).toBeNull();
+    const ctx = createContext(root);
+    expect(computeProjectPlans({ config: ctx.config, projectDir: ctx.projectDir })).toBeNull();
   });
 
   it('returns remote plans map when manifest is configured', () => {
     const { root } = createFixture([]);
     writeFileSync(join(root, '.trellis'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:twiglylabs/twiglylabs.git\n');
 
-    const t = new Trellis(root);
+    const ctx = createContext(root);
     const git = vi.fn<GitExecutor>();
 
     // discoverManifest
@@ -173,7 +174,7 @@ status: draft
     git.mockReturnValueOnce('plan-x\n');
     git.mockReturnValueOnce(remotePlanReadme);
 
-    const result = t.projectPlans(git);
+    const result = computeProjectPlans({ config: ctx.config, projectDir: ctx.projectDir, git });
     expect(result).not.toBeNull();
     expect(result!.has('canopy')).toBe(true);
     expect(result!.get('canopy')![0].repoAlias).toBe('canopy');
@@ -183,9 +184,9 @@ status: draft
     const { root } = createFixture([]);
     writeFileSync(join(root, '.trellis'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:bad/url.git\n');
 
-    const t = new Trellis(root);
+    const ctx = createContext(root);
     const git = vi.fn<GitExecutor>().mockReturnValue(null);
 
-    expect(t.projectPlans(git)).toBeNull();
+    expect(computeProjectPlans({ config: ctx.config, projectDir: ctx.projectDir, git })).toBeNull();
   });
 });

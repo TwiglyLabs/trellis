@@ -1,16 +1,28 @@
+import { toSummary as defaultToSummary } from '../../core/index.ts';
 import type { GraphData } from '../../core/graph.ts';
-import type { Plan } from '../../core/types.ts';
-import type { EpicResult, PlanSummary } from '../../api.ts';
+import type { Plan, PlanSummary } from '../../core/types.ts';
+
+export interface EpicResult {
+  epic: string;
+  total: number;
+  done: number;
+  inProgress: number;
+  notStarted: number;
+  blocked: number;
+  draft: number;
+  progress: number;
+  plans?: PlanSummary[];
+}
 
 export interface ComputeEpicOptions {
   plans: Plan[];
   graph: GraphData;
   name?: string;
-  toSummary: (p: Plan) => PlanSummary;
+  toSummary?: (p: Plan) => PlanSummary;
 }
 
 export function computeEpic(options: ComputeEpicOptions): EpicResult[] {
-  const { plans, graph, name, toSummary } = options;
+  const { plans, graph, name, toSummary = defaultToSummary } = options;
   const epicMap = new Map<string, Plan[]>();
 
   for (const plan of plans) {

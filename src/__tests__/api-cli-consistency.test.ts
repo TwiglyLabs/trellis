@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { rmSync } from 'fs';
 import { createFixture } from './helpers.ts';
-import { Trellis } from '../index.ts';
+import { createContext } from '../core/index.ts';
+import { computeStatus } from '../features/status/logic.ts';
+import { computeReady } from '../features/ready/logic.ts';
+import { computeShow } from '../features/show/logic.ts';
+import { computeUpdate } from '../features/update/logic.ts';
+import { computeLint } from '../features/lint/logic.ts';
+import { computeGraph } from '../features/graph/logic.ts';
+import { computeEpic } from '../features/epic/logic.ts';
+import { computeChunksFeature } from '../features/chunks/logic.ts';
 
 // Mock the HTML viewer import before importing graph command
 vi.mock('../features/graph/viewer/index.html', () => ({
@@ -74,8 +82,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.status({ showDone: true });
+      const ctx = createContext(root);
+      const apiResult = computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: { showDone: true } });
 
       statusCommand({ json: true, done: true });
       const cliOutput = JSON.parse(logs[0]);
@@ -129,10 +137,10 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
+      const ctx = createContext(root);
 
       // Without flags
-      const apiResult1 = api.status({ showDone: false, showArchived: false });
+      const apiResult1 = computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: { showDone: false, showArchived: false } });
       statusCommand({ json: true });
       const cliOutput1 = JSON.parse(logs[0]);
 
@@ -146,7 +154,7 @@ describe('API-CLI consistency', () => {
 
       // With --done
       logs = [];
-      const apiResult2 = api.status({ showDone: true, showArchived: false });
+      const apiResult2 = computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: { showDone: true, showArchived: false } });
       statusCommand({ json: true, done: true });
       const cliOutput2 = JSON.parse(logs[0]);
 
@@ -170,8 +178,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.ready();
+      const ctx = createContext(root);
+      const apiResult = computeReady({ plans: ctx.plans, graph: ctx.graph });
 
       readyCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
@@ -198,10 +206,10 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
+      const ctx = createContext(root);
 
       // Filter by repo
-      const apiResult = api.ready({ repo: 'public' });
+      const apiResult = computeReady({ plans: ctx.plans, graph: ctx.graph, filters: { repo: 'public' } });
       readyCommand({ json: true, repo: 'public' });
       const cliOutput = JSON.parse(logs[0]);
 
@@ -209,7 +217,7 @@ describe('API-CLI consistency', () => {
 
       // Filter by tag
       logs = [];
-      const apiResult2 = api.ready({ tag: 'tag2' });
+      const apiResult2 = computeReady({ plans: ctx.plans, graph: ctx.graph, filters: { tag: 'tag2' } });
       readyCommand({ json: true, tag: 'tag2' });
       const cliOutput2 = JSON.parse(logs[0]);
 
@@ -234,8 +242,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.show('plan-b');
+      const ctx = createContext(root);
+      const apiResult = computeShow({ planId: 'plan-b', graph: ctx.graph });
 
       showCommand('plan-b', { json: true });
       const cliOutput = JSON.parse(logs[0]);
@@ -271,8 +279,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.show('nonexistent');
+      const ctx = createContext(root);
+      const apiResult = computeShow({ planId: 'nonexistent', graph: ctx.graph });
 
       showCommand('nonexistent', { json: true });
       const cliOutput = JSON.parse(errors[0]);
@@ -293,8 +301,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.update('plan-c', 'done', { force: true });
+      let ctx = createContext(root);
+      const apiResult = computeUpdate({ planId: 'plan-c', status: 'done', graph: ctx.graph, force: true }, { refresh: () => { ctx = createContext(root); } });
 
       // Create new instance for CLI call (fresh state)
       process.cwd = () => root;
@@ -329,8 +337,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.update('plan-a', 'in_progress', { force: true });
+      let ctx = createContext(root);
+      const apiResult = computeUpdate({ planId: 'plan-a', status: 'in_progress', graph: ctx.graph, force: true }, { refresh: () => { ctx = createContext(root); } });
 
       // Create fresh fixture for CLI
       const { root: root2 } = createFixture([
@@ -362,8 +370,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.lint();
+      const ctx = createContext(root);
+      const apiResult = computeLint({ plans: ctx.plans, graph: ctx.graph, projectDir: ctx.projectDir, plansDir: ctx.plansDir, options: {} });
 
       lintCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
@@ -382,8 +390,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.lint();
+      const ctx = createContext(root);
+      const apiResult = computeLint({ plans: ctx.plans, graph: ctx.graph, projectDir: ctx.projectDir, plansDir: ctx.plansDir, options: {} });
 
       lintCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
@@ -409,8 +417,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.graph();
+      const ctx = createContext(root);
+      const apiResult = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
 
       graphCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
@@ -442,8 +450,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.graph();
+      const ctx = createContext(root);
+      const apiResult = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
 
       graphCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
@@ -469,8 +477,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.epic();
+      const ctx = createContext(root);
+      const apiResult = computeEpic({ plans: ctx.plans, graph: ctx.graph });
 
       epicCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
@@ -502,8 +510,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.epic('auth');
+      const ctx = createContext(root);
+      const apiResult = computeEpic({ plans: ctx.plans, graph: ctx.graph, name: 'auth' });
 
       epicCommand({ json: true }, 'auth');
       const cliOutput = JSON.parse(logs[0]);
@@ -528,8 +536,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.chunks();
+      const ctx = createContext(root);
+      const apiResult = computeChunksFeature({ plans: ctx.plans, graph: ctx.graph, config: ctx.config, filters: {} });
 
       chunksCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
@@ -551,8 +559,8 @@ describe('API-CLI consistency', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      const api = new Trellis(root);
-      const apiResult = api.chunks();
+      const ctx = createContext(root);
+      const apiResult = computeChunksFeature({ plans: ctx.plans, graph: ctx.graph, config: ctx.config, filters: {} });
 
       chunksCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);

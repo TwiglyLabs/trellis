@@ -1,7 +1,8 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
+import { computeFetch } from './logic.ts';
 
 export function register(program: Command): void {
   program
@@ -17,9 +18,9 @@ interface FetchOptions {
 }
 
 export function fetchCommand(options: FetchOptions): void {
-  const t = new Trellis(process.cwd());
+  const ctx = createContext(process.cwd());
 
-  if (!t.config.manifest) {
+  if (!ctx.config.manifest) {
     if (options.json) {
       console.error(JSON.stringify({ error: 'No manifest configured. Add "manifest: <git-url>" to .trellis' }));
     } else {
@@ -31,7 +32,7 @@ export function fetchCommand(options: FetchOptions): void {
 
   let result;
   try {
-    result = t.fetch();
+    result = computeFetch({ config: ctx.config, projectDir: ctx.projectDir });
   } catch (err: any) {
     if (options.json) {
       console.error(JSON.stringify({ error: err.message }));

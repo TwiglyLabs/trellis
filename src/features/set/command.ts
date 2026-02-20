@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeSet } from './logic.ts';
 
 export function register(program: Command): void {
   program
@@ -20,13 +21,16 @@ interface SetOptions {
 }
 
 export function setCommand(planId: string, field: string, values: string[], options: SetOptions): void {
-  const t = new Trellis(process.cwd());
+  const ctx = createContext(process.cwd());
 
   const mode = options.add ? 'add' : options.remove ? 'remove' : 'replace';
   const value = values.length === 1 ? values[0] : values;
 
   try {
-    const result = t.set(planId, field, value, mode);
+    const result = computeSet(
+      { planId, field, value, mode, graph: ctx.graph },
+      { refresh: () => {} },
+    );
 
     if (options.json) {
       console.log(JSON.stringify({

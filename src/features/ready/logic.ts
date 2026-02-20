@@ -1,17 +1,21 @@
-import { filterPlans, pickNext } from '../../core/index.ts';
-import type { Plan } from '../../core/types.ts';
+import { filterPlans, pickNext, toSummary as defaultToSummary } from '../../core/index.ts';
+import type { Plan, PlanSummary } from '../../core/types.ts';
 import type { GraphData } from '../../core/graph.ts';
-import type { PlanSummary, ReadyResult } from '../../api.ts';
+
+export interface ReadyResult {
+  plans: PlanSummary[];
+  next: string | null;
+}
 
 export interface ComputeReadyOptions {
   plans: Plan[];
   graph: GraphData;
   filters?: { tag?: string; repo?: string };
-  toSummary: (p: Plan) => PlanSummary;
+  toSummary?: (p: Plan) => PlanSummary;
 }
 
 export function computeReady(opts: ComputeReadyOptions): ReadyResult {
-  const { plans, graph, filters, toSummary } = opts;
+  const { plans, graph, filters, toSummary = defaultToSummary } = opts;
 
   let readyPlans = plans.filter(p => graph.ready.has(p.id));
   readyPlans = filterPlans(readyPlans, { tag: filters?.tag, repo: filters?.repo });

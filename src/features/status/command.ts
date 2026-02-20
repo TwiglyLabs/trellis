@@ -1,8 +1,9 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import type { PlanSummary, BlockedPlanSummary } from '../../core/types.ts';
 import { padRight, pluralize, computeColumnWidth } from '../../core/utils.ts';
-import type { PlanSummary, BlockedPlanSummary } from '../../api.ts';
+import { computeStatus } from './logic.ts';
 
 export function register(program: Command): void {
   program
@@ -28,16 +29,21 @@ interface StatusOptions {
 }
 
 export function statusCommand(options: StatusOptions): void {
-  const t = new Trellis(process.cwd());
+  const ctx = createContext(process.cwd());
 
   const showDone = options.all || options.done;
   const showArchived = options.all || options.archived;
 
-  const result = t.status({
-    tag: options.tag,
-    repo: options.repo,
-    showDone,
-    showArchived,
+  const result = computeStatus({
+    plans: ctx.plans,
+    config: ctx.config,
+    graph: ctx.graph,
+    filters: {
+      tag: options.tag,
+      repo: options.repo,
+      showDone,
+      showArchived,
+    },
   });
 
   if (options.json) {

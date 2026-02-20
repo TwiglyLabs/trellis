@@ -7,7 +7,20 @@ import {
   PlanFile,
 } from '../../core/index.ts';
 import type { GraphData } from '../../core/graph.ts';
-import type { WriteSectionResult, ReadSectionResult } from '../../api.ts';
+
+export interface WriteSectionResult {
+  id: string;
+  file: string;
+  section: string;
+  content: string;
+}
+
+export interface ReadSectionResult {
+  id: string;
+  file?: string;
+  section?: string;
+  content: string;
+}
 
 const FILE_NAME_MAP: Record<string, PlanFile> = {
   readme: PlanFile.README,

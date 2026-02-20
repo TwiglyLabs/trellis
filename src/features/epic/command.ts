@@ -1,7 +1,9 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
+import { computeEpic } from './logic.ts';
+import { computeGraph } from '../graph/logic.ts';
 
 export function register(program: Command): void {
   program
@@ -23,8 +25,8 @@ function progressBar(ratio: number, width: number): string {
 }
 
 export function epicCommand(options: EpicOptions, name?: string): void {
-  const t = new Trellis(process.cwd());
-  const epics = t.epic(name);
+  const ctx = createContext(process.cwd());
+  const epics = computeEpic({ plans: ctx.plans, graph: ctx.graph, name });
 
   if (epics.length === 0) {
     if (name) {
@@ -47,7 +49,7 @@ export function epicCommand(options: EpicOptions, name?: string): void {
 
   if (name) {
     const epic = epics[0];
-    const graphResult = t.graph();
+    const graphResult = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
 
     if (options.json) {
       const plans = (epic.plans ?? []).map((p) => {

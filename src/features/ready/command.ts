@@ -1,7 +1,9 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
+import { computeReady } from './logic.ts';
+import { computeShow } from '../show/logic.ts';
 
 export function register(program: Command): void {
   program
@@ -23,11 +25,15 @@ interface ReadyOptions {
 }
 
 export function readyCommand(options: ReadyOptions): void {
-  const t = new Trellis(process.cwd());
+  const ctx = createContext(process.cwd());
 
-  const result = t.ready({
-    tag: options.tag,
-    repo: options.repo,
+  const result = computeReady({
+    plans: ctx.plans,
+    graph: ctx.graph,
+    filters: {
+      tag: options.tag,
+      repo: options.repo,
+    },
   });
 
   if (options.next) {
@@ -37,7 +43,7 @@ export function readyCommand(options: ReadyOptions): void {
       if (!nextPlan) {
         console.log(JSON.stringify(null));
       } else {
-        const planDetails = t.show(nextPlan.id);
+        const planDetails = computeShow({ planId: nextPlan.id, graph: ctx.graph });
         console.log(JSON.stringify({
           id: nextPlan.id,
           title: nextPlan.title,
@@ -65,7 +71,7 @@ export function readyCommand(options: ReadyOptions): void {
 
   if (options.json) {
     const output = result.plans.map((p) => {
-      const planDetails = t.show(p.id);
+      const planDetails = computeShow({ planId: p.id, graph: ctx.graph });
       return {
         id: p.id,
         title: p.title,

@@ -1,5 +1,24 @@
 import type { Plan } from '../../core/types.ts';
-import type { PlanMetric, MetricsResult } from '../../api.ts';
+
+export interface PlanMetric {
+  id: string;
+  title: string;
+  completed_at: string;
+  cycle_time_hours: number | null;
+  queue_time_hours: number | null;
+  lines: number;
+  tags: string[];
+  epic: string | null;
+  sessions: number | null;
+  deviation: string | null;
+}
+
+export interface MetricsResult {
+  plans: PlanMetric[];
+  total_completed: number;
+  median_cycle_time_hours: number | null;
+  plans_per_epic: Record<string, number>;
+}
 
 function median(values: number[]): number | null {
   if (values.length === 0) return null;

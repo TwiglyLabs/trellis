@@ -3,7 +3,8 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
 import { readSection, writeSection } from '../../core/schema.ts';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeWriteSection, computeReadSection } from './logic.ts';
 import { createFixture } from '../../__tests__/helpers.ts';
 
 // --- Core readSection/writeSection primitives ---
@@ -149,15 +150,15 @@ describe('writeSection', () => {
   });
 });
 
-// --- Plan-aware Trellis.writeSection / Trellis.readSection ---
+// --- Plan-aware computeWriteSection / computeReadSection ---
 
-describe('Trellis.writeSection', () => {
+describe('computeWriteSection', () => {
   it('writes content to a section in readme', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nOld text\n## Approach\nOld approach\n' },
     ]);
-    const t = new Trellis(root);
-    const result = t.writeSection('test', 'readme', 'Problem', 'New problem text\n');
+    const ctx = createContext(root);
+    const result = computeWriteSection({ planId: 'test', file: 'readme', section: 'Problem', content: 'New problem text\n', graph: ctx.graph }, { refresh: () => {} });
 
     expect(result.content).toContain('New problem text');
 
@@ -170,8 +171,8 @@ describe('Trellis.writeSection', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    t.writeSection('test', 'outputs', 'Deliverables', '- API endpoint\n');
+    const ctx = createContext(root);
+    computeWriteSection({ planId: 'test', file: 'outputs', section: 'Deliverables', content: '- API endpoint\n', graph: ctx.graph }, { refresh: () => {} });
 
     expect(existsSync(join(root, 'plans', 'test', 'outputs.md'))).toBe(true);
     const content = readFileSync(join(root, 'plans', 'test', 'outputs.md'), 'utf8');
@@ -183,8 +184,8 @@ describe('Trellis.writeSection', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    t.writeSection('test', 'readme', 'Approach', 'New approach\n');
+    const ctx = createContext(root);
+    computeWriteSection({ planId: 'test', file: 'readme', section: 'Approach', content: 'New approach\n', graph: ctx.graph }, { refresh: () => {} });
 
     const content = readFileSync(join(root, 'plans', 'test', 'README.md'), 'utf8');
     expect(content).toContain('## Problem');
@@ -194,16 +195,16 @@ describe('Trellis.writeSection', () => {
 
   it('rejects unknown plan', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    expect(() => t.writeSection('nonexistent', 'readme', 'Problem', 'text')).toThrow('not found');
+    const ctx = createContext(root);
+    expect(() => computeWriteSection({ planId: 'nonexistent', file: 'readme', section: 'Problem', content: 'text', graph: ctx.graph }, { refresh: () => {} })).toThrow('not found');
   });
 
   it('rejects invalid file name', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    expect(() => t.writeSection('test', 'invalid' as any, 'Problem', 'text')).toThrow('invalid');
+    const ctx = createContext(root);
+    expect(() => computeWriteSection({ planId: 'test', file: 'invalid' as any, section: 'Problem', content: 'text', graph: ctx.graph }, { refresh: () => {} })).toThrow('invalid');
   });
 
   it('writes to implementation file that already exists', () => {
@@ -214,8 +215,8 @@ describe('Trellis.writeSection', () => {
         implementationMd: '## Steps\n1. Do thing\n\n## Testing\nTest it\n\n## Done-when\nAll done\n',
       },
     ]);
-    const t = new Trellis(root);
-    t.writeSection('test', 'implementation', 'Steps', '1. Updated step\n');
+    const ctx = createContext(root);
+    computeWriteSection({ planId: 'test', file: 'implementation', section: 'Steps', content: '1. Updated step\n', graph: ctx.graph }, { refresh: () => {} });
 
     const content = readFileSync(join(root, 'plans', 'test', 'implementation.md'), 'utf8');
     expect(content).toContain('1. Updated step');
@@ -227,18 +228,18 @@ describe('Trellis.writeSection', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    expect(() => t.writeSection('test', 'implementation', 'Steps', '1. Step\n')).toThrow('does not exist');
+    const ctx = createContext(root);
+    expect(() => computeWriteSection({ planId: 'test', file: 'implementation', section: 'Steps', content: '1. Step\n', graph: ctx.graph }, { refresh: () => {} })).toThrow('does not exist');
   });
 });
 
-describe('Trellis.readSection', () => {
+describe('computeReadSection', () => {
   it('reads full plan when no file/section specified', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    const result = t.readSection('test');
+    const ctx = createContext(root);
+    const result = computeReadSection({ planId: 'test', graph: ctx.graph });
 
     expect(result.content).toContain('## Problem');
     expect(result.content).toContain('Text');
@@ -252,8 +253,8 @@ describe('Trellis.readSection', () => {
         implementationMd: '## Steps\n1. Do thing\n\n## Testing\nTest it\n\n## Done-when\nAll done\n',
       },
     ]);
-    const t = new Trellis(root);
-    const result = t.readSection('test', 'implementation');
+    const ctx = createContext(root);
+    const result = computeReadSection({ planId: 'test', file: 'implementation', graph: ctx.graph });
 
     expect(result.content).toContain('## Steps');
     expect(result.content).not.toContain('## Problem');
@@ -266,8 +267,8 @@ describe('Trellis.readSection', () => {
         body: '\n## Problem\nBroken\n## Approach\nFix it\n',
       },
     ]);
-    const t = new Trellis(root);
-    const result = t.readSection('test', 'readme', 'Problem');
+    const ctx = createContext(root);
+    const result = computeReadSection({ planId: 'test', file: 'readme', section: 'Problem', graph: ctx.graph });
 
     expect(result.content).toBe('Broken\n');
   });
@@ -276,30 +277,30 @@ describe('Trellis.readSection', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    expect(() => t.readSection('test', 'readme', 'NonExistent')).toThrow('not found');
+    const ctx = createContext(root);
+    expect(() => computeReadSection({ planId: 'test', file: 'readme', section: 'NonExistent', graph: ctx.graph })).toThrow('not found');
   });
 
   it('rejects unknown plan', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    expect(() => t.readSection('nonexistent')).toThrow('not found');
+    const ctx = createContext(root);
+    expect(() => computeReadSection({ planId: 'nonexistent', graph: ctx.graph })).toThrow('not found');
   });
 
   it('rejects missing file', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    expect(() => t.readSection('test', 'outputs')).toThrow('does not exist');
+    const ctx = createContext(root);
+    expect(() => computeReadSection({ planId: 'test', file: 'outputs', graph: ctx.graph })).toThrow('does not exist');
   });
 
   it('readSection with no file strips README frontmatter', () => {
     const { root } = createFixture([
       { id: 'test', title: 'My Test Plan', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    const result = t.readSection('test');
+    const ctx = createContext(root);
+    const result = computeReadSection({ planId: 'test', graph: ctx.graph });
 
     expect(result.content).not.toContain('---');
     expect(result.content).not.toContain('title:');
@@ -315,8 +316,8 @@ describe('Trellis.readSection', () => {
         outputsMd: '## Deliverables\n- Output\n',
       },
     ]);
-    const t = new Trellis(root);
-    const result = t.readSection('test');
+    const ctx = createContext(root);
+    const result = computeReadSection({ planId: 'test', graph: ctx.graph });
 
     expect(result.content).toContain('## Problem');
     expect(result.content).toContain('## Steps');
@@ -329,8 +330,8 @@ describe('Trellis.readSection', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Original Title', status: 'draft', tags: ['foo'], body: '\n## Problem\nOld\n' },
     ]);
-    const t = new Trellis(root);
-    t.writeSection('test', 'readme', 'Problem', 'New content\n');
+    const ctx = createContext(root);
+    computeWriteSection({ planId: 'test', file: 'readme', section: 'Problem', content: 'New content\n', graph: ctx.graph }, { refresh: () => {} });
 
     const content = readFileSync(join(root, 'plans', 'test', 'README.md'), 'utf8');
     const parsed = matter(content);

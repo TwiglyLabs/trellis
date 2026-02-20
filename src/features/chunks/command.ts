@@ -1,8 +1,9 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
 import type { ChunkResult } from '../../core/graph.ts';
 import { pluralize, formatLines } from '../../core/utils.ts';
+import { computeChunksFeature } from './logic.ts';
 
 export function register(program: Command): void {
   program
@@ -26,12 +27,17 @@ interface ChunksOptions {
 }
 
 export function chunksCommand(options: ChunksOptions): void {
-  const t = new Trellis(process.cwd());
+  const ctx = createContext(process.cwd());
 
-  const result = t.chunks({
-    tag: options.tag,
-    repo: options.repo,
-    strategy: options.strategy,
+  const result = computeChunksFeature({
+    plans: ctx.plans,
+    graph: ctx.graph,
+    config: ctx.config,
+    filters: {
+      tag: options.tag,
+      repo: options.repo,
+      strategy: options.strategy,
+    },
   });
 
   if (options.json) {

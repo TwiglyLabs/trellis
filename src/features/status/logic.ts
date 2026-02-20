@@ -1,18 +1,31 @@
-import { filterPlans, computeChunks } from '../../core/index.ts';
-import type { Plan, TrellisConfig } from '../../core/types.ts';
+import { filterPlans, computeChunks, toSummary as defaultToSummary } from '../../core/index.ts';
+import type { Plan, TrellisConfig, PlanSummary, BlockedPlanSummary } from '../../core/types.ts';
 import type { GraphData } from '../../core/graph.ts';
-import type { PlanSummary, BlockedPlanSummary, StatusResult } from '../../api.ts';
+
+export interface StatusResult {
+  project: string;
+  total: number;
+  chunks: { total: number; overBudget: number };
+  byStatus: {
+    ready: PlanSummary[];
+    blocked: BlockedPlanSummary[];
+    inProgress: PlanSummary[];
+    draft: PlanSummary[];
+    done: PlanSummary[];
+    archived: PlanSummary[];
+  };
+}
 
 export interface ComputeStatusOptions {
   plans: Plan[];
   config: TrellisConfig;
   graph: GraphData;
   filters?: { tag?: string; repo?: string; showDone?: boolean; showArchived?: boolean };
-  toSummary: (p: Plan) => PlanSummary;
+  toSummary?: (p: Plan) => PlanSummary;
 }
 
 export function computeStatus(opts: ComputeStatusOptions): StatusResult {
-  const { plans: allPlansRaw, config, graph, filters, toSummary } = opts;
+  const { plans: allPlansRaw, config, graph, filters, toSummary = defaultToSummary } = opts;
 
   const allPlans = filterPlans(allPlansRaw, { tag: filters?.tag, repo: filters?.repo });
   const total = allPlans.length;

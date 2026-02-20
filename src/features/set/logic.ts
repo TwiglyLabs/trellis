@@ -1,7 +1,13 @@
 import type { GraphData } from '../../core/graph.ts';
 import type { PlanFrontmatter } from '../../core/types.ts';
 import { updatePlanFile } from '../../core/index.ts';
-import type { SetResult } from '../../api.ts';
+
+export interface SetResult {
+  id: string;
+  field: string;
+  value: string | string[];
+  previousValue: string | string[] | undefined;
+}
 
 const EDITABLE_FIELDS = ['title', 'description', 'depends_on', 'tags', 'repo', 'assignee', 'sessions', 'deviation'] as const;
 const LIST_FIELDS = ['depends_on', 'tags'] as const;

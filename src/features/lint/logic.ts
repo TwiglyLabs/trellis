@@ -6,7 +6,22 @@ import {
 } from '../../core/index.ts';
 import type { Plan } from '../../core/types.ts';
 import type { GraphData } from '../../core/graph.ts';
-import type { LintIssue, LintResult } from '../../api.ts';
+
+export interface LintIssue {
+  planId: string;
+  type: string;
+  message: string;
+}
+
+export interface LintResult {
+  ok: boolean;
+  total: number;
+  okCount: number;
+  errors: LintIssue[];
+  warnings: LintIssue[];
+  structural: { errors: LintIssue[]; warnings: LintIssue[] };
+  fixed: string[];
+}
 
 export interface ComputeLintOptions {
   plans: Plan[];

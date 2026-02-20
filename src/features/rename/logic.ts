@@ -2,7 +2,12 @@ import { join, dirname } from 'path';
 import { existsSync, renameSync } from 'fs';
 import { validatePlanId, updatePlanFile } from '../../core/index.ts';
 import type { GraphData } from '../../core/graph.ts';
-import type { RenameResult } from '../../api.ts';
+
+export interface RenameResult {
+  oldId: string;
+  newId: string;
+  referencesUpdated: string[];
+}
 
 export interface ComputeRenameOptions {
   oldId: string;

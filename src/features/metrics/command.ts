@@ -1,7 +1,8 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
+import { computeMetrics } from './logic.ts';
 
 export function register(program: Command): void {
   program
@@ -27,11 +28,11 @@ function formatHours(h: number | null): string {
 }
 
 export function metricsCommand(options: MetricsOptions): void {
-  const t = new Trellis(process.cwd());
+  const ctx = createContext(process.cwd());
 
   let result;
   try {
-    result = t.metrics({ since: options.since });
+    result = computeMetrics({ plans: ctx.plans, since: options.since });
   } catch (err: any) {
     if (options.json) {
       console.error(JSON.stringify({ error: err.message }));

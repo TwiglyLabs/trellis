@@ -3,7 +3,9 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { detectSections, validateStatusGate } from './schema.ts';
 import { createFixture } from '../__tests__/helpers.ts';
-import { Trellis } from '../api.ts';
+import { createContext } from './index.ts';
+import { computeUpdate } from '../features/update/logic.ts';
+import { computeShow } from '../features/show/logic.ts';
 import { updateCommand } from '../features/update/command.ts';
 
 describe('detectSections', () => {
@@ -48,10 +50,8 @@ describe('validateStatusGate', () => {
     const { root, plansDir } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nSomething broken\n' },
     ]);
-    const t = new Trellis(root);
-    const plan = t.show('test');
-    const plans = (t as any).plans;
-    const result = validateStatusGate(plans[0], 'draft');
+    const ctx = createContext(root);
+    const result = validateStatusGate(ctx.plans[0], 'draft');
     expect(result.pass).toBe(true);
   });
 
@@ -59,9 +59,8 @@ describe('validateStatusGate', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Random\nNo problem here\n' },
     ]);
-    const t = new Trellis(root);
-    const plans = (t as any).plans;
-    const result = validateStatusGate(plans[0], 'draft');
+    const ctx = createContext(root);
+    const result = validateStatusGate(ctx.plans[0], 'draft');
     expect(result.pass).toBe(false);
     expect(result.missing).toContain('README.md: missing "## Problem"');
   });
@@ -73,9 +72,8 @@ describe('validateStatusGate', () => {
         body: '\n## Problem\nBroken\n## Approach\nFix it\n',
       },
     ]);
-    const t = new Trellis(root);
-    const plans = (t as any).plans;
-    const result = validateStatusGate(plans[0], 'not_started');
+    const ctx = createContext(root);
+    const result = validateStatusGate(ctx.plans[0], 'not_started');
     expect(result.pass).toBe(false);
     expect(result.missing.some(m => m.includes('implementation.md'))).toBe(true);
   });
@@ -88,9 +86,8 @@ describe('validateStatusGate', () => {
         implementationMd: '# Implementation\n\n## Steps\n1. Do thing\n\n## Testing\nUnit tests\n\n## Done-when\nAll green\n',
       },
     ]);
-    const t = new Trellis(root);
-    const plans = (t as any).plans;
-    const result = validateStatusGate(plans[0], 'not_started');
+    const ctx = createContext(root);
+    const result = validateStatusGate(ctx.plans[0], 'not_started');
     expect(result.pass).toBe(true);
   });
 
@@ -103,10 +100,9 @@ describe('validateStatusGate', () => {
       },
       { id: 'downstream', title: 'Downstream', status: 'not_started', depends_on: ['upstream'] },
     ]);
-    const t = new Trellis(root);
-    const plans = (t as any).plans;
-    const upstream = plans.find((p: any) => p.id === 'upstream');
-    const result = validateStatusGate(upstream, 'done', true);
+    const ctx = createContext(root);
+    const upstream = ctx.plans.find(p => p.id === 'upstream');
+    const result = validateStatusGate(upstream!, 'done', true);
     expect(result.pass).toBe(false);
     expect(result.missing.some(m => m.includes('outputs.md'))).toBe(true);
   });
@@ -121,10 +117,9 @@ describe('validateStatusGate', () => {
       },
       { id: 'downstream', title: 'Downstream', status: 'not_started', depends_on: ['upstream'] },
     ]);
-    const t = new Trellis(root);
-    const plans = (t as any).plans;
-    const upstream = plans.find((p: any) => p.id === 'upstream');
-    const result = validateStatusGate(upstream, 'done', true);
+    const ctx = createContext(root);
+    const upstream = ctx.plans.find(p => p.id === 'upstream');
+    const result = validateStatusGate(upstream!, 'done', true);
     expect(result.pass).toBe(true);
   });
 
@@ -136,9 +131,8 @@ describe('validateStatusGate', () => {
         implementationMd: '## Steps\n1. Go\n\n## Testing\nTest\n\n## Done-when\nDone\n',
       },
     ]);
-    const t = new Trellis(root);
-    const plans = (t as any).plans;
-    const result = validateStatusGate(plans[0], 'done', false);
+    const ctx = createContext(root);
+    const result = validateStatusGate(ctx.plans[0], 'done', false);
     expect(result.pass).toBe(true);
   });
 
@@ -146,9 +140,8 @@ describe('validateStatusGate', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'done', body: '' },
     ]);
-    const t = new Trellis(root);
-    const plans = (t as any).plans;
-    const result = validateStatusGate(plans[0], 'archived');
+    const ctx = createContext(root);
+    const result = validateStatusGate(ctx.plans[0], 'archived');
     expect(result.pass).toBe(true);
   });
 });
@@ -207,11 +200,11 @@ describe('gate enforcement in update', () => {
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nBroken\n' },
     ]);
 
-    const t = new Trellis(root);
-    expect(() => t.update('test', 'not_started')).toThrow('Cannot transition');
+    let ctx = createContext(root);
+    expect(() => computeUpdate({ planId: 'test', status: 'not_started', graph: ctx.graph }, { refresh: () => {} })).toThrow('Cannot transition');
 
-    const t2 = new Trellis(root);
-    const result = t2.update('test', 'not_started', { force: true });
+    ctx = createContext(root);
+    const result = computeUpdate({ planId: 'test', status: 'not_started', graph: ctx.graph, force: true }, { refresh: () => {} });
     expect(result.newStatus).toBe('not_started');
   });
 

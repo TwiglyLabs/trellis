@@ -82,11 +82,11 @@ describe('built artifact integration', () => {
     expect(ready).toContain('feature-b');
   });
 
-  it('Trellis class is constructable and functional from ESM bundle', () => {
-    const t = new lib.Trellis(tmpDir);
-    expect(t.config.project).toBe('dist-test');
+  it('createContext builds a working context and compute functions work', () => {
+    const ctx = lib.createContext(tmpDir);
+    expect(ctx.config.project).toBe('dist-test');
 
-    const status = t.status({ showDone: true });
+    const status = lib.computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: { showDone: true } });
     expect(status.total).toBe(3);
     expect(status.byStatus.done).toHaveLength(1);
     expect(status.byStatus.ready).toHaveLength(1);
@@ -94,20 +94,20 @@ describe('built artifact integration', () => {
   });
 
   it('full workflow: status → ready → update → verify unblock', () => {
-    const t = new lib.Trellis(tmpDir);
+    let ctx = lib.createContext(tmpDir);
 
-    const ready = t.ready();
+    const ready = lib.computeReady({ plans: ctx.plans, graph: ctx.graph });
     expect(ready.plans.map((p: any) => p.id)).toContain('feature-a');
     expect(ready.next).toBe('feature-a');
 
-    const showB = t.show('feature-b');
-    expect(showB.blocked).toBe(true);
+    const showB = lib.computeShow({ planId: 'feature-b', graph: ctx.graph });
+    expect(showB?.blocked).toBe(true);
 
-    const updateResult = t.update('feature-a', 'done', { force: true });
+    const updateResult = lib.computeUpdate({ planId: 'feature-a', status: 'done', graph: ctx.graph, force: true }, { refresh: () => { ctx = lib.refreshContext(ctx); } });
     expect(updateResult.previousStatus).toBe('not_started');
     expect(updateResult.newlyReady).toContain('feature-b');
 
-    expect(t.show('feature-b').ready).toBe(true);
+    expect(lib.computeShow({ planId: 'feature-b', graph: ctx.graph })?.ready).toBe(true);
   });
 
   it('CJS require also works', () => {

@@ -1,6 +1,12 @@
 import { updatePlanFile } from '../../core/index.ts';
+import type { PlanStatus } from '../../core/types.ts';
 import type { GraphData } from '../../core/graph.ts';
-import type { ArchiveResult } from '../../api.ts';
+
+export interface ArchiveResult {
+  id: string;
+  previousStatus: PlanStatus;
+  newStatus: 'archived';
+}
 
 export interface ComputeArchiveOptions {
   planId: string;

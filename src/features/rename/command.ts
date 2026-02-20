@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeRename } from './logic.ts';
 
 export function register(program: Command): void {
   program
@@ -16,10 +17,13 @@ interface RenameOptions {
 }
 
 export function renameCommand(oldId: string, newId: string, options?: RenameOptions): void {
-  const t = new Trellis(process.cwd());
+  const ctx = createContext(process.cwd());
 
   try {
-    const result = t.rename(oldId, newId);
+    const result = computeRename(
+      { oldId, newId, plansDir: ctx.plansDir, graph: ctx.graph },
+      { refresh: () => {} },
+    );
 
     if (options?.json) {
       console.log(JSON.stringify({

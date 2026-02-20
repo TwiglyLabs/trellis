@@ -3,7 +3,8 @@ import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { epicCommand } from './command.ts';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeEpic } from './logic.ts';
 import { createFixture } from '../../__tests__/helpers.ts';
 
 // --- Command tests ---
@@ -156,7 +157,7 @@ function writePlan(plansDir: string, id: string, frontmatter: Record<string, unk
   writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n${body ?? `\nBody for ${id}\n`}`);
 }
 
-describe('Trellis.epic()', () => {
+describe('computeEpic', () => {
   let tmpDir: string;
   let plansDir: string;
 
@@ -175,8 +176,8 @@ describe('Trellis.epic()', () => {
     writePlan(plansDir, 'b', { title: 'B', status: 'not_started', tags: ['epic:v1'] });
     writePlan(plansDir, 'c', { title: 'C', status: 'not_started', tags: ['epic:v2'] });
 
-    const t = new Trellis(tmpDir);
-    const result = t.epic();
+    const ctx = createContext(tmpDir);
+    const result = computeEpic({ plans: ctx.plans, graph: ctx.graph });
     expect(result).toHaveLength(2);
 
     const v1 = result.find(e => e.epic === 'v1')!;
@@ -189,14 +190,14 @@ describe('Trellis.epic()', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'done', tags: ['epic:v1'] });
     writePlan(plansDir, 'b', { title: 'B', status: 'not_started', tags: ['epic:v1'] });
 
-    const t = new Trellis(tmpDir);
-    const result = t.epic('v1');
+    const ctx = createContext(tmpDir);
+    const result = computeEpic({ plans: ctx.plans, graph: ctx.graph, name: 'v1' });
     expect(result).toHaveLength(1);
     expect(result[0].plans).toHaveLength(2);
   });
 
   it('returns empty array for unknown epic', () => {
-    const t = new Trellis(tmpDir);
-    expect(t.epic('nonexistent')).toHaveLength(0);
+    const ctx = createContext(tmpDir);
+    expect(computeEpic({ plans: ctx.plans, graph: ctx.graph, name: 'nonexistent' })).toHaveLength(0);
   });
 });

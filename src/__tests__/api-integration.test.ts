@@ -4,7 +4,15 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 
 // Import from barrel — this is the consumer's entry point
-import { Trellis } from '../index.ts';
+import { createContext, refreshContext } from '../core/index.ts';
+import { computeStatus } from '../features/status/logic.ts';
+import { computeReady } from '../features/ready/logic.ts';
+import { computeShow } from '../features/show/logic.ts';
+import { computeUpdate } from '../features/update/logic.ts';
+import { computeLint } from '../features/lint/logic.ts';
+import { computeGraph } from '../features/graph/logic.ts';
+import { computeEpic } from '../features/epic/logic.ts';
+import { computeChunksFeature } from '../features/chunks/logic.ts';
 import type {
   StatusResult,
   ReadyResult,
@@ -56,9 +64,9 @@ describe('Consumer workflow: project overview', () => {
   });
 
   it('status → ready → show → graph gives a consistent project view', () => {
-    const t = new Trellis(tmpDir);
+    const ctx = createContext(tmpDir);
 
-    const status: StatusResult = t.status({ showDone: true });
+    const status: StatusResult = computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: { showDone: true } });
     expect(status.project).toBe('test-project');
     expect(status.total).toBe(6);
     expect(status.byStatus.done).toHaveLength(2);
@@ -66,11 +74,11 @@ describe('Consumer workflow: project overview', () => {
     expect(status.byStatus.ready.map(p => p.id)).toContain('impl/graph');
     expect(status.byStatus.blocked.map(p => p.id)).toContain('impl/cli');
 
-    const ready: ReadyResult = t.ready();
+    const ready: ReadyResult = computeReady({ plans: ctx.plans, graph: ctx.graph, filters: {} });
     expect(ready.plans.length).toBeGreaterThanOrEqual(1);
     expect(ready.next).toBeTruthy();
 
-    const show: ShowResult = t.show('impl/cli')!;
+    const show: ShowResult = computeShow({ planId: 'impl/cli', graph: ctx.graph })!;
     expect(show).not.toBeNull();
     expect(show.blocked).toBe(true);
     expect(show.dependsOn).toHaveLength(2);
@@ -79,7 +87,7 @@ describe('Consumer workflow: project overview', () => {
     expect(show.criticalPath.length).toBeGreaterThanOrEqual(2);
     expect(show.body).toContain('Body for impl/cli');
 
-    const graph: GraphResult = t.graph();
+    const graph: GraphResult = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
     expect(graph.nodes).toHaveLength(6);
     expect(graph.edges.length).toBeGreaterThan(0);
     expect(graph.nodes.find(n => n.id === 'impl/cli')!.blocked).toBe(true);
@@ -109,42 +117,47 @@ describe('Consumer workflow: work on a plan', () => {
   });
 
   it('update a plan and see downstream effects', () => {
-    const t = new Trellis(tmpDir);
+    let ctx = createContext(tmpDir);
 
-    expect(t.ready().plans.map(p => p.id)).toContain('feature-a');
-    expect(t.show('feature-b')!.blocked).toBe(true);
+    expect(computeReady({ plans: ctx.plans, graph: ctx.graph, filters: {} }).plans.map(p => p.id)).toContain('feature-a');
+    expect(computeShow({ planId: 'feature-b', graph: ctx.graph })!.blocked).toBe(true);
 
-    const startResult: UpdateResult = t.update('feature-a', 'in_progress', { force: true });
+    const startResult: UpdateResult = computeUpdate({ planId: 'feature-a', status: 'in_progress', graph: ctx.graph, force: true }, { refresh: () => {} });
     expect(startResult.previousStatus).toBe('not_started');
     expect(startResult.newStatus).toBe('in_progress');
     expect(startResult.backward).toBe(false);
 
-    const afterStart = t.status({ showDone: true });
+    ctx = createContext(tmpDir);
+    const afterStart = computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: { showDone: true } });
     expect(afterStart.byStatus.inProgress.map(p => p.id)).toContain('feature-a');
 
-    const doneResult: UpdateResult = t.update('feature-a', 'done', { force: true });
+    const doneResult: UpdateResult = computeUpdate({ planId: 'feature-a', status: 'done', graph: ctx.graph, force: true }, { refresh: () => {} });
     expect(doneResult.newlyReady).toContain('feature-b');
 
-    expect(t.show('feature-b')!.blocked).toBe(false);
-    expect(t.show('feature-b')!.ready).toBe(true);
-    expect(t.ready().plans.map(p => p.id)).toContain('feature-b');
+    ctx = createContext(tmpDir);
+    expect(computeShow({ planId: 'feature-b', graph: ctx.graph })!.blocked).toBe(false);
+    expect(computeShow({ planId: 'feature-b', graph: ctx.graph })!.ready).toBe(true);
+    expect(computeReady({ plans: ctx.plans, graph: ctx.graph, filters: {} }).plans.map(p => p.id)).toContain('feature-b');
   });
 
   it('backward status transition clears timestamps', () => {
-    const t = new Trellis(tmpDir);
+    let ctx = createContext(tmpDir);
 
-    t.update('feature-a', 'in_progress', { force: true });
-    const afterStart = t.show('feature-a')!;
+    computeUpdate({ planId: 'feature-a', status: 'in_progress', graph: ctx.graph, force: true }, { refresh: () => {} });
+    ctx = createContext(tmpDir);
+    const afterStart = computeShow({ planId: 'feature-a', graph: ctx.graph })!;
     expect(afterStart.startedAt).toBeTruthy();
 
-    t.update('feature-a', 'done', { force: true });
-    const afterDone = t.show('feature-a')!;
+    computeUpdate({ planId: 'feature-a', status: 'done', graph: ctx.graph, force: true }, { refresh: () => {} });
+    ctx = createContext(tmpDir);
+    const afterDone = computeShow({ planId: 'feature-a', graph: ctx.graph })!;
     expect(afterDone.completedAt).toBeTruthy();
 
-    const revertResult = t.update('feature-a', 'not_started', { force: true });
+    const revertResult = computeUpdate({ planId: 'feature-a', status: 'not_started', graph: ctx.graph, force: true }, { refresh: () => {} });
     expect(revertResult.backward).toBe(true);
 
-    const afterRevert = t.show('feature-a')!;
+    ctx = createContext(tmpDir);
+    const afterRevert = computeShow({ planId: 'feature-a', graph: ctx.graph })!;
     expect(afterRevert.startedAt).toBeUndefined();
     expect(afterRevert.completedAt).toBeUndefined();
   });
@@ -168,8 +181,8 @@ describe('Consumer workflow: project health check', () => {
   });
 
   it('lint detects errors and warnings', () => {
-    const t = new Trellis(tmpDir);
-    const result: LintResult = t.lint();
+    const ctx = createContext(tmpDir);
+    const result: LintResult = computeLint({ plans: ctx.plans, graph: ctx.graph, projectDir: ctx.projectDir, plansDir: ctx.plansDir, options: {} });
 
     expect(result.ok).toBe(false);
     expect(result.total).toBe(4);
@@ -178,9 +191,9 @@ describe('Consumer workflow: project health check', () => {
   });
 
   it('strict mode fails on warnings too', () => {
-    const t = new Trellis(tmpDir);
-    const relaxed = t.lint();
-    const strict = t.lint({ strict: true });
+    const ctx = createContext(tmpDir);
+    const relaxed = computeLint({ plans: ctx.plans, graph: ctx.graph, projectDir: ctx.projectDir, plansDir: ctx.plansDir, options: {} });
+    const strict = computeLint({ plans: ctx.plans, graph: ctx.graph, projectDir: ctx.projectDir, plansDir: ctx.plansDir, options: { strict: true } });
 
     expect(strict.ok).toBe(false);
     expect(strict.errors).toEqual(relaxed.errors);
@@ -206,8 +219,8 @@ describe('Consumer workflow: epic tracking', () => {
   });
 
   it('tracks progress across epics', () => {
-    const t = new Trellis(tmpDir);
-    const epics: EpicResult[] = t.epic();
+    const ctx = createContext(tmpDir);
+    const epics: EpicResult[] = computeEpic({ plans: ctx.plans, graph: ctx.graph, name: undefined });
 
     expect(epics).toHaveLength(2);
 
@@ -223,8 +236,8 @@ describe('Consumer workflow: epic tracking', () => {
   });
 
   it('single epic includes plan details', () => {
-    const t = new Trellis(tmpDir);
-    const [v1]: EpicResult[] = t.epic('v1');
+    const ctx = createContext(tmpDir);
+    const [v1]: EpicResult[] = computeEpic({ plans: ctx.plans, graph: ctx.graph, name: 'v1' });
 
     expect(v1.plans).toBeDefined();
     expect(v1.plans).toHaveLength(3);
@@ -239,8 +252,8 @@ describe('Consumer workflow: error paths', () => {
     try {
       // loadConfig returns defaults when no .trellis exists, so it won't throw.
       // But scanning will fail if plans dir doesn't exist.
-      const t = new Trellis(tmpDir);
-      expect(t.config.plans_dir).toBe('plans');
+      const ctx = createContext(tmpDir);
+      expect(ctx.config.plans_dir).toBe('plans');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -251,8 +264,8 @@ describe('Consumer workflow: error paths', () => {
       'a': { title: 'A', status: 'not_started' },
     });
     try {
-      const t = new Trellis(tmpDir);
-      expect(t.show('nonexistent')).toBeNull();
+      const ctx = createContext(tmpDir);
+      expect(computeShow({ planId: 'nonexistent', graph: ctx.graph })).toBeNull();
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -263,8 +276,8 @@ describe('Consumer workflow: error paths', () => {
       'a': { title: 'A', status: 'not_started' },
     });
     try {
-      const t = new Trellis(tmpDir);
-      expect(() => t.update('nonexistent', 'done')).toThrow('not found');
+      const ctx = createContext(tmpDir);
+      expect(() => computeUpdate({ planId: 'nonexistent', status: 'done', graph: ctx.graph }, { refresh: () => {} })).toThrow('not found');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -275,8 +288,8 @@ describe('Consumer workflow: error paths', () => {
       'a': { title: 'A', status: 'not_started' },
     });
     try {
-      const t = new Trellis(tmpDir);
-      expect(() => t.update('a', 'invalid' as any)).toThrow('Invalid status');
+      const ctx = createContext(tmpDir);
+      expect(() => computeUpdate({ planId: 'a', status: 'invalid' as any, graph: ctx.graph }, { refresh: () => {} })).toThrow('Invalid status');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -294,8 +307,8 @@ describe('Consumer workflow: error paths', () => {
     writeFileSync(join(plansDir, 'corrupt', 'README.md'), '---\n: invalid yaml {{{\nstatus: [broken\n---\n\nBody\n');
 
     try {
-      const t = new Trellis(tmpDir);
-      const status = t.status();
+      const ctx = createContext(tmpDir);
+      const status = computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: {} });
       expect(status.total).toBe(1);
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
@@ -321,8 +334,8 @@ describe('Consumer workflow: chunks and filtering', () => {
   });
 
   it('chunks returns coherent chunk data', () => {
-    const t = new Trellis(tmpDir);
-    const result = t.chunks();
+    const ctx = createContext(tmpDir);
+    const result = computeChunksFeature({ plans: ctx.plans, graph: ctx.graph, config: ctx.config, filters: {} });
 
     expect(result.chunks.length).toBeGreaterThan(0);
     expect(Array.isArray(result.crossChunkEdges)).toBe(true);
@@ -333,12 +346,12 @@ describe('Consumer workflow: chunks and filtering', () => {
   });
 
   it('status filters by tag', () => {
-    const t = new Trellis(tmpDir);
+    const ctx = createContext(tmpDir);
 
-    const coreOnly = t.status({ tag: 'core', showDone: true });
+    const coreOnly = computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: { tag: 'core', showDone: true } });
     expect(coreOnly.total).toBe(2);
 
-    const foundationOnly = t.ready({ tag: 'foundation' });
+    const foundationOnly = computeReady({ plans: ctx.plans, graph: ctx.graph, filters: { tag: 'foundation' } });
     expect(foundationOnly.plans.every(p => p.tags.includes('foundation'))).toBe(true);
   });
 });
@@ -373,15 +386,15 @@ describe('Consumer workflow: directory-based plans with contracts', () => {
   it('show() returns contract data for directory-based plans', () => {
     const { tmpDir } = createDirProject();
     try {
-      const t = new Trellis(tmpDir);
+      const ctx = createContext(tmpDir);
 
-      const coreTypes = t.show('contracts/core-types')!;
+      const coreTypes = computeShow({ planId: 'contracts/core-types', graph: ctx.graph })!;
       expect(coreTypes).not.toBeNull();
       expect(coreTypes.outputs).not.toBeNull();
       expect(coreTypes.outputs!.length).toBeGreaterThan(0);
       expect(coreTypes.outputs![0].heading).toContain('Type definitions');
 
-      const scanner = t.show('impl/scanner')!;
+      const scanner = computeShow({ planId: 'impl/scanner', graph: ctx.graph })!;
       expect(scanner).not.toBeNull();
       expect(scanner.inputs).not.toBeNull();
       expect(scanner.outputs).not.toBeNull();
@@ -396,8 +409,8 @@ describe('Consumer workflow: directory-based plans with contracts', () => {
   it('graph() includes contract content on nodes', () => {
     const { tmpDir } = createDirProject();
     try {
-      const t = new Trellis(tmpDir);
-      const graph = t.graph();
+      const ctx = createContext(tmpDir);
+      const graph = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
 
       const coreNode = graph.nodes.find(n => n.id === 'contracts/core-types')!;
       expect(coreNode.outputs).toBeDefined();
@@ -432,8 +445,8 @@ describe('Consumer workflow: directory-based plans with contracts', () => {
       '## From plans\n### upstream\n- Some deliverable\n');
 
     try {
-      const t = new Trellis(tmpDir);
-      const lint = t.lint();
+      const ctx = createContext(tmpDir);
+      const lint = computeLint({ plans: ctx.plans, graph: ctx.graph, projectDir: ctx.projectDir, plansDir: ctx.plansDir, options: {} });
 
       // Structural warning: upstream has dependents but no outputs.md
       expect(lint.warnings.some(w => w.type === 'missing_outputs' && w.planId === 'upstream')).toBe(true);
@@ -444,30 +457,30 @@ describe('Consumer workflow: directory-based plans with contracts', () => {
   });
 });
 
-describe('Consumer workflow: concurrent Trellis instances', () => {
+describe('Consumer workflow: concurrent contexts', () => {
   it('two instances on same directory stay consistent after update', () => {
     const { tmpDir } = createTestProject({
       'a': { title: 'A', status: 'not_started' },
       'b': { title: 'B', status: 'not_started', depends_on: ['a'] },
     });
     try {
-      const t1 = new Trellis(tmpDir);
-      const t2 = new Trellis(tmpDir);
+      let ctx1 = createContext(tmpDir);
+      let ctx2 = createContext(tmpDir);
 
-      expect(t1.status().total).toBe(2);
-      expect(t2.status().total).toBe(2);
+      expect(computeStatus({ plans: ctx1.plans, config: ctx1.config, graph: ctx1.graph, filters: {} }).total).toBe(2);
+      expect(computeStatus({ plans: ctx2.plans, config: ctx2.config, graph: ctx2.graph, filters: {} }).total).toBe(2);
 
-      t1.update('a', 'done', { force: true });
+      computeUpdate({ planId: 'a', status: 'done', graph: ctx1.graph, force: true }, { refresh: () => {} });
 
-      // t2 still sees stale state until refresh
-      const stale = t2.show('a')!;
+      // ctx2 still sees stale state until refresh
+      const stale = computeShow({ planId: 'a', graph: ctx2.graph })!;
       expect(stale.status).toBe('not_started');
 
-      // After refresh, t2 sees the update
-      t2.refresh();
-      const fresh = t2.show('a')!;
+      // After refresh, ctx2 sees the update
+      ctx2 = createContext(tmpDir);
+      const fresh = computeShow({ planId: 'a', graph: ctx2.graph })!;
       expect(fresh.status).toBe('done');
-      expect(t2.ready().plans.map(p => p.id)).toContain('b');
+      expect(computeReady({ plans: ctx2.plans, graph: ctx2.graph, filters: {} }).plans.map(p => p.id)).toContain('b');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

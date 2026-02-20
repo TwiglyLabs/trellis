@@ -1,12 +1,14 @@
 ---
 title: Replace Trellis class with context + standalone functions
-status: not_started
+status: done
 depends_on:
   - feature-slices-batch-3
 tags:
   - refactor
   - vertical-slices
 not_started_at: '2026-02-20T00:16:05.674Z'
+started_at: '2026-02-20T02:24:49.292Z'
+completed_at: '2026-02-20T03:16:09.497Z'
 ---
 
 ## Problem

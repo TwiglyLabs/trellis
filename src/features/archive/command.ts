@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeArchive } from './logic.ts';
 
 export function register(program: Command): void {
   program
@@ -16,10 +17,13 @@ interface ArchiveOptions {
 }
 
 export function archiveCommand(planId: string, options?: ArchiveOptions): void {
-  const t = new Trellis(process.cwd());
+  const ctx = createContext(process.cwd());
 
   try {
-    const result = t.archive(planId);
+    const result = computeArchive(
+      { planId, graph: ctx.graph },
+      { refresh: () => {} },
+    );
 
     if (options?.json) {
       console.log(JSON.stringify({

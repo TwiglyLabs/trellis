@@ -19,7 +19,7 @@ describe('library build', () => {
     expect(typeof lib.buildGraph).toBe('function');
     expect(typeof lib.loadConfig).toBe('function');
     expect(typeof lib.filterPlans).toBe('function');
-    expect(typeof lib.Trellis).toBe('function');
+    expect(typeof lib.createContext).toBe('function');
     expect(lib.VALID_STATUSES).toContain('done');
   });
 
@@ -30,7 +30,7 @@ describe('library build', () => {
     expect(typeof lib.buildGraph).toBe('function');
     expect(typeof lib.loadConfig).toBe('function');
     expect(typeof lib.filterPlans).toBe('function');
-    expect(typeof lib.Trellis).toBe('function');
+    expect(typeof lib.createContext).toBe('function');
     expect(lib.VALID_STATUSES).toContain('done');
   });
 
@@ -50,8 +50,8 @@ describe('library build', () => {
     expect(dts).toContain('scanPlans');
     expect(dts).toContain('buildGraph');
     expect(dts).toContain('loadConfig');
-    // Trellis class and API types
-    expect(dts).toContain('Trellis');
+    // Context and API types
+    expect(dts).toContain('createContext');
     expect(dts).toContain('StatusResult');
     expect(dts).toContain('ReadyResult');
     expect(dts).toContain('ShowResult');

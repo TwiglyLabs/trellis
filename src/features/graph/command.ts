@@ -1,9 +1,9 @@
 import { createServer } from 'http';
 import { execFile } from 'child_process';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
 import viewerHtml from './viewer/index.html';
-import { getGraphData } from './logic.ts';
+import { getGraphData, computeGraph } from './logic.ts';
 
 export function register(program: Command): void {
   program
@@ -17,8 +17,8 @@ export function register(program: Command): void {
 
 export function graphCommand(options: { port?: number; json?: boolean }): void {
   const cwd = process.cwd();
-  const t = new Trellis(cwd);
-  const result = t.graph();
+  const ctx = createContext(cwd);
+  const result = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
 
   if (options.json) {
     const nodes = result.nodes.map((n) => ({

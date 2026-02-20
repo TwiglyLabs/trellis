@@ -67,8 +67,8 @@ describe('library exports', () => {
     expect(typeof lib.fetchProjectPlans).toBe('function');
   });
 
-  it('exports Trellis class and API types', async () => {
+  it('exports createContext and compute functions', async () => {
     const lib = await import('../index.ts');
-    expect(typeof lib.Trellis).toBe('function');
+    expect(typeof lib.createContext).toBe('function');
   });
 });

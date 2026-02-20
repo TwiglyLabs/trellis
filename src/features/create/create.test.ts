@@ -3,7 +3,8 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
 import { createCommand } from './command.ts';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeCreate } from './logic.ts';
 import { createFixture } from '../../__tests__/helpers.ts';
 
 describe('createCommand', () => {
@@ -97,11 +98,11 @@ describe('createCommand', () => {
   });
 });
 
-describe('Trellis.create', () => {
+describe('computeCreate', () => {
   it('creates a plan directory with README.md', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    const result = t.create('new-plan', { title: 'New Plan' });
+    const ctx = createContext(root);
+    const result = computeCreate({ id: 'new-plan', opts: { title: 'New Plan' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} });
 
     expect(result.id).toBe('new-plan');
     expect(existsSync(join(root, 'plans', 'new-plan', 'README.md'))).toBe(true);
@@ -115,13 +116,13 @@ describe('Trellis.create', () => {
 
   it('sets optional fields', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    t.create('my-plan', {
+    const ctx = createContext(root);
+    computeCreate({ id: 'my-plan', opts: {
       title: 'My Plan',
       description: 'A test plan',
       depends_on: [],
       tags: ['test', 'foundation'],
-    });
+    }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} });
 
     const content = readFileSync(join(root, 'plans', 'my-plan', 'README.md'), 'utf8');
     expect(content).toContain('description: A test plan');
@@ -134,26 +135,26 @@ describe('Trellis.create', () => {
     const { root } = createFixture([
       { id: 'existing', title: 'Existing', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
-    const t = new Trellis(root);
-    expect(() => t.create('existing', { title: 'Dup' })).toThrow('already exists');
+    const ctx = createContext(root);
+    expect(() => computeCreate({ id: 'existing', opts: { title: 'Dup' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('already exists');
   });
 
   it('requires title', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    expect(() => t.create('test', { title: '' })).toThrow('title');
+    const ctx = createContext(root);
+    expect(() => computeCreate({ id: 'test', opts: { title: '' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('title');
   });
 
   it('validates depends_on references exist', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    expect(() => t.create('test', { title: 'Test', depends_on: ['nonexistent'] })).toThrow('nonexistent');
+    const ctx = createContext(root);
+    expect(() => computeCreate({ id: 'test', opts: { title: 'Test', depends_on: ['nonexistent'] }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('nonexistent');
   });
 
   it('create() with YAML-special characters in title', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    const result = t.create('special-title', { title: 'My Plan: Part "1"' });
+    const ctx = createContext(root);
+    const result = computeCreate({ id: 'special-title', opts: { title: 'My Plan: Part "1"' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} });
 
     expect(result.id).toBe('special-title');
     const content = readFileSync(join(root, 'plans', 'special-title', 'README.md'), 'utf8');
@@ -164,15 +165,15 @@ describe('Trellis.create', () => {
 
   it('create() with path traversal in ID rejects', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    expect(() => t.create('../evil', { title: 'Evil' })).toThrow('Invalid plan ID');
-    expect(() => t.create('./test', { title: 'Test' })).toThrow('Invalid plan ID');
-    expect(() => t.create('foo/bar', { title: 'FooBar' })).toThrow('Invalid plan ID');
+    const ctx = createContext(root);
+    expect(() => computeCreate({ id: '../evil', opts: { title: 'Evil' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('Invalid plan ID');
+    expect(() => computeCreate({ id: './test', opts: { title: 'Test' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('Invalid plan ID');
+    expect(() => computeCreate({ id: 'foo/bar', opts: { title: 'FooBar' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('Invalid plan ID');
   });
 
   it('create() with leading dot in ID rejects', () => {
     const { root } = createFixture([]);
-    const t = new Trellis(root);
-    expect(() => t.create('.hidden-plan', { title: 'Hidden' })).toThrow('Invalid plan ID');
+    const ctx = createContext(root);
+    expect(() => computeCreate({ id: '.hidden-plan', opts: { title: 'Hidden' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('Invalid plan ID');
   });
 });

@@ -1,7 +1,33 @@
 import { transitiveDependents, computeCriticalPath } from '../../core/index.ts';
-import type { PlanStatus } from '../../core/types.ts';
+import type { PlanStatus, ContractSection } from '../../core/types.ts';
 import type { GraphData } from '../../core/graph.ts';
-import type { ShowResult } from '../../api.ts';
+
+export interface DependencyInfo {
+  id: string;
+  status: PlanStatus | 'not_found';
+  satisfied: boolean;
+}
+
+export interface ShowResult {
+  id: string;
+  filePath: string;
+  title: string;
+  status: PlanStatus;
+  blocked: boolean;
+  ready: boolean;
+  tags: string[];
+  repo?: string;
+  assignee?: string;
+  description?: string;
+  startedAt?: string;
+  completedAt?: string;
+  body: string;
+  dependsOn: DependencyInfo[];
+  blocks: string[];
+  criticalPath: string[];
+  inputs: ContractSection[] | null;
+  outputs: ContractSection[] | null;
+}
 
 export interface ComputeShowOptions {
   planId: string;

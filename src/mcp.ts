@@ -1,14 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { Trellis } from './api.ts';
+import { createContext } from './core/index.ts';
 import type { PlanStatus } from './core/types.ts';
+import { computeCreate } from './features/create/logic.ts';
+import { computeWriteSection, computeReadSection } from './features/sections/logic.ts';
+import { computeSet } from './features/set/logic.ts';
+import { computeUpdate } from './features/update/logic.ts';
 
 const STATUS_VALUES = ['draft', 'not_started', 'in_progress', 'done', 'archived'] as const;
-
-function getTrellis(): Trellis {
-  return new Trellis(process.cwd());
-}
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
@@ -29,8 +29,11 @@ export function createMcpServer(): McpServer {
     },
   }, async ({ id, title, description, depends_on, tags }) => {
     try {
-      const t = getTrellis();
-      const result = t.create(id, { title, description, depends_on, tags });
+      const ctx = createContext(process.cwd());
+      const result = computeCreate(
+        { id, opts: { title, description, depends_on, tags }, plansDir: ctx.plansDir, graph: ctx.graph },
+        { refresh: () => {} },
+      );
       return {
         content: [{
           type: 'text' as const,
@@ -57,8 +60,11 @@ export function createMcpServer(): McpServer {
     },
   }, async ({ plan_id, file, section, content }) => {
     try {
-      const t = getTrellis();
-      const result = t.writeSection(plan_id, file, section, content);
+      const ctx = createContext(process.cwd());
+      const result = computeWriteSection(
+        { planId: plan_id, file, section, content, graph: ctx.graph },
+        { refresh: () => {} },
+      );
       return {
         content: [{
           type: 'text' as const,
@@ -90,8 +96,8 @@ export function createMcpServer(): McpServer {
           isError: true,
         };
       }
-      const t = getTrellis();
-      const result = t.readSection(plan_id, file, section);
+      const ctx = createContext(process.cwd());
+      const result = computeReadSection({ planId: plan_id, file, section, graph: ctx.graph });
       return {
         content: [{ type: 'text' as const, text: result.content }],
       };
@@ -115,8 +121,11 @@ export function createMcpServer(): McpServer {
     },
   }, async ({ plan_id, field, value, mode }) => {
     try {
-      const t = getTrellis();
-      const result = t.set(plan_id, field, value, mode ?? 'replace');
+      const ctx = createContext(process.cwd());
+      const result = computeSet(
+        { planId: plan_id, field, value, mode: mode ?? 'replace', graph: ctx.graph },
+        { refresh: () => {} },
+      );
       return {
         content: [{
           type: 'text' as const,
@@ -147,8 +156,11 @@ export function createMcpServer(): McpServer {
     },
   }, async ({ plan_id, status, force }) => {
     try {
-      const t = getTrellis();
-      const result = t.update(plan_id, status as PlanStatus, { force });
+      const ctx = createContext(process.cwd());
+      const result = computeUpdate(
+        { planId: plan_id, status: status as PlanStatus, graph: ctx.graph, force },
+        { refresh: () => {} },
+      );
       return {
         content: [{
           type: 'text' as const,

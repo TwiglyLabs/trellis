@@ -1,8 +1,10 @@
 import chalk from 'chalk';
 import { relative } from 'path';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
+import { computeShow } from './logic.ts';
+import { computeReadSection } from '../sections/logic.ts';
 
 export function register(program: Command): void {
   program
@@ -26,7 +28,7 @@ interface ShowOptions {
 }
 
 export function showCommand(planId: string, options?: ShowOptions): void {
-  const t = new Trellis(process.cwd());
+  const ctx = createContext(process.cwd());
 
   // --file / --section mode: granular content read
   if (options?.file || options?.section) {
@@ -46,7 +48,7 @@ export function showCommand(planId: string, options?: ShowOptions): void {
     }
 
     try {
-      const result = t.readSection(planId, file, section);
+      const result = computeReadSection({ planId, file, section, graph: ctx.graph });
       if (options?.json) {
         console.log(JSON.stringify({ id: planId, file, section, content: result.content }, null, 2));
       } else {
@@ -67,7 +69,7 @@ export function showCommand(planId: string, options?: ShowOptions): void {
   // --raw mode: dump all plan content
   if (options?.raw) {
     try {
-      const result = t.readSection(planId);
+      const result = computeReadSection({ planId, graph: ctx.graph });
       console.log(result.content);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -82,7 +84,7 @@ export function showCommand(planId: string, options?: ShowOptions): void {
   }
 
   // Standard show mode
-  const result = t.show(planId);
+  const result = computeShow({ planId, graph: ctx.graph });
 
   if (!result) {
     if (options?.json) {
@@ -156,7 +158,7 @@ export function showCommand(planId: string, options?: ShowOptions): void {
   }
 
   const directBlocks = result.blocks.filter((id) => {
-    const show = t.show(id);
+    const show = computeShow({ planId: id, graph: ctx.graph });
     return show?.dependsOn.some((d) => d.id === planId);
   });
   const transitiveOnly = result.blocks.filter((id) => !directBlocks.includes(id));

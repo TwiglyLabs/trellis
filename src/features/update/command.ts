@@ -1,9 +1,12 @@
 import chalk from 'chalk';
 import { createInterface } from 'readline';
 import type { Command } from 'commander';
-import { Trellis } from '../../api.ts';
-import { padRight, computeColumnWidth } from '../../core/utils.ts';
+import { createContext } from '../../core/index.ts';
 import type { PlanStatus } from '../../core/types.ts';
+import { padRight, computeColumnWidth } from '../../core/utils.ts';
+import { computeUpdate } from './logic.ts';
+import { computeShow } from '../show/logic.ts';
+import { computeSet } from '../set/logic.ts';
 
 export function register(program: Command): void {
   program
@@ -33,10 +36,13 @@ function prompt(question: string, defaultVal: string): Promise<string> {
 }
 
 export async function updateCommand(planId: string, status: string, options?: UpdateOptions): Promise<void> {
-  const t = new Trellis(process.cwd());
+  let ctx = createContext(process.cwd());
 
   try {
-    const result = t.update(planId, status as PlanStatus, { force: options?.force });
+    const result = computeUpdate(
+      { planId, status: status as PlanStatus, graph: ctx.graph, force: options?.force },
+      { refresh: () => {} },
+    );
 
     if (options?.json) {
       const output = {
@@ -57,10 +63,11 @@ export async function updateCommand(planId: string, status: string, options?: Up
     console.log(`${chalk.green('✓')} ${planId} → ${result.newStatus}`);
 
     if (result.newlyReady.length > 0) {
+      ctx = createContext(process.cwd());
       const idWidth = computeColumnWidth(result.newlyReady);
       console.log(`\n  Now ready:`);
       for (const id of result.newlyReady) {
-        const readyPlan = t.show(id);
+        const readyPlan = computeShow({ planId: id, graph: ctx.graph });
         if (readyPlan) {
           console.log(`    ${chalk.white(padRight(id, idWidth))} ${readyPlan.title}`);
         }
@@ -73,14 +80,22 @@ export async function updateCommand(planId: string, status: string, options?: Up
       const sessionsRaw = await prompt('  Sessions', '');
       const deviationRaw = await prompt('  Deviation (none/minor/major)', '');
 
+      ctx = createContext(process.cwd());
       if (sessionsRaw) {
         const num = Number(sessionsRaw);
         if (Number.isInteger(num) && num >= 1) {
-          t.set(planId, 'sessions', String(num));
+          computeSet(
+            { planId, field: 'sessions', value: String(num), mode: 'replace', graph: ctx.graph },
+            { refresh: () => {} },
+          );
         }
       }
       if (deviationRaw && ['none', 'minor', 'major'].includes(deviationRaw)) {
-        t.set(planId, 'deviation', deviationRaw);
+        ctx = createContext(process.cwd());
+        computeSet(
+          { planId, field: 'deviation', value: deviationRaw, mode: 'replace', graph: ctx.graph },
+          { refresh: () => {} },
+        );
       }
     }
   } catch (error) {

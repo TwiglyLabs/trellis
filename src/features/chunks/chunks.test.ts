@@ -3,7 +3,8 @@ import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { chunksCommand } from './command.ts';
-import { Trellis } from '../../api.ts';
+import { createContext } from '../../core/index.ts';
+import { computeChunksFeature } from './logic.ts';
 import { createFixture } from '../../__tests__/helpers.ts';
 
 // --- Command tests ---
@@ -215,7 +216,7 @@ function writePlan(plansDir: string, id: string, frontmatter: Record<string, unk
   writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n${body ?? `\nBody for ${id}\n`}`);
 }
 
-describe('Trellis.chunks()', () => {
+describe('computeChunksFeature', () => {
   let tmpDir: string;
   let plansDir: string;
 
@@ -233,8 +234,8 @@ describe('Trellis.chunks()', () => {
     writePlan(plansDir, 'contracts/types', { title: 'Types', status: 'done', tags: ['foundation'], repo: 'public' });
     writePlan(plansDir, 'impl/core', { title: 'Core', status: 'not_started', tags: ['core'], repo: 'private' });
 
-    const t = new Trellis(tmpDir);
-    const byTag = t.chunks({ tag: 'foundation' });
+    const ctx = createContext(tmpDir);
+    const byTag = computeChunksFeature({ plans: ctx.plans, graph: ctx.graph, config: ctx.config, filters: { tag: 'foundation' } });
     const planIds = byTag.chunks.flatMap(c => c.plans.map(p => p.id));
     expect(planIds).toContain('contracts/types');
     expect(planIds).not.toContain('impl/core');
@@ -245,8 +246,8 @@ describe('Trellis.chunks()', () => {
     writePlan(plansDir, 'contracts/api', { title: 'API', status: 'not_started', depends_on: ['contracts/types'] });
     writePlan(plansDir, 'impl/core', { title: 'Core', status: 'not_started', depends_on: ['contracts/types'] });
 
-    const t = new Trellis(tmpDir);
-    const result = t.chunks();
+    const ctx = createContext(tmpDir);
+    const result = computeChunksFeature({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
     expect(result.chunks.length).toBeGreaterThan(0);
     expect(Array.isArray(result.crossChunkEdges)).toBe(true);
     expect(typeof result.config.maxLines).toBe('number');

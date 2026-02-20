@@ -23,11 +23,14 @@ export type {
   ChunkResult,
   GitExecutor,
   FetchRepoResult,
+  PlanSummary,
+  BlockedPlanSummary,
+  CreateOptions,
 } from './core/index.ts';
 
 export {
   PlanFile, SECTION_REQUIREMENTS, STATUS_GATES,
-  createContext, refreshContext,
+  createContext, refreshContext, toSummary,
   scanPlans, loadConfig, derivePlanId,
   buildGraph, detectCycles, topologicalSort, transitiveDependents,
   computeCriticalPath, pickNext, computeChunks, groupByDirectory,
@@ -40,31 +43,47 @@ export {
   VALID_STATUSES, filterPlans,
 } from './core/index.ts';
 
-// --- High-Level API ---
-export { Trellis } from './api.ts';
-export type {
-  StatusResult,
-  PlanSummary,
-  BlockedPlanSummary,
-  ReadyResult,
-  DependencyInfo,
-  ShowResult,
-  UpdateResult,
-  LintIssue,
-  LintResult,
-  GraphNode,
-  GraphEdge,
-  GraphResult,
-  EpicResult,
-  CreateResult,
-  CreateOptions,
-  SetResult,
-  WriteSectionResult,
-  ReadSectionResult,
-  RenameResult,
-  ArchiveResult,
-  FetchResult,
-  RepoFetchStatus,
-  PlanMetric,
-  MetricsResult,
-} from './api.ts';
+// --- Feature compute functions ---
+export { computeStatus } from './features/status/logic.ts';
+export type { StatusResult } from './features/status/logic.ts';
+
+export { computeReady } from './features/ready/logic.ts';
+export type { ReadyResult } from './features/ready/logic.ts';
+
+export { computeShow } from './features/show/logic.ts';
+export type { DependencyInfo, ShowResult } from './features/show/logic.ts';
+
+export { computeUpdate } from './features/update/logic.ts';
+export type { UpdateResult } from './features/update/logic.ts';
+
+export { computeLint } from './features/lint/logic.ts';
+export type { LintIssue, LintResult } from './features/lint/logic.ts';
+
+export { computeGraph } from './features/graph/logic.ts';
+export type { GraphNode, GraphEdge, GraphResult } from './features/graph/logic.ts';
+
+export { computeEpic } from './features/epic/logic.ts';
+export type { EpicResult } from './features/epic/logic.ts';
+
+export { computeCreate } from './features/create/logic.ts';
+export type { CreateResult } from './features/create/logic.ts';
+
+export { computeSet } from './features/set/logic.ts';
+export type { SetResult } from './features/set/logic.ts';
+
+export { computeWriteSection, computeReadSection } from './features/sections/logic.ts';
+export type { WriteSectionResult, ReadSectionResult } from './features/sections/logic.ts';
+
+export { computeRename } from './features/rename/logic.ts';
+export type { RenameResult } from './features/rename/logic.ts';
+
+export { computeArchive } from './features/archive/logic.ts';
+export type { ArchiveResult } from './features/archive/logic.ts';
+
+export { computeFetch, computeProjectPlans } from './features/fetch/logic.ts';
+export type { FetchResult, RepoFetchStatus } from './features/fetch/logic.ts';
+
+export { computeMetrics } from './features/metrics/logic.ts';
+export type { PlanMetric, MetricsResult } from './features/metrics/logic.ts';
+
+export { computeChunksFeature } from './features/chunks/logic.ts';
