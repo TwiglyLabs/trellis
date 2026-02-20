@@ -2,16 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { rmSync } from 'fs';
 import { createFixture } from './helpers.ts';
 
-// Mock the HTML viewer import before importing graph command
-vi.mock('../features/graph/viewer/index.html', () => ({
-  default: '<html>__TRELLIS_DATA__</html>',
-}));
-
-// Mock child_process.execFile to prevent opening browser
-vi.mock('child_process', () => ({
-  execFile: vi.fn(),
-}));
-
 import { statusCommand } from '../features/status/command.ts';
 import { readyCommand } from '../features/ready/command.ts';
 import { showCommand } from '../features/show/command.ts';

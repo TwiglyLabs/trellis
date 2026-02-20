@@ -1,40 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createFixture } from '../../__tests__/helpers.ts';
-import http from 'http';
-
-// Mock the HTML viewer import before importing the command
-vi.mock('./viewer/index.html', () => ({
-  default: '<html>__TRELLIS_DATA__</html>',
-}));
-
-// Mock child_process.execFile to prevent opening browser
-vi.mock('child_process', () => ({
-  execFile: vi.fn(),
-}));
-
 import { graphCommand } from './command.ts';
-
-function fetchJson(url: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    http.get(url, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
-      });
-    }).on('error', reject);
-  });
-}
-
-function fetchHtml(url: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    http.get(url, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => resolve(data));
-    }).on('error', reject);
-  });
-}
 
 describe('graph command', () => {
   let originalCwd: () => string;
@@ -98,53 +64,119 @@ describe('graph command', () => {
     expect(parsed.edges).toEqual([]);
   });
 
-  it('serves viewer data with chunks and contracts via /api/data', async () => {
+  it('shows text summary with plan and edge counts', () => {
     const { root } = createFixture([
-      {
-        id: 'core',
-        title: 'Core',
-        status: 'done',
-        directory: true,
-        outputsMd: '## Types\n- CoreType\n- OtherType\n',
-      },
-      {
-        id: 'consumer',
-        title: 'Consumer',
-        status: 'not_started',
-        depends_on: ['core'],
-        directory: true,
-        inputsMd: '## From plans\n### core\n- Needs CoreType\n',
-      },
+      { id: 'a', title: 'Plan A', status: 'done' },
+      { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
     ]);
     process.cwd = () => root;
 
-    graphCommand({ port: 0 });
+    graphCommand({});
 
-    // Wait for server to start (listen callback is async)
-    await new Promise(resolve => setTimeout(resolve, 200));
+    const output = logs.join('\n');
+    expect(output).toContain('2 plans, 1 edge');
+  });
 
-    const portMatch = logs.join('\n').match(/localhost:(\d+)/);
-    expect(portMatch).toBeTruthy();
-    const port = portMatch![1];
+  it('shows ready plans', () => {
+    const { root } = createFixture([
+      { id: 'auth', title: 'Auth', status: 'done' },
+      { id: 'api', title: 'API', status: 'not_started', depends_on: ['auth'] },
+      { id: 'docs', title: 'Docs', status: 'not_started' },
+    ]);
+    process.cwd = () => root;
 
-    const data = await fetchJson(`http://localhost:${port}/api/data`);
+    graphCommand({});
 
-    // Verify plans include contract raw content
-    const corePlan = data.plans.find((p: any) => p.id === 'core');
-    expect(corePlan.outputs).toContain('## Types');
-    const consumerPlan = data.plans.find((p: any) => p.id === 'consumer');
-    expect(consumerPlan.inputs).toContain('### core');
+    const output = logs.join('\n');
+    expect(output).toContain('Ready: api, docs');
+  });
 
-    // Verify chunks are present
-    expect(data.chunks).toBeDefined();
-    expect(data.chunks.length).toBeGreaterThan(0);
+  it('shows blocked plans with reasons', () => {
+    const { root } = createFixture([
+      { id: 'core', title: 'Core', status: 'not_started' },
+      { id: 'auth', title: 'Auth', status: 'not_started', depends_on: ['core'] },
+      { id: 'frontend', title: 'Frontend', status: 'not_started', depends_on: ['auth', 'core'] },
+    ]);
+    process.cwd = () => root;
 
-    // Verify crossChunkEdges is present
-    expect(data.crossChunkEdges).toBeDefined();
+    graphCommand({});
 
-    // Verify HTML contains injected data
-    const html = await fetchHtml(`http://localhost:${port}/`);
-    expect(html).toContain('"chunks"');
-    expect(html).toContain('"crossChunkEdges"');
+    const output = logs.join('\n');
+    expect(output).toContain('Blocked:');
+    expect(output).toContain('auth (by: core)');
+    expect(output).toContain('frontend (by: auth, core)');
+  });
+
+  it('shows critical path', () => {
+    const { root } = createFixture([
+      { id: 'a', title: 'A', status: 'not_started' },
+      { id: 'b', title: 'B', status: 'not_started', depends_on: ['a'] },
+      { id: 'c', title: 'C', status: 'not_started', depends_on: ['b'] },
+    ]);
+    process.cwd = () => root;
+
+    graphCommand({});
+
+    const output = logs.join('\n');
+    expect(output).toContain('Critical path: a → b → c (3 steps)');
+  });
+
+  it('picks longest critical path across multiple leaf nodes', () => {
+    const { root } = createFixture([
+      { id: 'a', title: 'A', status: 'not_started' },
+      { id: 'b', title: 'B', status: 'not_started', depends_on: ['a'] },
+      { id: 'c', title: 'C', status: 'not_started', depends_on: ['b'] },
+      { id: 'd', title: 'D', status: 'not_started' },
+      { id: 'e', title: 'E', status: 'not_started', depends_on: ['d'] },
+    ]);
+    process.cwd = () => root;
+
+    graphCommand({});
+
+    const output = logs.join('\n');
+    expect(output).toContain('Critical path: a \u2192 b \u2192 c (3 steps)');
+  });
+
+  it('omits ready and blocked lines when all plans are done', () => {
+    const { root } = createFixture([
+      { id: 'a', title: 'A', status: 'done' },
+      { id: 'b', title: 'B', status: 'done', depends_on: ['a'] },
+    ]);
+    process.cwd = () => root;
+
+    graphCommand({});
+
+    const output = logs.join('\n');
+    expect(output).toContain('2 plans, 1 edge');
+    expect(output).not.toContain('Ready:');
+    expect(output).not.toContain('Blocked:');
+  });
+
+  it('shows zero edges for independent plans', () => {
+    const { root } = createFixture([
+      { id: 'x', title: 'X', status: 'not_started' },
+      { id: 'y', title: 'Y', status: 'not_started' },
+      { id: 'z', title: 'Z', status: 'not_started' },
+    ]);
+    process.cwd = () => root;
+
+    graphCommand({});
+
+    const output = logs.join('\n');
+    expect(output).toContain('3 plans, 0 edges');
+    expect(output).toContain('Ready: x, y, z');
+    expect(output).not.toContain('Blocked:');
+  });
+
+  it('omits critical path for single-node graph', () => {
+    const { root } = createFixture([
+      { id: 'solo', title: 'Solo', status: 'not_started' },
+    ]);
+    process.cwd = () => root;
+
+    graphCommand({});
+
+    const output = logs.join('\n');
+    expect(output).not.toContain('Critical path');
   });
 });

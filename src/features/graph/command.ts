@@ -1,21 +1,17 @@
-import { createServer } from 'http';
-import { execFile } from 'child_process';
 import type { Command } from 'commander';
-import { createContext } from '../../core/index.ts';
-import viewerHtml from './viewer/index.html';
-import { getGraphData, computeGraph } from './logic.ts';
+import { createContext, computeCriticalPath, pluralize } from '../../core/index.ts';
+import { computeGraph } from './logic.ts';
 
 export function register(program: Command): void {
   program
     .command('graph')
-    .description('Open DAG viewer in browser')
-    .option('--port <port>', 'Port to serve on', parseInt)
-    .option('--json', 'Output graph as JSON (nodes + edges) instead of opening browser')
-    .addHelpText('after', '\nExamples:\n  $ trellis graph\n  $ trellis graph --port 8080\n  $ trellis graph --json')
+    .description('Show plan dependency graph')
+    .option('--json', 'Output graph as JSON (nodes + edges)')
+    .addHelpText('after', '\nExamples:\n  $ trellis graph\n  $ trellis graph --json')
     .action((options) => graphCommand(options));
 }
 
-export function graphCommand(options: { port?: number; json?: boolean }): void {
+export function graphCommand(options: { json?: boolean }): void {
   const cwd = process.cwd();
   const ctx = createContext(cwd);
   const result = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
@@ -47,44 +43,48 @@ export function graphCommand(options: { port?: number; json?: boolean }): void {
     return;
   }
 
-  const server = createServer((req, res) => {
-    if (req.url === '/api/data') {
-      const freshData = getGraphData(cwd);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(freshData));
-      return;
-    }
+  // Text summary
+  const planCount = result.nodes.length;
+  const edgeCount = result.edges.length;
+  console.log(`${pluralize(planCount, 'plan')}, ${pluralize(edgeCount, 'edge')}`);
 
-    const data = getGraphData(cwd);
-    const html = viewerHtml.replace(
-      '__TRELLIS_DATA__',
-      JSON.stringify(data),
-    );
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(html);
-  });
+  // Ready list
+  const readyIds = result.nodes.filter(n => n.ready).map(n => n.id);
+  if (readyIds.length > 0) {
+    console.log(`Ready: ${readyIds.join(', ')}`);
+  }
 
-  server.on('error', (err: NodeJS.ErrnoException) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error(`Port ${options.port} is already in use. Try a different port with --port <port> or omit --port to use a random port.`);
-    } else {
-      console.error(`Server error: ${err.message}`);
-    }
-    process.exitCode = 1;
-  });
-
-  const port = options.port || 0;
-  server.listen(port, () => {
-    const addr = server.address();
-    const actualPort = typeof addr === 'object' && addr ? addr.port : port;
-    const url = `http://localhost:${actualPort}`;
-    console.log(`Serving DAG viewer at ${url}`);
-    console.log('Press Ctrl+C to stop');
-
-    const platform = process.platform;
-    const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'start' : 'xdg-open';
-    execFile(cmd, [url], (err) => {
-      if (err) console.log(`Open ${url} in your browser`);
+  // Blocked list with reasons
+  const blockedNodes = result.nodes.filter(n => n.blocked);
+  if (blockedNodes.length > 0) {
+    const blockedParts = blockedNodes.map(n => {
+      const deps = ctx.graph.dependencies.get(n.id) ?? [];
+      const unsatisfied = deps.filter(depId => {
+        const dep = ctx.graph.plans.get(depId);
+        return dep && dep.frontmatter.status !== 'done';
+      });
+      return `${n.id} (by: ${unsatisfied.join(', ')})`;
     });
-  });
+    console.log(`Blocked: ${blockedParts.join(', ')}`);
+  }
+
+  // Critical path: find leaf nodes (no dependents in active graph), compute longest chain
+  const leafIds = result.nodes
+    .filter(n => {
+      const deps = ctx.graph.dependents.get(n.id) ?? [];
+      return deps.length === 0;
+    })
+    .map(n => n.id);
+
+  let longestPath: string[] = [];
+  for (const leafId of leafIds) {
+    const path = computeCriticalPath(leafId, ctx.graph);
+    if (path.length > longestPath.length) {
+      longestPath = path;
+    }
+  }
+
+  if (longestPath.length > 1) {
+    console.log(`Critical path: ${longestPath.join(' → ')} (${longestPath.length} steps)`);
+  }
 }

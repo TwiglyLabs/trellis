@@ -81,4 +81,4 @@ export {
 export { parseInputs, parseOutputs } from './contracts.ts';
 
 // --- Utilities ---
-export { VALID_STATUSES, filterPlans, validatePlanId } from './utils.ts';
+export { VALID_STATUSES, filterPlans, validatePlanId, pluralize } from './utils.ts';

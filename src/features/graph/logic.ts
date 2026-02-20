@@ -1,8 +1,6 @@
-import { createContext, computeChunks } from '../../core/index.ts';
+import { computeChunks } from '../../core/index.ts';
 import type { Plan, TrellisConfig, PlanStatus } from '../../core/types.ts';
-import type { TrellisContext } from '../../core/context.ts';
 import type { GraphData, Chunk, CrossChunkEdge } from '../../core/graph.ts';
-import { computeShow } from '../show/logic.ts';
 
 export interface GraphNode {
   id: string;
@@ -14,10 +12,6 @@ export interface GraphNode {
   tags: string[];
   repo?: string;
   assignee?: string;
-  description?: string;
-  body: string;
-  inputs?: string;
-  outputs?: string;
 }
 
 export interface GraphEdge {
@@ -56,10 +50,6 @@ export function computeGraph(opts: ComputeGraphOptions): GraphResult {
     tags: p.frontmatter.tags ?? [],
     repo: p.frontmatter.repo,
     assignee: p.frontmatter.assignee,
-    description: p.frontmatter.description,
-    body: p.body,
-    inputs: p.inputs?.raw,
-    outputs: p.outputs?.raw,
   }));
 
   const edges: GraphEdge[] = [];
@@ -78,28 +68,3 @@ export function computeGraph(opts: ComputeGraphOptions): GraphResult {
   };
 }
 
-export function getGraphData(cwd: string) {
-  const ctx = createContext(cwd);
-  const result = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
-
-  return {
-    project: result.project,
-    plans: result.nodes.map((n) => ({
-      id: n.id,
-      title: n.title,
-      status: n.status,
-      blocked: n.blocked,
-      ready: n.ready,
-      depends_on: n.dependsOn,
-      tags: n.tags,
-      repo: n.repo,
-      description: n.description,
-      filePath: computeShow({ planId: n.id, graph: ctx.graph })?.filePath ?? '',
-      body: n.body,
-      outputs: n.outputs,
-      inputs: n.inputs,
-    })),
-    chunks: result.chunks,
-    crossChunkEdges: result.crossChunkEdges,
-  };
-}

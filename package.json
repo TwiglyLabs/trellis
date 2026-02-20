@@ -30,7 +30,6 @@
     "test:dist": "npm run build && vitest run tests/dist-integration.test.ts"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^1.1.4",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",

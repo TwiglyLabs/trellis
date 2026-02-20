@@ -406,24 +406,6 @@ describe('Consumer workflow: directory-based plans with contracts', () => {
     }
   });
 
-  it('graph() includes contract content on nodes', () => {
-    const { tmpDir } = createDirProject();
-    try {
-      const ctx = createContext(tmpDir);
-      const graph = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
-
-      const coreNode = graph.nodes.find(n => n.id === 'contracts/core-types')!;
-      expect(coreNode.outputs).toBeDefined();
-      expect(coreNode.outputs).toContain('Type definitions');
-
-      const scannerNode = graph.nodes.find(n => n.id === 'impl/scanner')!;
-      expect(scannerNode.inputs).toBeDefined();
-      expect(scannerNode.inputs).toContain('contracts/core-types');
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
-
   it('lint() reports structural warnings for missing outputs.md', () => {
     const tmpDir = join(tmpdir(), `trellis-lint-contracts-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const plansDir = join(tmpDir, 'plans');
