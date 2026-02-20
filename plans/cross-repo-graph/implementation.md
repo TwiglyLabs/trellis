@@ -8,7 +8,7 @@
 
 3. Extend `buildGraph` for qualified IDs — when resolving `depends_on` edges, use `parseQualifiedId` to determine if the dependency is local or cross-repo. Cross-repo deps resolve against the full plan set (local + remote). Unresolved cross-repo refs are recorded for lint.
 
-4. Update `Trellis` class — when `project` is configured, the `plans` getter merges local plans (from filesystem) with remote plans (from git reader). The `graphData` getter builds the unified graph. Add `projectPlans` property that returns the full cross-repo plan map.
+4. Extend `createContext()` — when `project` is configured in the trellis config, `createContext()` merges local plans (from filesystem) with remote plans (from git reader) into a unified plan set. The resulting `TrellisContext.graphData` spans all repos. Add a `projectPlans` field to TrellisContext (type: `Map<string, Plan[]> | null`) that holds the full cross-repo plan map when project context is available.
 
 5. Implement `--project` flag — add to `status`, `ready`, `graph`, `lint`, `show` commands. Controls display scope: `--project` shows all repos, without it shows current repo only. Resolution scope always includes cross-repo deps regardless of flag.
 

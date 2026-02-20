@@ -1,10 +1,15 @@
 ---
 title: Unified Cross-Repo DAG
-status: draft
+status: not_started
 depends_on:
   - cross-repo-manifest
-tags: [cross-repo, graph, plan-management]
-description: Qualified plan IDs, unified graph construction, and cross-repo-aware commands
+  - kill-trellis-class
+tags:
+  - cross-repo
+  - graph
+  - plan-management
+description: 'Qualified plan IDs, unified graph construction, and cross-repo-aware commands'
+not_started_at: '2026-02-20T00:16:06.094Z'
 ---
 
 # Unified Cross-Repo DAG
