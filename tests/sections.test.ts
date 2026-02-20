@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readSection, writeSection } from '../src/schema.ts';
+import { readSection, writeSection } from '../src/core/schema.ts';
 
 describe('readSection', () => {
   it('returns full content when no section specified', () => {

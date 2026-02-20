@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { detectSections, validateStatusGate } from '../src/schema.ts';
+import { detectSections, validateStatusGate } from '../src/core/schema.ts';
 import { createFixture } from './helpers.ts';
 import { Trellis } from '../src/api.ts';
 import { updateCommand } from '../src/commands/update.ts';

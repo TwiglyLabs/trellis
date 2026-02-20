@@ -3,7 +3,7 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { Trellis } from '../src/api.ts';
 import { createFixture } from './helpers.ts';
-import type { GitExecutor } from '../src/manifest.ts';
+import type { GitExecutor } from '../src/core/manifest.ts';
 
 describe('Trellis.fetch()', () => {
   const manifestYaml = `

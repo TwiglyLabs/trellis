@@ -10,8 +10,8 @@ import {
   fetchProjectPlans,
   checkVisibility,
   type GitExecutor,
-} from '../src/manifest.ts';
-import type { ProjectManifest, Plan, RepoEntry } from '../src/types.ts';
+} from '../src/core/manifest.ts';
+import type { ProjectManifest, Plan, RepoEntry } from '../src/core/types.ts';
 
 // --- parseManifest ---
 

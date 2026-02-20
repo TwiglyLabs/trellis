@@ -1,8 +1,8 @@
 import chalk from 'chalk';
 import { createInterface } from 'readline';
 import { Trellis } from '../api.ts';
-import { padRight, computeColumnWidth } from '../utils.ts';
-import type { PlanStatus } from '../types.ts';
+import { padRight, computeColumnWidth } from '../core/utils.ts';
+import type { PlanStatus } from '../core/types.ts';
 
 interface UpdateOptions {
   json?: boolean;

@@ -1,10 +1,12 @@
 ---
 title: Extract shared modules into src/core/
-status: not_started
+status: done
 tags:
   - refactor
   - vertical-slices
 not_started_at: '2026-02-20T00:16:03.227Z'
+started_at: '2026-02-20T00:17:27.788Z'
+completed_at: '2026-02-20T00:24:38.971Z'
 ---
 
 ## Problem

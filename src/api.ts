@@ -2,15 +2,18 @@ import { join, dirname } from 'path';
 import { EventEmitter } from 'events';
 import { watch as fsWatch, type FSWatcher, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync } from 'fs';
 import matter from 'gray-matter';
-import { loadConfig, scanPlans } from './scanner.ts';
-import { buildGraph, detectCycles, transitiveDependents, computeCriticalPath, pickNext, computeChunks, newlyReady } from './graph.ts';
-import { parseFrontmatter, validateFrontmatter, updatePlanFile } from './frontmatter.ts';
-import { validateStatusGate, detectSections, readSection, writeSection } from './schema.ts';
-import { filterPlans, VALID_STATUSES } from './utils.ts';
-import { discoverManifest, fetchProjectPlans, type GitExecutor } from './manifest.ts';
-import { PlanFile } from './types.ts';
-import type { GraphData, Chunk, CrossChunkEdge, ChunkResult } from './graph.ts';
-import type { Plan, PlanStatus, TrellisConfig, ContractSection, PlanFrontmatter, GateResult } from './types.ts';
+import {
+  loadConfig, scanPlans,
+  buildGraph, detectCycles, transitiveDependents, computeCriticalPath, pickNext, computeChunks, newlyReady,
+  parseFrontmatter, validateFrontmatter, updatePlanFile,
+  validateStatusGate, detectSections, readSection, writeSection,
+  filterPlans, VALID_STATUSES,
+  discoverManifest, fetchProjectPlans,
+  PlanFile,
+} from './core/index.ts';
+import type { GraphData, Chunk, CrossChunkEdge, ChunkResult } from './core/graph.ts';
+import type { Plan, PlanStatus, TrellisConfig, ContractSection, PlanFrontmatter, GateResult } from './core/types.ts';
+import type { GitExecutor } from './core/manifest.ts';
 
 function median(values: number[]): number | null {
   if (values.length === 0) return null;

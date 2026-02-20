@@ -45,6 +45,28 @@ describe('library exports', () => {
     expect(typeof lib.filterPlans).toBe('function');
   });
 
+  it('exports context functions', async () => {
+    const lib = await import('../src/index.ts');
+    expect(typeof lib.createContext).toBe('function');
+    expect(typeof lib.refreshContext).toBe('function');
+  });
+
+  it('exports schema functions', async () => {
+    const lib = await import('../src/index.ts');
+    expect(typeof lib.detectSections).toBe('function');
+    expect(typeof lib.readSection).toBe('function');
+    expect(typeof lib.writeSection).toBe('function');
+    expect(typeof lib.validateStatusGate).toBe('function');
+  });
+
+  it('exports manifest functions', async () => {
+    const lib = await import('../src/index.ts');
+    expect(typeof lib.parseManifest).toBe('function');
+    expect(typeof lib.discoverManifest).toBe('function');
+    expect(typeof lib.fetchRepoPlans).toBe('function');
+    expect(typeof lib.fetchProjectPlans).toBe('function');
+  });
+
   it('exports Trellis class and API types', async () => {
     const lib = await import('../src/index.ts');
     expect(typeof lib.Trellis).toBe('function');

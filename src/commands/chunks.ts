@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { Trellis } from '../api.ts';
-import type { ChunkResult } from '../graph.ts';
-import { pluralize, formatLines } from '../utils.ts';
+import type { ChunkResult } from '../core/graph.ts';
+import { pluralize, formatLines } from '../core/utils.ts';
 
 interface ChunksOptions {
   json?: boolean;

@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { Trellis } from './api.ts';
-import type { PlanStatus } from './types.ts';
+import type { PlanStatus } from './core/types.ts';
 
 const STATUS_VALUES = ['draft', 'not_started', 'in_progress', 'done', 'archived'] as const;
 

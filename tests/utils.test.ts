@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { padRight, pluralize, computeColumnWidth, filterPlans } from '../src/utils.ts';
-import type { Plan } from '../src/types.ts';
+import { padRight, pluralize, computeColumnWidth, filterPlans } from '../src/core/utils.ts';
+import type { Plan } from '../src/core/types.ts';
 
 function makePlan(id: string, opts: { tags?: string[]; repo?: string } = {}): Plan {
   return {
