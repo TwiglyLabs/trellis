@@ -1,12 +1,13 @@
 ---
 title: 'Extract features batch 3: graph/init/fetch/setup-hooks/watch + cleanup'
-status: not_started
+status: done
 depends_on:
   - feature-slices-batch-2
 tags:
   - refactor
   - vertical-slices
 not_started_at: '2026-02-20T00:16:05.005Z'
+completed_at: '2026-02-20T02:22:52.435Z'
 ---
 
 ## Problem
