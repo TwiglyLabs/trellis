@@ -27,7 +27,9 @@ export interface ComputeStatusOptions {
 export function computeStatus(opts: ComputeStatusOptions): StatusResult {
   const { plans: allPlansRaw, config, graph, filters, toSummary = defaultToSummary } = opts;
 
-  const allPlans = filterPlans(allPlansRaw, { tag: filters?.tag, repo: filters?.repo });
+  // Display local plans only — remote plans are in the graph for dep resolution but not shown
+  const localPlansRaw = allPlansRaw.filter(p => p.repoAlias == null);
+  const allPlans = filterPlans(localPlansRaw, { tag: filters?.tag, repo: filters?.repo });
   const total = allPlans.length;
 
   let plans = allPlans;

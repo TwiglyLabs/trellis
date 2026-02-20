@@ -3,8 +3,9 @@ import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from '
 import matter from 'gray-matter';
 import {
   detectCycles, validateFrontmatter, validateStatusGate, detectSections, writeSection, PlanFile,
+  checkVisibility, parseQualifiedId,
 } from '../../core/index.ts';
-import type { Plan } from '../../core/types.ts';
+import type { Plan, ProjectManifest } from '../../core/types.ts';
 import type { GraphData } from '../../core/graph.ts';
 
 export interface LintIssue {
@@ -28,6 +29,8 @@ export interface ComputeLintOptions {
   graph: GraphData;
   projectDir: string;
   plansDir: string;
+  manifest?: ProjectManifest;
+  projectName?: string;
   options?: { strict?: boolean; fix?: boolean };
 }
 
@@ -98,6 +101,33 @@ export function computeLint(opts: ComputeLintOptions): LintResult {
   for (const plan of plans) {
     if (plan.frontmatter.status === 'draft' && !dependedOn.has(plan.id)) {
       warnings.push({ planId: plan.id, type: 'orphan', message: `Orphaned plan: ${plan.id} has no dependents and status is draft` });
+    }
+  }
+
+  // Cross-repo: visibility violations
+  if (opts.manifest) {
+    const localAlias = opts.projectName ?? opts.manifest.name;
+    const repoPlansMap = new Map<string, Plan[]>();
+    for (const plan of plans) {
+      const key = plan.repoAlias ?? localAlias;
+      if (!repoPlansMap.has(key)) repoPlansMap.set(key, []);
+      repoPlansMap.get(key)!.push(plan);
+    }
+    for (const ve of checkVisibility(opts.manifest, repoPlansMap)) {
+      errors.push({ planId: ve.planId, type: 'visibility', message: ve.message });
+      plansWithErrors.add(ve.planId);
+    }
+  }
+
+  // Cross-repo: warn when a cross-repo dep has no outputs.md
+  for (const plan of plans) {
+    for (const dep of plan.frontmatter.depends_on ?? []) {
+      const parsed = parseQualifiedId(dep);
+      if (!parsed.repo) continue; // local dep — skip
+      const depPlan = graph.plans.get(dep);
+      if (depPlan && !depPlan.outputs) {
+        warnings.push({ planId: plan.id, type: 'cross_repo_no_outputs', message: `Cross-repo dependency "${dep}" has no outputs.md` });
+      }
     }
   }
 

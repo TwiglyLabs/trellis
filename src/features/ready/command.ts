@@ -13,6 +13,7 @@ export function register(program: Command): void {
     .option('--repo <repo>', 'Filter by repo')
     .option('--json', 'Output as JSON')
     .option('--next', 'Return only the highest-priority ready plan')
+    .option('--offline', 'Skip remote fetch, use cache or local only')
     .addHelpText('after', '\nExamples:\n  $ trellis ready\n  $ trellis ready --repo public\n  $ trellis ready --json\n  $ trellis ready --next\n  $ trellis ready --next --json')
     .action((options) => readyCommand(options));
 }
@@ -22,10 +23,11 @@ interface ReadyOptions {
   repo?: string;
   json?: boolean;
   next?: boolean;
+  offline?: boolean;
 }
 
 export function readyCommand(options: ReadyOptions): void {
-  const ctx = createContext(process.cwd());
+  const ctx = createContext(process.cwd(), { offline: options.offline });
 
   const result = computeReady({
     plans: ctx.plans,

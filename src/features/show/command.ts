@@ -15,6 +15,7 @@ export function register(program: Command): void {
     .option('--file <file>', 'Read specific file (readme, implementation, inputs, outputs)')
     .option('--section <section>', 'Read specific section (requires --file)')
     .option('--raw', 'Output raw plan content')
+    .option('--offline', 'Skip remote fetch, use cache or local only')
     .addHelpText('after', '\nExamples:\n  $ trellis show core-types\n  $ trellis show core-types --json\n  $ trellis show core-types --file implementation --section Steps\n  $ trellis show core-types --raw')
     .action((planId, options) => showCommand(planId, options));
 }
@@ -25,10 +26,11 @@ interface ShowOptions {
   file?: string;
   section?: string;
   raw?: boolean;
+  offline?: boolean;
 }
 
 export function showCommand(planId: string, options?: ShowOptions): void {
-  const ctx = createContext(process.cwd());
+  const ctx = createContext(process.cwd(), { offline: options?.offline });
 
   // --file / --section mode: granular content read
   if (options?.file || options?.section) {

@@ -37,6 +37,17 @@ export function validatePlanId(id: string): void {
   }
 }
 
+/**
+ * Parse a qualified plan ID reference.
+ * Format: `<repo-alias>:<plan-id>` for cross-repo, or just `<plan-id>` for local.
+ * Splits on the first colon.
+ */
+export function parseQualifiedId(ref: string): { repo?: string; planId: string } {
+  const colonIdx = ref.indexOf(':');
+  if (colonIdx === -1) return { planId: ref };
+  return { repo: ref.substring(0, colonIdx), planId: ref.substring(colonIdx + 1) };
+}
+
 export function filterPlans(plans: Plan[], filters: { tag?: string; repo?: string }): Plan[] {
   let filtered = plans;
   if (filters.tag) {

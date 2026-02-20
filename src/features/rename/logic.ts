@@ -27,6 +27,9 @@ export function computeRename(options: ComputeRenameOptions, callbacks: ComputeR
 
   const plan = graph.plans.get(oldId);
   if (!plan) throw new Error(`Plan "${oldId}" not found.`);
+  if (plan.repoAlias != null) {
+    throw new Error(`Cannot modify remote plan '${oldId}'. Write operations are local only.`);
+  }
 
   const newDir = join(plansDir, newId);
 

@@ -1,7 +1,9 @@
 import { join } from 'path';
 import { loadConfig, scanPlans } from './scanner.ts';
 import { buildGraph } from './graph.ts';
-import type { Plan, TrellisConfig } from './types.ts';
+import { readCache, writeCache, isCacheStale } from './cache.ts';
+import { discoverManifest, fetchRepoPlans } from './manifest.ts';
+import type { Plan, TrellisConfig, ProjectManifest } from './types.ts';
 import type { GraphData } from './graph.ts';
 
 export interface TrellisContext {
@@ -10,20 +12,153 @@ export interface TrellisContext {
   readonly plansDir: string;
   readonly plans: Plan[];
   readonly graph: GraphData;
+  readonly manifest?: ProjectManifest;
+}
+
+export interface CreateContextOptions {
+  offline?: boolean;
+}
+
+/**
+ * Merge local plans with remote plans into a unified plan array.
+ * Remote plans get qualified IDs (`repoAlias:originalId`).
+ * Intra-repo deps within remote plans get qualified with their repo alias.
+ * Already-qualified cross-repo deps are preserved as-is.
+ */
+export function mergeWithRemote(localPlans: Plan[], remotePlans: Plan[], localAlias?: string): Plan[] {
+  const merged: Plan[] = [...localPlans];
+
+  for (const plan of remotePlans) {
+    const alias = plan.repoAlias!;
+    const qualifiedId = `${alias}:${plan.id}`;
+
+    // Qualify intra-repo deps: unqualified depends_on entries within a remote plan
+    // reference plans in that same repo, not local plans.
+    // If a qualified dep references the local project, strip the alias so it
+    // resolves to the local plan's unqualified ID.
+    const qualifiedDeps = (plan.frontmatter.depends_on ?? []).map(dep => {
+      if (dep.indexOf(':') !== -1) {
+        // Already qualified — check if it points to local project
+        if (localAlias) {
+          const colonIdx = dep.indexOf(':');
+          const depRepo = dep.substring(0, colonIdx);
+          if (depRepo === localAlias) {
+            return dep.substring(colonIdx + 1); // strip to local unqualified ID
+          }
+        }
+        return dep;
+      }
+      return `${alias}:${dep}`;
+    });
+
+    merged.push({
+      ...plan,
+      id: qualifiedId,
+      frontmatter: {
+        ...plan.frontmatter,
+        depends_on: qualifiedDeps.length > 0 ? qualifiedDeps : plan.frontmatter.depends_on,
+      },
+    });
+  }
+
+  return merged;
+}
+
+/**
+ * Resolve remote plans from cache (or fetch if stale).
+ * Returns the remote plans and resolved manifest, or empty if no manifest configured.
+ */
+function resolveRemotePlans(
+  projectDir: string,
+  config: TrellisConfig,
+  options?: CreateContextOptions,
+): { remotePlans: Plan[]; manifest?: ProjectManifest } {
+  if (!config.manifest || options?.offline) {
+    // No manifest or offline mode: try cache only
+    if (config.manifest && options?.offline) {
+      return resolveFromCacheOnly(projectDir, config);
+    }
+    return { remotePlans: [] };
+  }
+
+  // Resolve manifest (cache or fetch)
+  let manifest: ProjectManifest | null = null;
+  const cachedManifest = readCache<ProjectManifest>(projectDir, 'manifest');
+  if (cachedManifest && !isCacheStale(cachedManifest)) {
+    manifest = cachedManifest.data;
+  } else {
+    manifest = discoverManifest(config.manifest, projectDir);
+    if (manifest) {
+      writeCache(projectDir, 'manifest', manifest);
+    }
+  }
+
+  if (!manifest) return { remotePlans: [] };
+
+  // Fetch plans per repo (cache or git fetch)
+  const remotePlans: Plan[] = [];
+  for (const [alias, entry] of Object.entries(manifest.repos)) {
+    if (alias === config.project) continue; // skip self
+
+    const cacheKey = `plans/${alias}`;
+    const cached = readCache<Plan[]>(projectDir, cacheKey);
+    if (cached && !isCacheStale(cached)) {
+      remotePlans.push(...cached.data);
+    } else {
+      const result = fetchRepoPlans(alias, entry, projectDir);
+      if (result.plans.length > 0) {
+        writeCache(projectDir, cacheKey, result.plans);
+      }
+      remotePlans.push(...result.plans);
+    }
+  }
+
+  return { remotePlans, manifest };
+}
+
+/** Offline mode: use only cached data, degrade silently if empty. */
+function resolveFromCacheOnly(
+  projectDir: string,
+  config: TrellisConfig,
+): { remotePlans: Plan[]; manifest?: ProjectManifest } {
+  const cachedManifest = readCache<ProjectManifest>(projectDir, 'manifest');
+  if (!cachedManifest) return { remotePlans: [] };
+
+  const manifest = cachedManifest.data;
+  const remotePlans: Plan[] = [];
+
+  for (const alias of Object.keys(manifest.repos)) {
+    if (alias === config.project) continue;
+
+    const cached = readCache<Plan[]>(projectDir, `plans/${alias}`);
+    if (cached) {
+      remotePlans.push(...cached.data);
+    }
+  }
+
+  return { remotePlans, manifest };
 }
 
 /** Build a full TrellisContext from a project directory. */
-export function createContext(projectDir: string): TrellisContext {
+export function createContext(projectDir: string, options?: CreateContextOptions): TrellisContext {
   const config = loadConfig(projectDir);
   const plansDir = join(projectDir, config.plans_dir);
-  const plans = scanPlans(plansDir);
+  const localPlans = scanPlans(plansDir);
+
+  const { remotePlans, manifest } = resolveRemotePlans(projectDir, config, options);
+  const plans = remotePlans.length > 0 ? mergeWithRemote(localPlans, remotePlans, config.project) : localPlans;
   const graph = buildGraph(plans);
-  return { projectDir, config, plansDir, plans, graph };
+
+  return { projectDir, config, plansDir, plans, graph, manifest };
 }
 
 /** Re-scan plans and rebuild the graph, preserving config. */
-export function refreshContext(ctx: TrellisContext): TrellisContext {
-  const plans = scanPlans(ctx.plansDir);
+export function refreshContext(ctx: TrellisContext, options?: CreateContextOptions): TrellisContext {
+  const localPlans = scanPlans(ctx.plansDir);
+
+  const { remotePlans, manifest } = resolveRemotePlans(ctx.projectDir, ctx.config, options);
+  const plans = remotePlans.length > 0 ? mergeWithRemote(localPlans, remotePlans, ctx.config.project) : localPlans;
   const graph = buildGraph(plans);
-  return { ...ctx, plans, graph };
+
+  return { ...ctx, plans, graph, manifest: manifest ?? ctx.manifest };
 }

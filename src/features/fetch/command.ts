@@ -9,15 +9,28 @@ export function register(program: Command): void {
     .command('fetch')
     .description('Fetch plan state from all project repos')
     .option('--json', 'Output as JSON')
+    .option('--offline', 'Error — cannot use --offline with fetch')
     .addHelpText('after', '\nExamples:\n  $ trellis fetch\n  $ trellis fetch --json')
     .action((options) => fetchCommand(options));
 }
 
 interface FetchOptions {
   json?: boolean;
+  offline?: boolean;
 }
 
 export function fetchCommand(options: FetchOptions): void {
+  if (options.offline) {
+    const msg = '--offline and fetch are contradictory';
+    if (options.json) {
+      console.error(JSON.stringify({ error: msg }));
+    } else {
+      console.error(msg);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
   const ctx = createContext(process.cwd());
 
   if (!ctx.config.manifest) {

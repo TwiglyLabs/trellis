@@ -1,4 +1,4 @@
-import { discoverManifest, fetchProjectPlans } from '../../core/index.ts';
+import { discoverManifest, fetchProjectPlans, writeCache } from '../../core/index.ts';
 import type { TrellisConfig, Plan } from '../../core/types.ts';
 import type { GitExecutor } from '../../core/manifest.ts';
 
@@ -33,6 +33,9 @@ export function computeFetch(opts: ComputeFetchOptions): FetchResult {
     throw new Error('Failed to discover project manifest. Check manifest URL and network access.');
   }
 
+  // Cache the manifest
+  writeCache(projectDir, 'manifest', manifest);
+
   const remotePlans = fetchProjectPlans(manifest, config.project, projectDir, git);
   const repos: RepoFetchStatus[] = [];
   let totalPlans = 0;
@@ -41,6 +44,8 @@ export function computeFetch(opts: ComputeFetchOptions): FetchResult {
     if (alias === config.project) continue;
     const plans = remotePlans.get(alias);
     if (plans) {
+      // Cache plans per repo
+      writeCache(projectDir, `plans/${alias}`, plans);
       repos.push({ alias, ok: true, planCount: plans.length });
       totalPlans += plans.length;
     } else {

@@ -17,7 +17,8 @@ export interface ComputeReadyOptions {
 export function computeReady(opts: ComputeReadyOptions): ReadyResult {
   const { plans, graph, filters, toSummary = defaultToSummary } = opts;
 
-  let readyPlans = plans.filter(p => graph.ready.has(p.id));
+  // Display local plans only — remote plans are in the graph for dep resolution but not shown
+  let readyPlans = plans.filter(p => graph.ready.has(p.id) && p.repoAlias == null);
   readyPlans = filterPlans(readyPlans, { tag: filters?.tag, repo: filters?.repo });
 
   const filteredIds = new Set(readyPlans.map(p => p.id));

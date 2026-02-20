@@ -42,6 +42,9 @@ export function computeUpdate(opts: ComputeUpdateOptions, callbacks: ComputeUpda
   if (!plan) {
     throw new Error(`Plan "${planId}" not found.`);
   }
+  if (plan.repoAlias != null) {
+    throw new Error(`Cannot modify remote plan '${planId}'. Write operations are local only.`);
+  }
 
   // Gate validation (skip with --force)
   if (!force) {

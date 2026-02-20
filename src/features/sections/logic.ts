@@ -53,6 +53,9 @@ export function computeWriteSection(options: ComputeWriteSectionOptions, callbac
 
   const plan = graph.plans.get(planId);
   if (!plan) throw new Error(`Plan "${planId}" not found.`);
+  if (plan.repoAlias != null) {
+    throw new Error(`Cannot modify remote plan '${planId}'. Write operations are local only.`);
+  }
 
   const fileName = FILE_NAME_MAP[file];
   if (!fileName) throw new Error(`Invalid file "${file}". Must be one of: ${Object.keys(FILE_NAME_MAP).join(', ')}`);
@@ -91,6 +94,14 @@ export function computeReadSection(options: ComputeReadSectionOptions): ReadSect
 
   const plan = graph.plans.get(planId);
   if (!plan) throw new Error(`Plan "${planId}" not found.`);
+
+  // Remote plans don't have local files — return body content only
+  if (plan.repoAlias != null) {
+    if (!file && !section) {
+      return { id: planId, content: plan.body };
+    }
+    throw new Error(`Cannot read files from remote plan '${planId}'. Only body content is available.`);
+  }
 
   if (!file) {
     // Return all plan files concatenated

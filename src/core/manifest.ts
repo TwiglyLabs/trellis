@@ -182,11 +182,11 @@ export function checkVisibility(
       if (!plan.frontmatter.depends_on) continue;
 
       for (const dep of plan.frontmatter.depends_on) {
-        // Qualified ID: "repo/plan-id" — only check cross-repo deps
-        const slashIdx = dep.indexOf('/');
-        if (slashIdx === -1) continue;
+        // Qualified ID: "repo:plan-id" — only check cross-repo deps
+        const colonIdx = dep.indexOf(':');
+        if (colonIdx === -1) continue;
 
-        const depRepo = dep.substring(0, slashIdx);
+        const depRepo = dep.substring(0, colonIdx);
         const depEntry = manifest.repos[depRepo];
         if (!depEntry) continue;
 

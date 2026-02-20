@@ -11,17 +11,20 @@ export function register(program: Command): void {
     .option('--strict', 'Exit with error on warnings too')
     .option('--json', 'Output as JSON')
     .option('--fix', 'Auto-scaffold missing files and sections')
+    .option('--offline', 'Skip remote fetch, use cache or local only')
     .addHelpText('after', '\nExamples:\n  $ trellis lint\n  $ trellis lint --strict\n  $ trellis lint --json\n  $ trellis lint --fix')
     .action((options) => lintCommand(options));
 }
 
-export function lintCommand(options?: { strict?: boolean; json?: boolean; fix?: boolean }): void {
-  const ctx = createContext(process.cwd());
+export function lintCommand(options?: { strict?: boolean; json?: boolean; fix?: boolean; offline?: boolean }): void {
+  const ctx = createContext(process.cwd(), { offline: options?.offline });
   const result = computeLint({
     plans: ctx.plans,
     graph: ctx.graph,
     projectDir: ctx.projectDir,
     plansDir: join(ctx.projectDir, ctx.config.plans_dir),
+    manifest: ctx.manifest,
+    projectName: ctx.config.project,
     options: { strict: options?.strict, fix: options?.fix },
   });
 

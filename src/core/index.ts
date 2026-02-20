@@ -21,8 +21,8 @@ export type {
 export { PlanFile, SECTION_REQUIREMENTS, STATUS_GATES, toSummary } from './types.ts';
 
 // --- Context ---
-export type { TrellisContext } from './context.ts';
-export { createContext, refreshContext } from './context.ts';
+export type { TrellisContext, CreateContextOptions } from './context.ts';
+export { createContext, refreshContext, mergeWithRemote } from './context.ts';
 
 // --- Scanner ---
 export { scanPlans, loadConfig, parseConfigContent, derivePlanId } from './scanner.ts';
@@ -85,4 +85,4 @@ export { parseInputs, parseOutputs } from './contracts.ts';
 export { ensureCacheDir, readCache, writeCache, isCacheStale } from './cache.ts';
 
 // --- Utilities ---
-export { VALID_STATUSES, filterPlans, validatePlanId, pluralize } from './utils.ts';
+export { VALID_STATUSES, filterPlans, validatePlanId, parseQualifiedId, pluralize } from './utils.ts';

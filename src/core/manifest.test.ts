@@ -440,7 +440,7 @@ describe('checkVisibility', () => {
 
   it('flags public-to-private dependencies', () => {
     const allPlans = new Map<string, Plan[]>([
-      ['public_repo', [makePlan('pub-plan', ['private_repo/priv-plan'])]],
+      ['public_repo', [makePlan('pub-plan', ['private_repo:priv-plan'])]],
       ['private_repo', [makePlan('priv-plan')]],
     ]);
 
@@ -451,7 +451,7 @@ describe('checkVisibility', () => {
 
   it('allows private-to-public dependencies', () => {
     const allPlans = new Map<string, Plan[]>([
-      ['private_repo', [makePlan('priv-plan', ['public_repo/pub-plan'])]],
+      ['private_repo', [makePlan('priv-plan', ['public_repo:pub-plan'])]],
       ['public_repo', [makePlan('pub-plan')]],
     ]);
 
@@ -461,7 +461,7 @@ describe('checkVisibility', () => {
 
   it('allows same-visibility dependencies', () => {
     const allPlans = new Map<string, Plan[]>([
-      ['public_repo', [makePlan('plan-a', ['other_public/plan-b'])]],
+      ['public_repo', [makePlan('plan-a', ['other_public:plan-b'])]],
       ['other_public', [makePlan('plan-b')]],
     ]);
 
@@ -480,7 +480,7 @@ describe('checkVisibility', () => {
 
   it('ignores dependencies to unknown repos', () => {
     const allPlans = new Map<string, Plan[]>([
-      ['public_repo', [makePlan('plan-a', ['unknown_repo/plan-b'])]],
+      ['public_repo', [makePlan('plan-a', ['unknown_repo:plan-b'])]],
     ]);
 
     const errors = checkVisibility(manifest, allPlans);

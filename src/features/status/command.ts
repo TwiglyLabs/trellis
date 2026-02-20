@@ -15,6 +15,7 @@ export function register(program: Command): void {
     .option('--all', 'Show all plans including done and archived')
     .option('--done', 'Include done plans')
     .option('--archived', 'Include archived plans')
+    .option('--offline', 'Skip remote fetch, use cache or local only')
     .addHelpText('after', '\nExamples:\n  $ trellis status\n  $ trellis status --tag foundation\n  $ trellis status --json\n  $ trellis status --all\n  $ trellis status --done')
     .action((options) => statusCommand(options));
 }
@@ -26,10 +27,11 @@ interface StatusOptions {
   all?: boolean;
   done?: boolean;
   archived?: boolean;
+  offline?: boolean;
 }
 
 export function statusCommand(options: StatusOptions): void {
-  const ctx = createContext(process.cwd());
+  const ctx = createContext(process.cwd(), { offline: options.offline });
 
   const showDone = options.all || options.done;
   const showArchived = options.all || options.archived;

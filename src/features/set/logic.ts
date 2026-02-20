@@ -29,6 +29,9 @@ export function computeSet(options: ComputeSetOptions, callbacks: ComputeSetCall
 
   const plan = graph.plans.get(planId);
   if (!plan) throw new Error(`Plan "${planId}" not found.`);
+  if (plan.repoAlias != null) {
+    throw new Error(`Cannot modify remote plan '${planId}'. Write operations are local only.`);
+  }
 
   if (field === 'status') {
     throw new Error('Cannot set "status" — use update() for status transitions.');

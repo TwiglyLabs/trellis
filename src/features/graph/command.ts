@@ -7,14 +7,17 @@ export function register(program: Command): void {
     .command('graph')
     .description('Show plan dependency graph')
     .option('--json', 'Output graph as JSON (nodes + edges)')
+    .option('--offline', 'Skip remote fetch, use cache or local only')
     .addHelpText('after', '\nExamples:\n  $ trellis graph\n  $ trellis graph --json')
     .action((options) => graphCommand(options));
 }
 
-export function graphCommand(options: { json?: boolean }): void {
+export function graphCommand(options: { json?: boolean; offline?: boolean }): void {
   const cwd = process.cwd();
-  const ctx = createContext(cwd);
-  const result = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
+  const ctx = createContext(cwd, { offline: options.offline });
+  // Display local plans only — remote plans are in the graph for dep resolution
+  const localPlans = ctx.plans.filter(p => p.repoAlias == null);
+  const result = computeGraph({ plans: localPlans, graph: ctx.graph, config: ctx.config });
 
   if (options.json) {
     const nodes = result.nodes.map((n) => ({
