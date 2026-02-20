@@ -93,12 +93,21 @@ export function writeSection(content: string, sectionName: string, newContent: s
     // Replace content between heading and next heading
     const before = content.slice(0, section.contentStart);
     const after = content.slice(section.contentEnd);
-    return before + newContent + after;
+
+    // Ensure newContent ends with \n when non-empty, so the next heading
+    // starts on its own line (not concatenated onto the content)
+    let normalized = newContent;
+    if (normalized.length > 0 && !normalized.endsWith('\n')) {
+      normalized += '\n';
+    }
+
+    return before + normalized + after;
   }
 
   // Section not found — append
   const separator = content.length > 0 && !content.endsWith('\n') ? '\n\n' : '\n';
-  return content + separator + `## ${sectionName}\n${newContent}`;
+  const normalizedContent = newContent.length > 0 && !newContent.endsWith('\n') ? newContent + '\n' : newContent;
+  return content + separator + `## ${sectionName}\n${normalizedContent}`;
 }
 
 /**

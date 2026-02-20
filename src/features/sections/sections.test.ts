@@ -148,6 +148,24 @@ describe('writeSection', () => {
     const result = writeSection(content, 'Approach', 'Fix\n');
     expect(result).toBe('## Problem\nText\n\n## Approach\nFix\n');
   });
+
+  it('adds trailing newline when replacing content without one', () => {
+    const content = '## Problem\nOld text\n## Approach\nFix\n';
+    const result = writeSection(content, 'Problem', 'New text');
+    expect(result).toBe('## Problem\nNew text\n## Approach\nFix\n');
+  });
+
+  it('adds trailing newline when replacing last section without one', () => {
+    const content = '## Problem\nText\n## Approach\nOld fix\n';
+    const result = writeSection(content, 'Approach', 'New fix');
+    expect(result).toBe('## Problem\nText\n## Approach\nNew fix\n');
+  });
+
+  it('adds trailing newline when appending section without one', () => {
+    const content = '## Problem\nText\n';
+    const result = writeSection(content, 'Approach', 'Fix it');
+    expect(result).toBe('## Problem\nText\n\n## Approach\nFix it\n');
+  });
 });
 
 // --- Plan-aware computeWriteSection / computeReadSection ---

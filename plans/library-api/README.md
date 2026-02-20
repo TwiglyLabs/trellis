@@ -2,9 +2,12 @@
 title: Library API for Electron Consumption
 status: done
 depends_on: []
-tags: [foundation]
+tags:
+  - foundation
 repo: trellis
-description: Extract trellis core into a typed library API that Electron can consume directly
+description: >-
+  Extract trellis core into a typed library API that Electron can consume
+  directly
 ---
 
 # Library API for Electron Consumption
@@ -31,3 +34,6 @@ This plan:
 - **CLI backward compatibility** — The `--json` output shapes are preserved. CLI commands become thin formatting layers.
 - **EventEmitter for watch** — `Trellis` extends `EventEmitter`, emits `'change'` with full graph data on file changes
 - **Dual build** — ESM + CJS library bundle alongside the existing CLI binary. Same source, two targets.
+
+## Problem
+
