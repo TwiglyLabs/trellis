@@ -14,11 +14,21 @@ if [ -z "$FILE_PATH" ]; then
   exit 0
 fi
 
-# Find the project root by looking for .trellis
+# Resolve the trellis config path (supports both file and directory format)
+trellis_config_path() {
+  local root="$1"
+  if [ -f "$root/.trellis/config" ]; then
+    echo "$root/.trellis/config"
+  elif [ -f "$root/.trellis" ]; then
+    echo "$root/.trellis"
+  fi
+}
+
+# Find the project root by looking for .trellis (file or directory)
 find_project_root() {
   local dir="$1"
   while [ "$dir" != "/" ]; do
-    if [ -f "$dir/.trellis" ]; then
+    if [ -f "$dir/.trellis" ] || [ -f "$dir/.trellis/config" ]; then
       echo "$dir"
       return 0
     fi
@@ -31,17 +41,23 @@ find_project_root() {
 PROJECT_ROOT=""
 if PROJECT_ROOT=$(find_project_root "$(dirname "$FILE_PATH")") 2>/dev/null; then
   :
-elif [ -n "\${CLAUDE_PROJECT_DIR:-}" ] && [ -f "$CLAUDE_PROJECT_DIR/.trellis" ]; then
-  PROJECT_ROOT="$CLAUDE_PROJECT_DIR"
+elif [ -n "\${CLAUDE_PROJECT_DIR:-}" ]; then
+  CONFIG_PATH=$(trellis_config_path "$CLAUDE_PROJECT_DIR")
+  if [ -n "$CONFIG_PATH" ]; then
+    PROJECT_ROOT="$CLAUDE_PROJECT_DIR"
+  else
+    exit 0
+  fi
 else
   # No .trellis found — not a trellis project, allow the operation
   exit 0
 fi
 
-# Read plans_dir from .trellis config (default: plans)
+# Read plans_dir from trellis config (default: plans)
 PLANS_DIR="plans"
-if [ -f "$PROJECT_ROOT/.trellis" ]; then
-  PARSED=$(grep '^plans_dir:' "$PROJECT_ROOT/.trellis" | sed 's/^plans_dir:\\s*//' | sed 's/\\s*#.*$//' | tr -d '[:space:]')
+CONFIG_FILE=$(trellis_config_path "$PROJECT_ROOT")
+if [ -n "$CONFIG_FILE" ]; then
+  PARSED=$(grep '^plans_dir:' "$CONFIG_FILE" | sed 's/^plans_dir:\\s*//' | sed 's/\\s*#.*$//' | tr -d '[:space:]')
   if [ -n "$PARSED" ]; then
     PLANS_DIR="$PARSED"
   fi
@@ -71,12 +87,18 @@ const PRE_COMMIT_HOOK = `#!/bin/bash
 
 set -euo pipefail
 
-if [ ! -f ".trellis" ]; then
+# Detect trellis config (supports both file and directory format)
+CONFIG_FILE=""
+if [ -f ".trellis/config" ]; then
+  CONFIG_FILE=".trellis/config"
+elif [ -f ".trellis" ]; then
+  CONFIG_FILE=".trellis"
+else
   exit 0
 fi
 
 PLANS_DIR="plans"
-PARSED=$(grep '^plans_dir:' ".trellis" 2>/dev/null | sed 's/^plans_dir:\\s*//' | sed 's/\\s*#.*$//' | tr -d '[:space:]')
+PARSED=$(grep '^plans_dir:' "$CONFIG_FILE" 2>/dev/null | sed 's/^plans_dir:\\s*//' | sed 's/\\s*#.*$//' | tr -d '[:space:]')
 if [ -n "$PARSED" ]; then
   PLANS_DIR="$PARSED"
 fi

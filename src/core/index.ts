@@ -7,6 +7,7 @@ export type {
   PlanContract,
   Plan,
   TrellisConfig,
+  CacheEntry,
   ValidationError,
   GateResult,
   RepoEntry,
@@ -24,7 +25,7 @@ export type { TrellisContext } from './context.ts';
 export { createContext, refreshContext } from './context.ts';
 
 // --- Scanner ---
-export { scanPlans, loadConfig, derivePlanId } from './scanner.ts';
+export { scanPlans, loadConfig, parseConfigContent, derivePlanId } from './scanner.ts';
 
 // --- Graph ---
 export type {
@@ -79,6 +80,9 @@ export {
 
 // --- Contracts ---
 export { parseInputs, parseOutputs } from './contracts.ts';
+
+// --- Cache ---
+export { ensureCacheDir, readCache, writeCache, isCacheStale } from './cache.ts';
 
 // --- Utilities ---
 export { VALID_STATUSES, filterPlans, validatePlanId, pluralize } from './utils.ts';

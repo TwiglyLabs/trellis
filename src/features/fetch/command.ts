@@ -22,9 +22,9 @@ export function fetchCommand(options: FetchOptions): void {
 
   if (!ctx.config.manifest) {
     if (options.json) {
-      console.error(JSON.stringify({ error: 'No manifest configured. Add "manifest: <git-url>" to .trellis' }));
+      console.error(JSON.stringify({ error: 'No manifest configured. Add "manifest: <git-url>" to your .trellis config' }));
     } else {
-      console.error('No manifest configured. Add "manifest: <git-url>" to .trellis');
+      console.error('No manifest configured. Add "manifest: <git-url>" to your .trellis config');
     }
     process.exitCode = 1;
     return;

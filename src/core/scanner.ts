@@ -72,36 +72,56 @@ function walkDir(dir: string, plansDir: string, plans: Plan[]): void {
   }
 }
 
+/** Parse key=value config content into a TrellisConfig. */
+export function parseConfigContent(content: string, cwd: string): TrellisConfig {
+  const config: Partial<TrellisConfig> = {};
+  for (const line of content.split('\n')) {
+    const match = line.match(/^(\w+):\s*(.+)$/);
+    if (match) {
+      const [, key, rawValue] = match;
+      const value = rawValue.replace(/\s*#.*$/, '').trim();
+      if (key === 'project') config.project = value;
+      if (key === 'plans_dir') config.plans_dir = value;
+      if (key === 'chunk_max_lines') {
+        const parsed = parseInt(value, 10);
+        if (!isNaN(parsed) && parsed > 0) config.chunk_max_lines = parsed;
+      }
+      if (key === 'chunk_strategy' && (value === 'topological' || value === 'directory')) {
+        config.chunk_strategy = value;
+      }
+      if (key === 'manifest') config.manifest = value;
+    }
+  }
+  return {
+    project: config.project || basename(cwd),
+    plans_dir: config.plans_dir || 'plans',
+    chunk_max_lines: config.chunk_max_lines,
+    chunk_strategy: config.chunk_strategy,
+    manifest: config.manifest,
+  };
+}
+
 export function loadConfig(cwd: string): TrellisConfig {
   const configPath = join(cwd, '.trellis');
 
   if (existsSync(configPath)) {
-    const content = readFileSync(configPath, 'utf8');
-    const config: Partial<TrellisConfig> = {};
-    for (const line of content.split('\n')) {
-      const match = line.match(/^(\w+):\s*(.+)$/);
-      if (match) {
-        const [, key, rawValue] = match;
-        const value = rawValue.replace(/\s*#.*$/, '').trim();
-        if (key === 'project') config.project = value;
-        if (key === 'plans_dir') config.plans_dir = value;
-        if (key === 'chunk_max_lines') {
-          const parsed = parseInt(value, 10);
-          if (!isNaN(parsed) && parsed > 0) config.chunk_max_lines = parsed;
-        }
-        if (key === 'chunk_strategy' && (value === 'topological' || value === 'directory')) {
-          config.chunk_strategy = value;
-        }
-        if (key === 'manifest') config.manifest = value;
+    const stat = statSync(configPath);
+
+    if (stat.isDirectory()) {
+      // Directory format: read .trellis/config
+      const dirConfigPath = join(configPath, 'config');
+      if (existsSync(dirConfigPath)) {
+        const content = readFileSync(dirConfigPath, 'utf8');
+        return parseConfigContent(content, cwd);
       }
+      // Directory exists but no config file — use defaults
+      return { project: basename(cwd), plans_dir: 'plans' };
     }
-    return {
-      project: config.project || basename(cwd),
-      plans_dir: config.plans_dir || 'plans',
-      chunk_max_lines: config.chunk_max_lines,
-      chunk_strategy: config.chunk_strategy,
-      manifest: config.manifest,
-    };
+
+    // File format (legacy): read directly, emit upgrade hint
+    const content = readFileSync(configPath, 'utf8');
+    process.stderr.write('Tip: run `trellis init` to upgrade to directory format.\n');
+    return parseConfigContent(content, cwd);
   }
 
   return {

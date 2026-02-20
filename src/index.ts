@@ -26,12 +26,13 @@ export type {
   PlanSummary,
   BlockedPlanSummary,
   CreateOptions,
+  CacheEntry,
 } from './core/index.ts';
 
 export {
   PlanFile, SECTION_REQUIREMENTS, STATUS_GATES,
   createContext, refreshContext, toSummary,
-  scanPlans, loadConfig, derivePlanId,
+  scanPlans, loadConfig, parseConfigContent, derivePlanId,
   buildGraph, detectCycles, topologicalSort, transitiveDependents,
   computeCriticalPath, pickNext, computeChunks, groupByDirectory,
   groupByTopologicalDepth, chunkContractAggregation, newlyReady,
@@ -41,6 +42,7 @@ export {
   discoverManifest, fetchRepoPlans, fetchProjectPlans, checkVisibility,
   parseInputs, parseOutputs,
   VALID_STATUSES, filterPlans,
+  ensureCacheDir, readCache, writeCache, isCacheStale,
 } from './core/index.ts';
 
 // --- Feature compute functions ---

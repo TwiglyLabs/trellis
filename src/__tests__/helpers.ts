@@ -25,7 +25,10 @@ export function createFixture(plans: FixturePlan[]): { root: string; plansDir: s
   const plansDir = join(root, 'plans');
   mkdirSync(plansDir, { recursive: true });
 
-  writeFileSync(join(root, '.trellis'), `project: test-project\nplans_dir: plans\n`);
+  // Use directory format (.trellis/config) — the current standard
+  mkdirSync(join(root, '.trellis'), { recursive: true });
+  writeFileSync(join(root, '.trellis', 'config'), `project: test-project\nplans_dir: plans\n`);
+  writeFileSync(join(root, '.trellis', '.gitignore'), 'cache/\n');
 
   for (const plan of plans) {
     // All plans are directory-based: plans/<id>/README.md

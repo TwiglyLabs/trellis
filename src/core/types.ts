@@ -132,6 +132,13 @@ export interface GateResult {
   missing: string[];
 }
 
+// --- Cache ---
+
+export interface CacheEntry<T> {
+  data: T;
+  fetchedAt: string;  // ISO 8601
+}
+
 // --- Shared API types ---
 
 export interface PlanSummary {

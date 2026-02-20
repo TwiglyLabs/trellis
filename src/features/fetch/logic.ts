@@ -25,7 +25,7 @@ export function computeFetch(opts: ComputeFetchOptions): FetchResult {
   const { config, projectDir, git } = opts;
 
   if (!config.manifest) {
-    throw new Error('No manifest configured. Add "manifest: <git-url>" to .trellis');
+    throw new Error('No manifest configured. Add "manifest: <git-url>" to your .trellis config');
   }
 
   const manifest = discoverManifest(config.manifest, projectDir, git);

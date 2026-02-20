@@ -171,6 +171,49 @@ describe('protect-plans hook', () => {
     });
     expect(result.exitCode).toBe(2);
   });
+
+  describe('directory format', () => {
+    let dirRoot: string;
+
+    beforeEach(() => {
+      dirRoot = mkdtempSync(join(tmpdir(), 'trellis-hook-dir-'));
+      mkdirSync(join(dirRoot, '.trellis'), { recursive: true });
+      writeFileSync(join(dirRoot, '.trellis', 'config'), 'project: test\nplans_dir: plans\n');
+      mkdirSync(join(dirRoot, 'plans', 'my-plan'), { recursive: true });
+      writeFileSync(join(dirRoot, 'plans', 'my-plan', 'README.md'), '---\ntitle: Test\nstatus: draft\n---\n');
+      mkdirSync(join(dirRoot, 'src'), { recursive: true });
+      writeFileSync(join(dirRoot, 'src', 'index.ts'), 'console.log("hi");\n');
+    });
+
+    it('blocks Edit on plan files with directory format', () => {
+      const result = runHook({
+        tool_name: 'Edit',
+        tool_input: { file_path: join(dirRoot, 'plans', 'my-plan', 'README.md') },
+      });
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain('trellis MCP tools');
+    });
+
+    it('allows Edit on non-plan files with directory format', () => {
+      const result = runHook({
+        tool_name: 'Edit',
+        tool_input: { file_path: join(dirRoot, 'src', 'index.ts') },
+      });
+      expect(result.exitCode).toBe(0);
+    });
+
+    it('reads custom plans_dir from .trellis/config', () => {
+      writeFileSync(join(dirRoot, '.trellis', 'config'), 'project: test\nplans_dir: my-plans\n');
+      mkdirSync(join(dirRoot, 'my-plans', 'some-plan'), { recursive: true });
+      writeFileSync(join(dirRoot, 'my-plans', 'some-plan', 'README.md'), 'test');
+
+      const result = runHook({
+        tool_name: 'Edit',
+        tool_input: { file_path: join(dirRoot, 'my-plans', 'some-plan', 'README.md') },
+      });
+      expect(result.exitCode).toBe(2);
+    });
+  });
 });
 
 // e2e tests use the locally built dist/trellis.cjs via a PATH override,

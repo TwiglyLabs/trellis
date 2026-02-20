@@ -8,7 +8,7 @@ All commands support `-h, --help` for usage information.
 
 ## init
 
-Scaffold a `.trellis` config file and `plans/` directory in the current project. Also creates/merges `.mcp.json` with the trellis MCP server config and installs Claude Code hooks via `setup-hooks`.
+Scaffold a `.trellis/` config directory and `plans/` directory in the current project. Also creates/merges `.mcp.json` with the trellis MCP server config and installs Claude Code hooks via `setup-hooks`. If a legacy `.trellis` file exists, `--yes` auto-migrates it to the directory format (`.trellis/config`).
 
 ```
 trellis init [options]

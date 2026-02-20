@@ -149,7 +149,7 @@ describe('chunks command', () => {
     // Write a config with tiny chunk_max_lines
     const { writeFileSync: wfs } = require('fs');
     const { join: jn } = require('path');
-    wfs(jn(root, '.trellis'), 'project: test\nplans_dir: plans\nchunk_max_lines: 10\n');
+    wfs(jn(root, '.trellis', 'config'), 'project: test\nplans_dir: plans\nchunk_max_lines: 10\n');
     process.cwd = () => root;
 
     chunksCommand({});

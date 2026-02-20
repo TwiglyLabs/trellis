@@ -80,7 +80,7 @@ export function register(program: Command): void {
 
 ### context.ts
 
-`createContext(cwd)` is the entry point for all commands. It loads the `.trellis` config, scans the plans directory, and builds the dependency graph. Returns a `TrellisContext` with `config`, `plansDir`, `graph` (containing `plans`, `dependents`, `dependencies`).
+`createContext(cwd)` is the entry point for all commands. It loads the trellis config (from `.trellis/config` if directory format, or `.trellis` if legacy file format), scans the plans directory, and builds the dependency graph. Returns a `TrellisContext` with `config`, `plansDir`, `graph` (containing `plans`, `dependents`, `dependencies`).
 
 ### graph.ts
 

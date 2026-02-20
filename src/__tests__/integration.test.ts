@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { createFixture } from './helpers.ts';
@@ -41,9 +41,10 @@ describe('integration: full workflow', () => {
     await initCommand({ yes: true });
 
     expect(existsSync(join(dir, '.trellis'))).toBe(true);
+    expect(statSync(join(dir, '.trellis')).isDirectory()).toBe(true);
     expect(existsSync(join(dir, 'plans'))).toBe(true);
 
-    const config = readFileSync(join(dir, '.trellis'), 'utf8');
+    const config = readFileSync(join(dir, '.trellis', 'config'), 'utf8');
     expect(config).toContain('project:');
     expect(config).toContain('plans_dir: plans');
   });

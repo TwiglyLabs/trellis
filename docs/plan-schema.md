@@ -130,14 +130,23 @@ A plan is **blocked** when:
 
 ## Configuration
 
-Trellis is configured via a `.trellis` file in the project root:
+Trellis is configured via a `.trellis/config` file (directory format) or a legacy `.trellis` file in the project root. The directory format is created by `trellis init` and supports a `cache/` directory for cross-repo data.
 
+**Directory format (preferred):**
 ```
-project = my-project
-plans_dir = plans
-chunk_max_lines = 8000
-chunk_strategy = directory
-manifest = manifest.yaml
+.trellis/
+  config              # key: value config (same syntax as legacy .trellis)
+  .gitignore          # ignores cache/
+  cache/              # local cache for cross-repo data (gitignored)
+```
+
+**Config syntax:**
+```
+project: my-project
+plans_dir: plans
+chunk_max_lines: 8000
+chunk_strategy: directory
+manifest: git@github.com:org/manifest.git
 ```
 
 | Key | Default | Description |
@@ -146,6 +155,8 @@ manifest = manifest.yaml
 | `plans_dir` | `plans` | Directory containing plan directories |
 | `chunk_max_lines` | `8000` | Maximum lines per chunk in `trellis chunks` |
 | `chunk_strategy` | `directory` | Chunk grouping strategy: `directory` or `topological` |
-| `manifest` | (none) | Path to multi-repo manifest file |
+| `manifest` | (none) | Git URL for multi-repo manifest |
 
-Inline comments are supported: `plans_dir = plans  # where plans live`
+Inline comments are supported: `plans_dir: plans  # where plans live`
+
+Legacy `.trellis` files still work — run `trellis init` to upgrade to the directory format.

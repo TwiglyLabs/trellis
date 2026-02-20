@@ -47,7 +47,7 @@ Something to do.
       { id: 'local-plan', title: 'Local Plan', status: 'not_started' },
     ]);
     // Add manifest to config
-    writeFileSync(join(root, '.trellis'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:twiglylabs/twiglylabs.git\n');
+    writeFileSync(join(root, '.trellis', 'config'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:twiglylabs/twiglylabs.git\n');
 
     const ctx = createContext(root);
     const git = vi.fn<GitExecutor>();
@@ -84,7 +84,7 @@ Something to do.
   it('reports failed repos without crashing', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { root } = createFixture([]);
-    writeFileSync(join(root, '.trellis'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:twiglylabs/twiglylabs.git\n');
+    writeFileSync(join(root, '.trellis', 'config'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:twiglylabs/twiglylabs.git\n');
 
     const ctx = createContext(root);
     const git = vi.fn<GitExecutor>();
@@ -115,7 +115,7 @@ Something to do.
 
   it('throws when manifest discovery fails entirely', () => {
     const { root } = createFixture([]);
-    writeFileSync(join(root, '.trellis'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:bad/repo.git\n');
+    writeFileSync(join(root, '.trellis', 'config'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:bad/repo.git\n');
 
     const ctx = createContext(root);
     const git = vi.fn<GitExecutor>().mockReturnValue(null);
@@ -156,7 +156,7 @@ status: draft
 
   it('returns remote plans map when manifest is configured', () => {
     const { root } = createFixture([]);
-    writeFileSync(join(root, '.trellis'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:twiglylabs/twiglylabs.git\n');
+    writeFileSync(join(root, '.trellis', 'config'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:twiglylabs/twiglylabs.git\n');
 
     const ctx = createContext(root);
     const git = vi.fn<GitExecutor>();
@@ -182,7 +182,7 @@ status: draft
 
   it('returns null when manifest discovery fails', () => {
     const { root } = createFixture([]);
-    writeFileSync(join(root, '.trellis'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:bad/url.git\n');
+    writeFileSync(join(root, '.trellis', 'config'), 'project: trellis\nplans_dir: plans\nmanifest: git@github.com:bad/url.git\n');
 
     const ctx = createContext(root);
     const git = vi.fn<GitExecutor>().mockReturnValue(null);

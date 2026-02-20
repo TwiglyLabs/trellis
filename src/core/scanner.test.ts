@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -207,5 +207,70 @@ describe('loadConfig', () => {
 
     const config = loadConfig(dir);
     expect(config.manifest).toBeUndefined();
+  });
+
+  describe('directory format', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('reads .trellis/config when .trellis is a directory', () => {
+      const dir = createFixtureDir();
+      mkdirSync(join(dir, '.trellis'), { recursive: true });
+      writeFileSync(join(dir, '.trellis', 'config'), 'project: acorn\nplans_dir: docs/plans\n');
+
+      const config = loadConfig(dir);
+      expect(config.project).toBe('acorn');
+      expect(config.plans_dir).toBe('docs/plans');
+    });
+
+    it('returns defaults when .trellis dir exists but no config file', () => {
+      const dir = createFixtureDir();
+      mkdirSync(join(dir, '.trellis'), { recursive: true });
+
+      const config = loadConfig(dir);
+      expect(config.plans_dir).toBe('plans');
+    });
+
+    it('parses all fields from directory config', () => {
+      const dir = createFixtureDir();
+      mkdirSync(join(dir, '.trellis'), { recursive: true });
+      writeFileSync(
+        join(dir, '.trellis', 'config'),
+        'project: trellis\nplans_dir: plans\nchunk_max_lines: 5000\nmanifest: git@github.com:org/repo.git\n',
+      );
+
+      const config = loadConfig(dir);
+      expect(config.project).toBe('trellis');
+      expect(config.chunk_max_lines).toBe(5000);
+      expect(config.manifest).toBe('git@github.com:org/repo.git');
+    });
+
+    it('does not emit stderr hint for directory format', () => {
+      const dir = createFixtureDir();
+      mkdirSync(join(dir, '.trellis'), { recursive: true });
+      writeFileSync(join(dir, '.trellis', 'config'), 'project: test\n');
+
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+      loadConfig(dir);
+      expect(stderrSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('file format upgrade hint', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('emits stderr hint when .trellis is a file', () => {
+      const dir = createFixtureDir();
+      writeFileSync(join(dir, '.trellis'), 'project: test\n');
+
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+      loadConfig(dir);
+      expect(stderrSpy).toHaveBeenCalledWith(
+        'Tip: run `trellis init` to upgrade to directory format.\n',
+      );
+    });
   });
 });
