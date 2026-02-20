@@ -1,6 +1,6 @@
 import chalk from 'chalk';
-import { Trellis } from '../api.ts';
-import { padRight, computeColumnWidth } from '../core/utils.ts';
+import { Trellis } from '../../api.ts';
+import { padRight, computeColumnWidth } from '../../core/utils.ts';
 
 interface ReadyOptions {
   tag?: string;

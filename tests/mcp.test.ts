@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createMcpServer } from '../src/mcp.ts';
-import { createFixture } from './helpers.ts';
+import { createFixture } from '../src/__tests__/helpers.ts';
 
 // Helper to call a tool handler directly on the McpServer
 async function callTool(server: any, name: string, args: Record<string, any>) {

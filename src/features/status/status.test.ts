@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createFixture } from '../helpers.ts';
-import { statusCommand } from '../../src/commands/status.ts';
+import { createFixture } from '../../__tests__/helpers.ts';
+import { statusCommand } from './command.ts';
 
 describe('status command', () => {
   let originalCwd: () => string;

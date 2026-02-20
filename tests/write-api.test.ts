@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
 import { Trellis } from '../src/api.ts';
-import { createFixture } from './helpers.ts';
+import { createFixture } from '../src/__tests__/helpers.ts';
 
 describe('Trellis.create', () => {
   it('creates a plan directory with README.md', () => {

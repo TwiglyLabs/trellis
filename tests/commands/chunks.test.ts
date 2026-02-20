@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { chunksCommand } from '../../src/commands/chunks.ts';
-import { createFixture } from '../helpers.ts';
+import { createFixture } from '../../src/__tests__/helpers.ts';
 
 describe('chunks command', () => {
   const logs: string[] = [];

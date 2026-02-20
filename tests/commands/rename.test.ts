@@ -3,7 +3,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { renameCommand } from '../../src/commands/rename.ts';
 import { Trellis } from '../../src/api.ts';
-import { createFixture } from '../helpers.ts';
+import { createFixture } from '../../src/__tests__/helpers.ts';
 
 describe('renameCommand', () => {
   let originalCwd: () => string;

@@ -1,12 +1,13 @@
 ---
 title: 'Extract features batch 1: scaffolding + status/ready/show/update/lint/create'
-status: not_started
+status: done
 depends_on:
   - core-extraction
 tags:
   - refactor
   - vertical-slices
 not_started_at: '2026-02-20T00:16:03.775Z'
+completed_at: '2026-02-20T00:48:45.272Z'
 ---
 
 ## Problem

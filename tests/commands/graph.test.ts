@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createFixture } from '../helpers.ts';
+import { createFixture } from '../../src/__tests__/helpers.ts';
 import http from 'http';
 
 // Mock the HTML viewer import before importing the command

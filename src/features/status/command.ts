@@ -1,7 +1,7 @@
 import chalk from 'chalk';
-import { Trellis } from '../api.ts';
-import { padRight, pluralize, computeColumnWidth } from '../core/utils.ts';
-import type { PlanSummary, BlockedPlanSummary } from '../api.ts';
+import { Trellis } from '../../api.ts';
+import { padRight, pluralize, computeColumnWidth } from '../../core/utils.ts';
+import type { PlanSummary, BlockedPlanSummary } from '../../api.ts';
 
 interface StatusOptions {
   tag?: string;

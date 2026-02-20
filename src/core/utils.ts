@@ -24,6 +24,19 @@ export function formatLines(lines: number): string {
   return String(lines);
 }
 
+/** Validate that a plan ID is a safe, single directory name. */
+export function validatePlanId(id: string): void {
+  if (!id || id.trim() !== id) {
+    throw new Error(`Invalid plan ID "${id}". Must be a non-empty, trimmed string.`);
+  }
+  if (/[\/\\]/.test(id) || id === '.' || id === '..' || id.startsWith('.')) {
+    throw new Error(`Invalid plan ID "${id}". Must be a simple directory name (no slashes, no leading dot).`);
+  }
+  if (/[<>:"|?*\x00-\x1f]/.test(id)) {
+    throw new Error(`Invalid plan ID "${id}". Contains invalid characters.`);
+  }
+}
+
 export function filterPlans(plans: Plan[], filters: { tag?: string; repo?: string }): Plan[] {
   let filtered = plans;
   if (filters.tag) {

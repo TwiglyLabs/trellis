@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { createFixture } from './helpers.ts';
-import { statusCommand } from '../src/commands/status.ts';
-import { readyCommand } from '../src/commands/ready.ts';
-import { updateCommand } from '../src/commands/update.ts';
-import { showCommand } from '../src/commands/show.ts';
-import { lintCommand } from '../src/commands/lint.ts';
+import { createFixture } from '../src/__tests__/helpers.ts';
+import { statusCommand } from '../src/features/status/command.ts';
+import { readyCommand } from '../src/features/ready/command.ts';
+import { updateCommand } from '../src/features/update/command.ts';
+import { showCommand } from '../src/features/show/command.ts';
+import { lintCommand } from '../src/features/lint/command.ts';
 import { initCommand } from '../src/commands/init.ts';
 import { chunksCommand } from '../src/commands/chunks.ts';
 

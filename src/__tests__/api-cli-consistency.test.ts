@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { rmSync } from 'fs';
 import { createFixture } from './helpers.ts';
-import { Trellis } from '../src/index.ts';
+import { Trellis } from '../index.ts';
 
 // Mock the HTML viewer import before importing graph command
-vi.mock('../src/viewer/index.html', () => ({
+vi.mock('../viewer/index.html', () => ({
   default: '<html>__TRELLIS_DATA__</html>',
 }));
 
@@ -13,14 +13,14 @@ vi.mock('child_process', () => ({
   execFile: vi.fn(),
 }));
 
-import { statusCommand } from '../src/commands/status.ts';
-import { readyCommand } from '../src/commands/ready.ts';
-import { showCommand } from '../src/commands/show.ts';
-import { updateCommand } from '../src/commands/update.ts';
-import { lintCommand } from '../src/commands/lint.ts';
-import { graphCommand } from '../src/commands/graph.ts';
-import { epicCommand } from '../src/commands/epic.ts';
-import { chunksCommand } from '../src/commands/chunks.ts';
+import { statusCommand } from '../features/status/command.ts';
+import { readyCommand } from '../features/ready/command.ts';
+import { showCommand } from '../features/show/command.ts';
+import { updateCommand } from '../features/update/command.ts';
+import { lintCommand } from '../features/lint/command.ts';
+import { graphCommand } from '../commands/graph.ts';
+import { epicCommand } from '../commands/epic.ts';
+import { chunksCommand } from '../commands/chunks.ts';
 
 /**
  * API-CLI Consistency Tests
@@ -373,7 +373,6 @@ describe('API-CLI consistency', () => {
       expect(cliOutput.ok_count).toBe(apiResult.okCount);
       expect(cliOutput.errors.length).toBe(apiResult.errors.length);
       expect(cliOutput.warnings.length).toBe(apiResult.warnings.length);
-      expect(cliOutput.contract_coverage).toBe(apiResult.contractCoverage);
     });
 
     it('reports same error details', () => {

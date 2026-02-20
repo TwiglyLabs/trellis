@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createFixture } from '../helpers.ts';
-import { lintCommand } from '../../src/commands/lint.ts';
+import { createFixture } from '../../__tests__/helpers.ts';
+import { lintCommand } from './command.ts';
 
 describe('lint structural checks', () => {
   let originalCwd: () => string;

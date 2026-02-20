@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { Trellis } from '../api.ts';
+import { Trellis } from '../../api.ts';
 
 interface CreateOptions {
   title: string;

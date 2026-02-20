@@ -1,18 +1,24 @@
 import { join, dirname } from 'path';
 import { EventEmitter } from 'events';
-import { watch as fsWatch, type FSWatcher, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync } from 'fs';
+import { watch as fsWatch, type FSWatcher, existsSync, readFileSync, writeFileSync, renameSync } from 'fs';
 import matter from 'gray-matter';
 import {
   loadConfig, scanPlans,
-  buildGraph, detectCycles, transitiveDependents, computeCriticalPath, pickNext, computeChunks, newlyReady,
-  parseFrontmatter, validateFrontmatter, updatePlanFile,
-  validateStatusGate, detectSections, readSection, writeSection,
-  filterPlans, VALID_STATUSES,
+  buildGraph, computeChunks,
+  parseFrontmatter, updatePlanFile,
+  readSection, writeSection,
+  filterPlans, validatePlanId,
   discoverManifest, fetchProjectPlans,
   PlanFile,
 } from './core/index.ts';
+import { computeStatus } from './features/status/logic.ts';
+import { computeReady } from './features/ready/logic.ts';
+import { computeShow } from './features/show/logic.ts';
+import { computeUpdate } from './features/update/logic.ts';
+import { computeLint } from './features/lint/logic.ts';
+import { computeCreate } from './features/create/logic.ts';
 import type { GraphData, Chunk, CrossChunkEdge, ChunkResult } from './core/graph.ts';
-import type { Plan, PlanStatus, TrellisConfig, ContractSection, PlanFrontmatter, GateResult } from './core/types.ts';
+import type { Plan, PlanStatus, TrellisConfig, ContractSection, PlanFrontmatter } from './core/types.ts';
 import type { GitExecutor } from './core/manifest.ts';
 
 function median(values: number[]): number | null {
@@ -239,28 +245,8 @@ const FILE_NAME_MAP: Record<string, PlanFile> = {
   outputs: PlanFile.OUTPUTS,
 };
 
-/** Validate that a plan ID is a safe, single directory name. */
-function validatePlanId(id: string): void {
-  if (!id || id.trim() !== id) {
-    throw new Error(`Invalid plan ID "${id}". Must be a non-empty, trimmed string.`);
-  }
-  if (/[\/\\]/.test(id) || id === '.' || id === '..' || id.startsWith('.')) {
-    throw new Error(`Invalid plan ID "${id}". Must be a simple directory name (no slashes, no leading dot).`);
-  }
-  if (/[<>:"|?*\x00-\x1f]/.test(id)) {
-    throw new Error(`Invalid plan ID "${id}". Contains invalid characters.`);
-  }
-}
 
 // --- Trellis class ---
-
-const STATUS_ORDER: Record<string, number> = {
-  draft: 0,
-  not_started: 1,
-  in_progress: 2,
-  done: 3,
-  archived: 4,
-};
 
 export class Trellis extends EventEmitter {
   readonly projectDir: string;
@@ -345,361 +331,43 @@ export class Trellis extends EventEmitter {
   }
 
   status(filters?: { tag?: string; repo?: string; showDone?: boolean; showArchived?: boolean }): StatusResult {
-    const allPlans = filterPlans(this.plans, { tag: filters?.tag, repo: filters?.repo });
-    const total = allPlans.length;
-
-    let plans = allPlans;
-    if (!filters?.showDone) {
-      plans = plans.filter(p => p.frontmatter.status !== 'done');
-    }
-    if (!filters?.showArchived) {
-      plans = plans.filter(p => p.frontmatter.status !== 'archived');
-    }
-
-    const graph = this.graphData;
-    const chunkResult = computeChunks(this.plans, graph, {
-      maxLines: this.config.chunk_max_lines,
-      strategy: this.config.chunk_strategy,
+    return computeStatus({
+      plans: this.plans,
+      config: this.config,
+      graph: this.graphData,
+      filters,
+      toSummary: p => this.toSummary(p),
     });
-    const overBudget = chunkResult.chunks.filter(c => c.totalLines > chunkResult.config.maxLines).length;
-
-    const ready = plans.filter(p => graph.ready.has(p.id)).map(p => this.toSummary(p));
-    const blocked: BlockedPlanSummary[] = plans.filter(p => graph.blocked.has(p.id)).map(p => {
-      const waitingOn = (p.frontmatter.depends_on ?? []).filter(d => {
-        const dep = graph.plans.get(d);
-        return !dep || dep.frontmatter.status !== 'done';
-      });
-      return { ...this.toSummary(p), waitingOn };
-    });
-    const inProgress = plans.filter(p => p.frontmatter.status === 'in_progress').map(p => this.toSummary(p));
-    const draft = plans.filter(p => p.frontmatter.status === 'draft').map(p => this.toSummary(p));
-    const done = plans.filter(p => p.frontmatter.status === 'done').map(p => this.toSummary(p));
-    const archived = plans.filter(p => p.frontmatter.status === 'archived').map(p => this.toSummary(p));
-
-    return {
-      project: this.config.project,
-      total,
-      chunks: { total: chunkResult.chunks.length, overBudget },
-      byStatus: { ready, blocked, inProgress, draft, done, archived },
-    };
   }
 
   ready(filters?: { tag?: string; repo?: string }): ReadyResult {
-    let readyPlans = this.plans.filter(p => this.graphData.ready.has(p.id));
-    readyPlans = filterPlans(readyPlans, { tag: filters?.tag, repo: filters?.repo });
-
-    const filteredIds = new Set(readyPlans.map(p => p.id));
-    const next = pickNext(this.graphData, filteredIds);
-
-    return {
-      plans: readyPlans.map(p => this.toSummary(p)),
-      next,
-    };
+    return computeReady({
+      plans: this.plans,
+      graph: this.graphData,
+      filters,
+      toSummary: p => this.toSummary(p),
+    });
   }
 
   show(planId: string): ShowResult | null {
-    const plan = this.graphData.plans.get(planId);
-    if (!plan) return null;
-
-    const fm = plan.frontmatter;
-    const directDeps = this.graphData.dependents.get(planId) ?? [];
-    const transitive = transitiveDependents(planId, this.graphData);
-    const critPath = computeCriticalPath(planId, this.graphData);
-
-    return {
-      id: planId,
-      filePath: plan.filePath,
-      title: fm.title,
-      status: fm.status,
-      blocked: this.graphData.blocked.has(planId),
-      ready: this.graphData.ready.has(planId),
-      tags: fm.tags ?? [],
-      repo: fm.repo,
-      assignee: fm.assignee,
-      description: fm.description,
-      startedAt: fm.started_at,
-      completedAt: fm.completed_at,
-      body: plan.body,
-      dependsOn: (fm.depends_on ?? []).map(depId => {
-        const dep = this.graphData.plans.get(depId);
-        return {
-          id: depId,
-          status: (dep?.frontmatter.status ?? 'not_found') as PlanStatus | 'not_found',
-          satisfied: dep ? dep.frontmatter.status === 'done' : false,
-        };
-      }),
-      blocks: [...new Set([...directDeps, ...transitive])],
-      criticalPath: critPath,
-      inputs: plan.inputs?.sections ?? null,
-      outputs: plan.outputs?.sections ?? null,
-    };
+    return computeShow({ planId, graph: this.graphData });
   }
 
   update(planId: string, status: PlanStatus, options?: { force?: boolean }): UpdateResult {
-    if (!VALID_STATUSES.includes(status)) {
-      throw new Error(`Invalid status "${status}". Must be one of: ${VALID_STATUSES.join(', ')}`);
-    }
-
-    const plan = this.graphData.plans.get(planId);
-    if (!plan) {
-      throw new Error(`Plan "${planId}" not found.`);
-    }
-
-    // Gate validation (skip with --force)
-    if (!options?.force) {
-      const hasDependents = (this.graphData.dependents.get(planId) ?? []).length > 0;
-      const gate = validateStatusGate(plan, status, hasDependents);
-      if (!gate.pass) {
-        const details = gate.missing.map(m => `  - ${m}`).join('\n');
-        throw new Error(`Cannot transition "${planId}" to ${status}:\n${details}\n\nUse --force to bypass.`);
-      }
-    }
-
-    const previousStatus = plan.frontmatter.status;
-    const oldOrder = STATUS_ORDER[previousStatus] ?? 0;
-    const newOrder = STATUS_ORDER[status] ?? 0;
-    const backward = newOrder < oldOrder;
-
-    const updates: Partial<PlanFrontmatter> = { status };
-    const deleteFields: string[] = [];
-
-    if (status === 'not_started' && !plan.frontmatter.not_started_at) {
-      updates.not_started_at = new Date().toISOString();
-    }
-    if (status === 'in_progress' && !plan.frontmatter.started_at) {
-      updates.started_at = new Date().toISOString();
-    }
-    if (status === 'done' && !plan.frontmatter.completed_at) {
-      updates.completed_at = new Date().toISOString();
-    }
-    if (backward) {
-      if (newOrder < STATUS_ORDER.not_started && plan.frontmatter.not_started_at) {
-        deleteFields.push('not_started_at');
-      }
-      if (newOrder < STATUS_ORDER.in_progress && plan.frontmatter.started_at) {
-        deleteFields.push('started_at');
-      }
-      if (newOrder < STATUS_ORDER.done && plan.frontmatter.completed_at) {
-        deleteFields.push('completed_at');
-      }
-    }
-
-    updatePlanFile(plan.filePath, updates, deleteFields.length > 0 ? deleteFields : undefined);
-
-    const ready = newlyReady(planId, status, this.graphData);
-
-    // Invalidate cache since we modified a file
-    this.refresh();
-
-    return {
-      id: planId,
-      previousStatus,
-      newStatus: status,
-      backward,
-      newlyReady: ready,
-    };
+    return computeUpdate(
+      { planId, status, graph: this.graphData, force: options?.force },
+      { refresh: () => this.refresh() },
+    );
   }
 
   lint(options?: { strict?: boolean; fix?: boolean }): LintResult {
-    const plans = this.plans;
-    const graph = this.graphData;
-    const planIds = new Set(plans.map(p => p.id));
-    const plansWithErrors = new Set<string>();
-    const errors: LintIssue[] = [];
-    const warnings: LintIssue[] = [];
-    const structuralErrors: LintIssue[] = [];
-    const structuralWarnings: LintIssue[] = [];
-    const fixed: string[] = [];
-
-    // Cycles
-    for (const cycle of detectCycles(plans)) {
-      errors.push({ planId: cycle.path[0], type: 'cycle', message: `Cycle detected: ${cycle.path.join(' → ')}` });
-      for (let i = 0; i < cycle.path.length - 1; i++) plansWithErrors.add(cycle.path[i]);
-    }
-
-    // Missing deps
-    for (const plan of plans) {
-      for (const dep of plan.frontmatter.depends_on ?? []) {
-        if (!planIds.has(dep)) {
-          errors.push({ planId: plan.id, type: 'missing_dependency', message: `Unknown dependency: ${plan.id} depends on "${dep}"` });
-          plansWithErrors.add(plan.id);
-        }
-      }
-    }
-
-    // Frontmatter validation
-    for (const plan of plans) {
-      for (const e of validateFrontmatter(plan.id, plan.frontmatter)) {
-        errors.push({ planId: plan.id, type: 'frontmatter', message: `${plan.id}: ${e.message}` });
-        plansWithErrors.add(plan.id);
-      }
-    }
-
-    // Inconsistencies: done plans with incomplete deps
-    for (const plan of plans) {
-      if (plan.frontmatter.status === 'done') {
-        for (const dep of plan.frontmatter.depends_on ?? []) {
-          const depPlan = plans.find(p => p.id === dep);
-          if (depPlan && depPlan.frontmatter.status !== 'done') {
-            errors.push({ planId: plan.id, type: 'inconsistency', message: `${plan.id} is done but depends on ${dep} (${depPlan.frontmatter.status})` });
-            plansWithErrors.add(plan.id);
-          }
-        }
-      }
-    }
-
-    // Warnings: in_progress with incomplete deps
-    for (const plan of plans) {
-      if (plan.frontmatter.status === 'in_progress') {
-        for (const dep of plan.frontmatter.depends_on ?? []) {
-          const depPlan = plans.find(p => p.id === dep);
-          if (depPlan && depPlan.frontmatter.status !== 'done') {
-            warnings.push({ planId: plan.id, type: 'incomplete_deps', message: `${plan.id} is in_progress but depends on ${dep} (${depPlan.frontmatter.status})` });
-          }
-        }
-      }
-    }
-
-    // Orphans
-    const dependedOn = new Set<string>();
-    for (const plan of plans) {
-      for (const dep of plan.frontmatter.depends_on ?? []) dependedOn.add(dep);
-    }
-    for (const plan of plans) {
-      if (plan.frontmatter.status === 'draft' && !dependedOn.has(plan.id)) {
-        warnings.push({ planId: plan.id, type: 'orphan', message: `Orphaned plan: ${plan.id} has no dependents and status is draft` });
-      }
-    }
-
-    // --- Structural checks ---
-
-    // Scan plans directory for malformed entries (single files, dirs without README.md)
-    const plansDir = join(this.projectDir, this.config.plans_dir);
-    if (existsSync(plansDir)) {
-      let entries: string[];
-      try { entries = readdirSync(plansDir); } catch { entries = []; }
-      for (const entry of entries) {
-        const fullPath = join(plansDir, entry);
-        try {
-          const stat = statSync(fullPath);
-          if (!stat.isDirectory() && entry.endsWith('.md')) {
-            structuralErrors.push({ planId: entry, type: 'single_file_plan', message: `${entry} is a single file, not a plan directory` });
-            plansWithErrors.add(entry);
-          } else if (stat.isDirectory() && !existsSync(join(fullPath, 'README.md'))) {
-            structuralErrors.push({ planId: entry, type: 'missing_readme', message: `${entry}/ is missing README.md` });
-            plansWithErrors.add(entry);
-          }
-        } catch { /* skip unreadable entries */ }
-      }
-    }
-
-    for (const plan of plans) {
-      const planDir = dirname(plan.filePath);
-      const hasDependents = (graph.dependents.get(plan.id) ?? []).length > 0;
-      const hasDependsOn = (plan.frontmatter.depends_on ?? []).length > 0;
-
-      // File layout warnings
-      if (hasDependsOn && !existsSync(join(planDir, PlanFile.INPUTS))) {
-        structuralWarnings.push({ planId: plan.id, type: 'missing_inputs', message: `${plan.id} has depends_on but no inputs.md` });
-      }
-      if (hasDependents && !existsSync(join(planDir, PlanFile.OUTPUTS))) {
-        structuralWarnings.push({ planId: plan.id, type: 'missing_outputs', message: `${plan.id} has dependents but no outputs.md` });
-      }
-
-      // inputs.md section warning
-      if (existsSync(join(planDir, PlanFile.INPUTS))) {
-        const inputsContent = readFileSync(join(planDir, PlanFile.INPUTS), 'utf8');
-        const inputsSections = detectSections(inputsContent);
-        const hasFromPlans = inputsSections.includes('From plans');
-        const hasFromCode = inputsSections.includes('From existing code');
-        if (!hasFromPlans && !hasFromCode) {
-          structuralWarnings.push({ planId: plan.id, type: 'inputs_sections', message: `${plan.id} inputs.md missing "## From plans" or "## From existing code"` });
-        }
-      }
-
-      // Status gate compliance
-      const gate = validateStatusGate(plan, plan.frontmatter.status, hasDependents);
-      if (!gate.pass) {
-        for (const missing of gate.missing) {
-          structuralErrors.push({ planId: plan.id, type: 'gate_violation', message: `${plan.id}: ${missing}` });
-          plansWithErrors.add(plan.id);
-        }
-
-        // --fix: scaffold missing files and sections
-        if (options?.fix) {
-          this._fixStructuralIssues(plan, gate.missing, fixed);
-        }
-      }
-    }
-
-    const allErrors = [...errors, ...structuralErrors];
-    const allWarnings = [...warnings, ...structuralWarnings];
-    const ok = allErrors.length === 0 && (options?.strict ? allWarnings.length === 0 : true);
-
-    return {
-      ok,
-      total: plans.length,
-      okCount: plans.length - plansWithErrors.size,
-      errors: allErrors,
-      warnings: allWarnings,
-      structural: { errors: structuralErrors, warnings: structuralWarnings },
-      fixed,
-    };
-  }
-
-  private _fixStructuralIssues(plan: Plan, missing: string[], fixed: string[]): void {
-    const planDir = dirname(plan.filePath);
-
-    for (const item of missing) {
-      // Missing file: implementation.md
-      if (item === 'Missing file: implementation.md') {
-        const implPath = join(planDir, PlanFile.IMPLEMENTATION);
-        if (!existsSync(implPath)) {
-          writeFileSync(implPath, '## Steps\n\n\n## Testing\n\n\n## Done-when\n\n');
-          fixed.push(`${plan.id}: created implementation.md`);
-        }
-      }
-
-      // Missing file: outputs.md
-      if (item.startsWith('Missing file: outputs.md')) {
-        const outputsPath = join(planDir, PlanFile.OUTPUTS);
-        if (!existsSync(outputsPath)) {
-          writeFileSync(outputsPath, '## Outputs\n\n');
-          fixed.push(`${plan.id}: created outputs.md`);
-        }
-      }
-
-      // Missing sections in README.md
-      const readmeSectionMatch = item.match(/^README\.md: missing "## (.+)"$/);
-      if (readmeSectionMatch) {
-        const sectionName = readmeSectionMatch[1];
-        const raw = readFileSync(plan.filePath, 'utf8');
-        const parsed = matter(raw);
-        const sections = detectSections(parsed.content);
-        if (!sections.includes(sectionName)) {
-          const newBody = writeSection(parsed.content, sectionName, '\n');
-          const updated = matter.stringify(newBody, parsed.data);
-          writeFileSync(plan.filePath, updated);
-          fixed.push(`${plan.id}: added ## ${sectionName} to README.md`);
-        }
-      }
-
-      // Missing sections in implementation.md
-      const implSectionMatch = item.match(/^implementation\.md: missing "## (.+)"$/);
-      if (implSectionMatch) {
-        const sectionName = implSectionMatch[1];
-        const implPath = join(planDir, PlanFile.IMPLEMENTATION);
-        if (existsSync(implPath)) {
-          const content = readFileSync(implPath, 'utf8');
-          const sections = detectSections(content);
-          if (!sections.includes(sectionName)) {
-            const updated = writeSection(content, sectionName, '\n');
-            writeFileSync(implPath, updated);
-            fixed.push(`${plan.id}: added ## ${sectionName} to implementation.md`);
-          }
-        }
-      }
-    }
+    return computeLint({
+      plans: this.plans,
+      graph: this.graphData,
+      projectDir: this.projectDir,
+      plansDir: join(this.projectDir, this.config.plans_dir),
+      options,
+    });
   }
 
   graph(): GraphResult {
@@ -864,43 +532,11 @@ export class Trellis extends EventEmitter {
   }
 
   create(id: string, opts: CreateOptions): CreateResult {
-    if (!opts.title) {
-      throw new Error('title is required');
-    }
-
-    validatePlanId(id);
-
     const plansDir = join(this.projectDir, this.config.plans_dir);
-    const planDir = join(plansDir, id);
-
-    if (existsSync(planDir)) {
-      throw new Error(`Plan "${id}" already exists.`);
-    }
-
-    // Validate depends_on references
-    if (opts.depends_on?.length) {
-      for (const dep of opts.depends_on) {
-        if (!this.graphData.plans.has(dep)) {
-          throw new Error(`Dependency "${dep}" not found.`);
-        }
-      }
-    }
-
-    mkdirSync(planDir, { recursive: true });
-
-    const data: Record<string, any> = { title: opts.title, status: 'draft' };
-    if (opts.description) data.description = opts.description;
-    if (opts.depends_on?.length) data.depends_on = opts.depends_on;
-    if (opts.tags?.length) data.tags = opts.tags;
-
-    const body = '\n## Problem\n\n\n## Approach\n\n';
-    const content = matter.stringify(body, data);
-    const filePath = join(planDir, 'README.md');
-    writeFileSync(filePath, content);
-
-    this.refresh();
-
-    return { id, filePath };
+    return computeCreate(
+      { id, opts, plansDir, graph: this.graphData },
+      { refresh: () => this.refresh() },
+    );
   }
 
   set(planId: string, field: string, value: string | string[], mode: 'replace' | 'add' | 'remove' = 'replace'): SetResult {

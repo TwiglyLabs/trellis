@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { Trellis } from '../api.ts';
+import { Trellis } from '../../api.ts';
 
 export function lintCommand(options?: { strict?: boolean; json?: boolean; fix?: boolean }): void {
   const t = new Trellis(process.cwd());

@@ -7,5 +7,5 @@
     "noEmit": false
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/cli.ts", "src/commands/**", "src/viewer/**"]
+  "exclude": ["src/cli.ts", "src/commands/**", "src/features/**/command.ts", "src/viewer/**", "src/**/*.test.ts", "src/__tests__/**"]
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { epicCommand } from '../../src/commands/epic.ts';
-import { createFixture } from '../helpers.ts';
+import { createFixture } from '../../src/__tests__/helpers.ts';
 
 describe('epic command', () => {
   const logs: string[] = [];

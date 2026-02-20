@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { archiveCommand } from '../../src/commands/archive.ts';
 import { Trellis } from '../../src/api.ts';
-import { createFixture } from '../helpers.ts';
+import { createFixture } from '../../src/__tests__/helpers.ts';
 
 describe('archiveCommand', () => {
   let originalCwd: () => string;

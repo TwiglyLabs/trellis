@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { relative } from 'path';
-import { Trellis } from '../api.ts';
-import { padRight, computeColumnWidth } from '../core/utils.ts';
+import { Trellis } from '../../api.ts';
+import { padRight, computeColumnWidth } from '../../core/utils.ts';
 
 interface ShowOptions {
   json?: boolean;

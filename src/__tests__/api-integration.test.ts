@@ -4,7 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 
 // Import from barrel — this is the consumer's entry point
-import { Trellis } from '../src/index.ts';
+import { Trellis } from '../index.ts';
 import type {
   StatusResult,
   ReadyResult,
@@ -13,7 +13,7 @@ import type {
   LintResult,
   GraphResult,
   EpicResult,
-} from '../src/index.ts';
+} from '../index.ts';
 
 function createTestProject(plans: Record<string, Record<string, unknown>> = {}) {
   const tmpDir = join(tmpdir(), `trellis-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`);

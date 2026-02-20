@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { createCommand } from '../../src/commands/create.ts';
-import { createFixture } from '../helpers.ts';
+import { createCommand } from './command.ts';
+import { createFixture } from '../../__tests__/helpers.ts';
 
 describe('createCommand', () => {
   let originalCwd: () => string;

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { createFixture } from '../helpers.ts';
-import { updateCommand } from '../../src/commands/update.ts';
+import { createFixture } from '../../__tests__/helpers.ts';
+import { updateCommand } from './command.ts';
 
 describe('update command', () => {
   let originalCwd: () => string;

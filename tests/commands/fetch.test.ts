@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createFixture } from '../helpers.ts';
+import { createFixture } from '../../src/__tests__/helpers.ts';
 import type { FetchResult } from '../../src/api.ts';
 
 vi.mock('../../src/api.ts', async () => {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { Trellis } from '../src/api.ts';
-import { createFixture } from './helpers.ts';
+import { createFixture } from '../src/__tests__/helpers.ts';
 import type { GitExecutor } from '../src/core/manifest.ts';
 
 describe('Trellis.fetch()', () => {
