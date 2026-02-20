@@ -1,6 +1,16 @@
 import chalk from 'chalk';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
+
+export function register(program: Command): void {
+  program
+    .command('epic [name]')
+    .description('Show epic completion status')
+    .option('--json', 'Output as JSON')
+    .addHelpText('after', '\nExamples:\n  $ trellis epic\n  $ trellis epic v1\n  $ trellis epic --json')
+    .action((name, options) => epicCommand(options, name));
+}
 
 interface EpicOptions {
   json?: boolean;

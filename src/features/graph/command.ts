@@ -1,8 +1,19 @@
 import { createServer } from 'http';
 import { execFile } from 'child_process';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
 import viewerHtml from './viewer/index.html';
 import { getGraphData } from './logic.ts';
+
+export function register(program: Command): void {
+  program
+    .command('graph')
+    .description('Open DAG viewer in browser')
+    .option('--port <port>', 'Port to serve on', parseInt)
+    .option('--json', 'Output graph as JSON (nodes + edges) instead of opening browser')
+    .addHelpText('after', '\nExamples:\n  $ trellis graph\n  $ trellis graph --port 8080\n  $ trellis graph --json')
+    .action((options) => graphCommand(options));
+}
 
 export function graphCommand(options: { port?: number; json?: boolean }): void {
   const cwd = process.cwd();

@@ -1,7 +1,17 @@
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join, basename } from 'path';
+import type { Command } from 'commander';
 import { setupHooks } from '../setup-hooks/logic.ts';
 import { prompt, setupMcpJson } from './logic.ts';
+
+export function register(program: Command): void {
+  program
+    .command('init')
+    .description('Scaffold .trellis config and plans/ directory')
+    .option('-y, --yes', 'Accept defaults without prompting')
+    .addHelpText('after', '\nExamples:\n  $ trellis init\n  $ trellis init --yes')
+    .action((options) => initCommand(options));
+}
 
 export async function initCommand(options?: { yes?: boolean }): Promise<void> {
   const cwd = process.cwd();

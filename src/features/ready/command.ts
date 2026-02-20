@@ -1,6 +1,19 @@
 import chalk from 'chalk';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
+
+export function register(program: Command): void {
+  program
+    .command('ready')
+    .description('List plans with all dependencies satisfied')
+    .option('--tag <tag>', 'Filter by tag')
+    .option('--repo <repo>', 'Filter by repo')
+    .option('--json', 'Output as JSON')
+    .option('--next', 'Return only the highest-priority ready plan')
+    .addHelpText('after', '\nExamples:\n  $ trellis ready\n  $ trellis ready --repo public\n  $ trellis ready --json\n  $ trellis ready --next\n  $ trellis ready --next --json')
+    .action((options) => readyCommand(options));
+}
 
 interface ReadyOptions {
   tag?: string;

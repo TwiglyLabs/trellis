@@ -1,7 +1,22 @@
 import chalk from 'chalk';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
 import { padRight, pluralize, computeColumnWidth } from '../../core/utils.ts';
 import type { PlanSummary, BlockedPlanSummary } from '../../api.ts';
+
+export function register(program: Command): void {
+  program
+    .command('status')
+    .description('Dashboard: what\'s ready, blocked, in progress')
+    .option('--tag <tag>', 'Filter by tag')
+    .option('--repo <repo>', 'Filter by repo')
+    .option('--json', 'Output as JSON')
+    .option('--all', 'Show all plans including done and archived')
+    .option('--done', 'Include done plans')
+    .option('--archived', 'Include archived plans')
+    .addHelpText('after', '\nExamples:\n  $ trellis status\n  $ trellis status --tag foundation\n  $ trellis status --json\n  $ trellis status --all\n  $ trellis status --done')
+    .action((options) => statusCommand(options));
+}
 
 interface StatusOptions {
   tag?: string;

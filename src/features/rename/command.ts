@@ -1,5 +1,15 @@
 import chalk from 'chalk';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
+
+export function register(program: Command): void {
+  program
+    .command('rename <old-id> <new-id>')
+    .description('Rename plan and update all references')
+    .option('--json', 'Output as JSON')
+    .addHelpText('after', '\nExamples:\n  $ trellis rename old-name new-name')
+    .action((oldId, newId, options) => renameCommand(oldId, newId, options));
+}
 
 interface RenameOptions {
   json?: boolean;

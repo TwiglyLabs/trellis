@@ -1,5 +1,17 @@
 import chalk from 'chalk';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
+
+export function register(program: Command): void {
+  program
+    .command('set <plan-id> <field> [values...]')
+    .description('Update frontmatter fields')
+    .option('--add', 'Append to list field')
+    .option('--remove', 'Remove from list field')
+    .option('--json', 'Output as JSON')
+    .addHelpText('after', '\nExamples:\n  $ trellis set my-plan description "Updated desc"\n  $ trellis set my-plan tags new-tag --add\n  $ trellis set my-plan tags old-tag --remove')
+    .action((planId, field, values, options) => setCommand(planId, field, values, options));
+}
 
 interface SetOptions {
   add?: boolean;

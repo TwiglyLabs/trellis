@@ -1,5 +1,15 @@
 import chalk from 'chalk';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
+
+export function register(program: Command): void {
+  program
+    .command('archive <plan-id>')
+    .description('Archive a plan (set status to archived)')
+    .option('--json', 'Output as JSON')
+    .addHelpText('after', '\nExamples:\n  $ trellis archive completed-plan')
+    .action((planId, options) => archiveCommand(planId, options));
+}
 
 interface ArchiveOptions {
   json?: boolean;

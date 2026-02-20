@@ -1,6 +1,17 @@
 import chalk from 'chalk';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
+
+export function register(program: Command): void {
+  program
+    .command('metrics')
+    .description('Show cycle time, queue time, and session data for completed plans')
+    .option('--json', 'Output as JSON')
+    .option('--since <date>', 'Filter to plans completed after this date')
+    .addHelpText('after', '\nExamples:\n  $ trellis metrics\n  $ trellis metrics --json\n  $ trellis metrics --since 2026-02-01')
+    .action((options) => metricsCommand(options));
+}
 
 interface MetricsOptions {
   json?: boolean;

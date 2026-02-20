@@ -1,7 +1,21 @@
 import chalk from 'chalk';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
 import type { ChunkResult } from '../../core/graph.ts';
 import { pluralize, formatLines } from '../../core/utils.ts';
+
+export function register(program: Command): void {
+  program
+    .command('chunks')
+    .description('Identify reviewable subgraphs from the plan dependency graph')
+    .option('--json', 'Output as JSON')
+    .option('--verbose', 'Show cross-chunk edges and size details')
+    .option('--tag <tag>', 'Filter by tag')
+    .option('--repo <repo>', 'Filter by repo')
+    .option('--strategy <strategy>', 'Chunk strategy: directory or topological')
+    .addHelpText('after', '\nExamples:\n  $ trellis chunks\n  $ trellis chunks --json\n  $ trellis chunks --verbose\n  $ trellis chunks --tag foundation\n  $ trellis chunks --repo cloud')
+    .action((options) => chunksCommand(options));
+}
 
 interface ChunksOptions {
   json?: boolean;

@@ -1,8 +1,20 @@
 import chalk from 'chalk';
 import { createInterface } from 'readline';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
 import type { PlanStatus } from '../../core/types.ts';
+
+export function register(program: Command): void {
+  program
+    .command('update <plan-id> <status>')
+    .description('Edit frontmatter in-place, show what unblocks')
+    .option('--json', 'Output as JSON')
+    .option('--force', 'Bypass status gate validation')
+    .option('-y, --yes', 'Skip retro prompts on done transition')
+    .addHelpText('after', '\nExamples:\n  $ trellis update core-types in_progress\n  $ trellis update impl/parser done\n  $ trellis update core-types done --json\n  $ trellis update core-types in_progress --force')
+    .action((planId, status, options) => updateCommand(planId, status, options));
+}
 
 interface UpdateOptions {
   json?: boolean;

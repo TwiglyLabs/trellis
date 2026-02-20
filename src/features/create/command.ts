@@ -1,5 +1,19 @@
 import chalk from 'chalk';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
+
+export function register(program: Command): void {
+  program
+    .command('create <id>')
+    .description('Scaffold a new plan directory')
+    .requiredOption('-t, --title <title>', 'Plan title')
+    .option('--depends-on <ids...>', 'Plan IDs this depends on')
+    .option('--tags <tags...>', 'Freeform tags')
+    .option('-d, --description <desc>', 'One-line description')
+    .option('--json', 'Output as JSON')
+    .addHelpText('after', '\nExamples:\n  $ trellis create my-plan --title "My Plan"\n  $ trellis create my-plan --title "Plan" --depends-on core-types --tags foundation')
+    .action((id, options) => createCommand(id, options));
+}
 
 interface CreateOptions {
   title: string;

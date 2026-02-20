@@ -1,5 +1,17 @@
 import chalk from 'chalk';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
+
+export function register(program: Command): void {
+  program
+    .command('lint')
+    .description('Find cycles, missing deps, bad frontmatter, and structural issues')
+    .option('--strict', 'Exit with error on warnings too')
+    .option('--json', 'Output as JSON')
+    .option('--fix', 'Auto-scaffold missing files and sections')
+    .addHelpText('after', '\nExamples:\n  $ trellis lint\n  $ trellis lint --strict\n  $ trellis lint --json\n  $ trellis lint --fix')
+    .action((options) => lintCommand(options));
+}
 
 export function lintCommand(options?: { strict?: boolean; json?: boolean; fix?: boolean }): void {
   const t = new Trellis(process.cwd());

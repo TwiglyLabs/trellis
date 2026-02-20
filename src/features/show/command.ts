@@ -1,7 +1,21 @@
 import chalk from 'chalk';
 import { relative } from 'path';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
+
+export function register(program: Command): void {
+  program
+    .command('show <plan-id>')
+    .description('Show plan details and dependency chain')
+    .option('--json', 'Output as JSON')
+    .option('--contracts', 'Include input/output contracts')
+    .option('--file <file>', 'Read specific file (readme, implementation, inputs, outputs)')
+    .option('--section <section>', 'Read specific section (requires --file)')
+    .option('--raw', 'Output raw plan content')
+    .addHelpText('after', '\nExamples:\n  $ trellis show core-types\n  $ trellis show core-types --json\n  $ trellis show core-types --file implementation --section Steps\n  $ trellis show core-types --raw')
+    .action((planId, options) => showCommand(planId, options));
+}
 
 interface ShowOptions {
   json?: boolean;

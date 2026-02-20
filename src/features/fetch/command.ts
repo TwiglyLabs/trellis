@@ -1,6 +1,16 @@
 import chalk from 'chalk';
+import type { Command } from 'commander';
 import { Trellis } from '../../api.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
+
+export function register(program: Command): void {
+  program
+    .command('fetch')
+    .description('Fetch plan state from all project repos')
+    .option('--json', 'Output as JSON')
+    .addHelpText('after', '\nExamples:\n  $ trellis fetch\n  $ trellis fetch --json')
+    .action((options) => fetchCommand(options));
+}
 
 interface FetchOptions {
   json?: boolean;
