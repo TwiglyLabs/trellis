@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, chmodSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'fs';
+import { join } from 'path';
 
 const PROTECT_PLANS_HOOK = `#!/bin/bash
 # Claude Code PreToolUse hook: blocks Edit and Write on plan files.
@@ -107,19 +107,6 @@ export interface SetupHooksResult {
   claudeHooks: boolean;
   preCommit: boolean;
   messages: string[];
-}
-
-export function setupHooksCommand(): void {
-  const cwd = process.cwd();
-  const result = setupHooks(cwd);
-
-  for (const msg of result.messages) {
-    console.log(msg);
-  }
-
-  if (!result.claudeHooks && !result.preCommit) {
-    console.log('Hooks already installed — nothing to do.');
-  }
 }
 
 export function setupHooks(cwd: string): SetupHooksResult {

@@ -1,20 +1,20 @@
 import { Command } from 'commander';
-import { initCommand } from './commands/init.ts';
+import { initCommand } from './features/init/command.ts';
 import { statusCommand } from './features/status/command.ts';
 import { readyCommand } from './features/ready/command.ts';
 import { updateCommand } from './features/update/command.ts';
 import { showCommand } from './features/show/command.ts';
 import { lintCommand } from './features/lint/command.ts';
-import { graphCommand } from './commands/graph.ts';
+import { graphCommand } from './features/graph/command.ts';
 import { epicCommand } from './features/epic/command.ts';
 import { chunksCommand } from './features/chunks/command.ts';
 import { createCommand } from './features/create/command.ts';
 import { setCommand } from './features/set/command.ts';
 import { renameCommand } from './features/rename/command.ts';
 import { archiveCommand } from './features/archive/command.ts';
-import { fetchCommand } from './commands/fetch.ts';
+import { fetchCommand } from './features/fetch/command.ts';
 import { metricsCommand } from './features/metrics/command.ts';
-import { setupHooksCommand } from './commands/setup-hooks.ts';
+import { setupHooksCommand } from './features/setup-hooks/command.ts';
 import { startMcpServer } from './mcp.ts';
 
 const program = new Command();

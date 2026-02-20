@@ -8,7 +8,7 @@ import { readyCommand } from '../src/features/ready/command.ts';
 import { updateCommand } from '../src/features/update/command.ts';
 import { showCommand } from '../src/features/show/command.ts';
 import { lintCommand } from '../src/features/lint/command.ts';
-import { initCommand } from '../src/commands/init.ts';
+import { initCommand } from '../src/features/init/command.ts';
 import { chunksCommand } from '../src/features/chunks/command.ts';
 
 describe('integration: full workflow', () => {

@@ -3,7 +3,7 @@ import { rmSync } from 'fs';
 import { createFixture } from './helpers.ts';
 
 // Mock the HTML viewer import before importing graph command
-vi.mock('../viewer/index.html', () => ({
+vi.mock('../features/graph/viewer/index.html', () => ({
   default: '<html>__TRELLIS_DATA__</html>',
 }));
 
@@ -17,7 +17,7 @@ import { readyCommand } from '../features/ready/command.ts';
 import { showCommand } from '../features/show/command.ts';
 import { updateCommand } from '../features/update/command.ts';
 import { lintCommand } from '../features/lint/command.ts';
-import { graphCommand } from '../commands/graph.ts';
+import { graphCommand } from '../features/graph/command.ts';
 import { epicCommand } from '../features/epic/command.ts';
 import { chunksCommand } from '../features/chunks/command.ts';
 

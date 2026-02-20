@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync, statSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { setupHooks, setupHooksCommand } from '../../src/commands/setup-hooks.ts';
+import { setupHooks } from './logic.ts';
+import { setupHooksCommand } from './command.ts';
 
 describe('setupHooks', () => {
   let originalCwd: () => string;

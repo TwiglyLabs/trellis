@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { initCommand } from '../../src/commands/init.ts';
+import { initCommand } from './command.ts';
 
 describe('initCommand', () => {
   let originalCwd: () => string;

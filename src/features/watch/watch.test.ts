@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { Trellis } from '../src/api.ts';
+import { Trellis } from '../../api.ts';
 
 function createTestProject() {
   const tmpDir = join(tmpdir(), `trellis-watch-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);

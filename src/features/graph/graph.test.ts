@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createFixture } from '../../src/__tests__/helpers.ts';
+import { createFixture } from '../../__tests__/helpers.ts';
 import http from 'http';
 
 // Mock the HTML viewer import before importing the command
-vi.mock('../../src/viewer/index.html', () => ({
+vi.mock('./viewer/index.html', () => ({
   default: '<html>__TRELLIS_DATA__</html>',
 }));
 
@@ -12,7 +12,7 @@ vi.mock('child_process', () => ({
   execFile: vi.fn(),
 }));
 
-import { graphCommand } from '../../src/commands/graph.ts';
+import { graphCommand } from './command.ts';
 
 function fetchJson(url: string): Promise<any> {
   return new Promise((resolve, reject) => {

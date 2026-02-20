@@ -1,6 +1,5 @@
 import { join } from 'path';
 import { EventEmitter } from 'events';
-import { watch as fsWatch, type FSWatcher } from 'fs';
 import {
   loadConfig, scanPlans,
   buildGraph, computeChunks,
@@ -18,6 +17,7 @@ import { computeArchive } from './features/archive/logic.ts';
 import { computeWriteSection, computeReadSection } from './features/sections/logic.ts';
 import { computeEpic } from './features/epic/logic.ts';
 import { computeChunksFeature } from './features/chunks/logic.ts';
+import { watchPlans, unwatchPlans, isWatching as isWatchingFn, type WatchState } from './features/watch/logic.ts';
 import { computeMetrics } from './features/metrics/logic.ts';
 import type { GraphData, Chunk, CrossChunkEdge, ChunkResult } from './core/graph.ts';
 import type { Plan, PlanStatus, TrellisConfig, ContractSection } from './core/types.ts';
@@ -236,8 +236,7 @@ export class Trellis extends EventEmitter {
 
   private _plans: Plan[] | null = null;
   private _graph: GraphData | null = null;
-  private _watcher: FSWatcher | null = null;
-  private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _watchState: WatchState = { watcher: null, debounceTimer: null };
 
   constructor(projectDir: string) {
     super();
@@ -246,35 +245,15 @@ export class Trellis extends EventEmitter {
   }
 
   get isWatching(): boolean {
-    return this._watcher !== null;
+    return isWatchingFn(this._watchState);
   }
 
   watch(debounceMs = 100): void {
-    if (this._watcher) return;
-
-    const plansDir = join(this.projectDir, this.config.plans_dir);
-    this._watcher = fsWatch(plansDir, { recursive: true }, () => {
-      if (this._debounceTimer) clearTimeout(this._debounceTimer);
-      this._debounceTimer = setTimeout(() => {
-        this.refresh();
-        this.emit('change', this.graph());
-      }, debounceMs);
-    });
-
-    this._watcher.on('error', (err) => {
-      this.emit('error', err);
-    });
+    watchPlans(this, this._watchState, debounceMs);
   }
 
   unwatch(): void {
-    if (this._debounceTimer) {
-      clearTimeout(this._debounceTimer);
-      this._debounceTimer = null;
-    }
-    if (this._watcher) {
-      this._watcher.close();
-      this._watcher = null;
-    }
+    unwatchPlans(this._watchState);
   }
 
   /** Force rescan from disk. Clears cached plans and graph. */

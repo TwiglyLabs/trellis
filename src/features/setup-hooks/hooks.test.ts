@@ -3,9 +3,9 @@ import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync, chmodSync } from 'f
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { execFileSync } from 'child_process';
-import { setupHooks } from '../src/commands/setup-hooks.ts';
+import { setupHooks } from './logic.ts';
 
-const HOOK_SCRIPT = join(__dirname, '..', '.claude', 'hooks', 'protect-plans.sh');
+const HOOK_SCRIPT = join(__dirname, '..', '..', '..', '.claude', 'hooks', 'protect-plans.sh');
 
 function runHook(input: Record<string, any>, env?: Record<string, string>): { exitCode: number; stderr: string } {
   try {
@@ -175,7 +175,7 @@ describe('protect-plans hook', () => {
 
 // e2e tests use the locally built dist/trellis.cjs via a PATH override,
 // so we're always testing the current code, not whatever's installed globally.
-const TRELLIS_CJS = join(__dirname, '..', 'dist', 'trellis.cjs');
+const TRELLIS_CJS = join(__dirname, '..', '..', '..', 'dist', 'trellis.cjs');
 
 describe('pre-commit hook e2e', () => {
   let testEnvPath: string;

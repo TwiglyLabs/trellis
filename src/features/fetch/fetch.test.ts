@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createFixture } from '../../src/__tests__/helpers.ts';
-import type { FetchResult } from '../../src/api.ts';
+import { createFixture } from '../../__tests__/helpers.ts';
+import type { FetchResult } from '../../api.ts';
 
-vi.mock('../../src/api.ts', async () => {
-  const actual = await vi.importActual<typeof import('../../src/api.ts')>('../../src/api.ts');
+vi.mock('../../api.ts', async () => {
+  const actual = await vi.importActual<typeof import('../../api.ts')>('../../api.ts');
   return {
     ...actual,
     Trellis: vi.fn(),
   };
 });
 
-import { fetchCommand } from '../../src/commands/fetch.ts';
-import { Trellis } from '../../src/api.ts';
+import { fetchCommand } from './command.ts';
+import { Trellis } from '../../api.ts';
 
 const MockTrellis = vi.mocked(Trellis);
 

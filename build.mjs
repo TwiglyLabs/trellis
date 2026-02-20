@@ -12,7 +12,7 @@ const dagreInjectionPlugin = {
     build.onLoad({ filter: /viewer\/index\.html$/ }, async (args) => {
       // Bundle dagre as IIFE
       const dagreResult = await esbuild.build({
-        entryPoints: [resolve(__dirname, 'src/viewer/dagre-shim.ts')],
+        entryPoints: [resolve(__dirname, 'src/features/graph/viewer/dagre-shim.ts')],
         bundle: true,
         format: 'iife',
         globalName: 'dagre',
