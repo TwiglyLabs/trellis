@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { chunksCommand } from '../../src/commands/chunks.ts';
-import { createFixture } from '../../src/__tests__/helpers.ts';
+import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { chunksCommand } from './command.ts';
+import { Trellis } from '../../api.ts';
+import { createFixture } from '../../__tests__/helpers.ts';
+
+// --- Command tests ---
 
 describe('chunks command', () => {
   const logs: string[] = [];
@@ -140,9 +146,9 @@ describe('chunks command', () => {
       { id: 'big', title: 'Big Plan', status: 'not_started', body: 'x\n'.repeat(100) },
     ]);
     // Write a config with tiny chunk_max_lines
-    const { writeFileSync } = require('fs');
-    const { join } = require('path');
-    writeFileSync(join(root, '.trellis'), 'project: test\nplans_dir: plans\nchunk_max_lines: 10\n');
+    const { writeFileSync: wfs } = require('fs');
+    const { join: jn } = require('path');
+    wfs(jn(root, '.trellis'), 'project: test\nplans_dir: plans\nchunk_max_lines: 10\n');
     process.cwd = () => root;
 
     chunksCommand({});
@@ -184,5 +190,65 @@ describe('chunks command', () => {
     const topoResult = JSON.parse(logs.join(''));
     // For now, both strategies may produce same result until topological is implemented
     expect(topoResult.chunks.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// --- API tests ---
+
+function createTestProject() {
+  const tmpDir = join(tmpdir(), `trellis-chunks-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const plansDir = join(tmpDir, 'plans');
+  mkdirSync(plansDir, { recursive: true });
+  writeFileSync(join(tmpDir, '.trellis'), 'project: test-project\nplans_dir: plans\n');
+  return { tmpDir, plansDir };
+}
+
+function writePlan(plansDir: string, id: string, frontmatter: Record<string, unknown>, body?: string) {
+  const fm = Object.entries(frontmatter)
+    .map(([k, v]) => {
+      if (Array.isArray(v)) return `${k}:\n${v.map(i => `  - ${i}`).join('\n')}`;
+      return `${k}: ${v}`;
+    })
+    .join('\n');
+  const planDir = join(plansDir, id);
+  mkdirSync(planDir, { recursive: true });
+  writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n${body ?? `\nBody for ${id}\n`}`);
+}
+
+describe('Trellis.chunks()', () => {
+  let tmpDir: string;
+  let plansDir: string;
+
+  beforeEach(() => {
+    const project = createTestProject();
+    tmpDir = project.tmpDir;
+    plansDir = project.plansDir;
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('filters by tag and repo', () => {
+    writePlan(plansDir, 'contracts/types', { title: 'Types', status: 'done', tags: ['foundation'], repo: 'public' });
+    writePlan(plansDir, 'impl/core', { title: 'Core', status: 'not_started', tags: ['core'], repo: 'private' });
+
+    const t = new Trellis(tmpDir);
+    const byTag = t.chunks({ tag: 'foundation' });
+    const planIds = byTag.chunks.flatMap(c => c.plans.map(p => p.id));
+    expect(planIds).toContain('contracts/types');
+    expect(planIds).not.toContain('impl/core');
+  });
+
+  it('returns chunk result', () => {
+    writePlan(plansDir, 'contracts/types', { title: 'Types', status: 'done' });
+    writePlan(plansDir, 'contracts/api', { title: 'API', status: 'not_started', depends_on: ['contracts/types'] });
+    writePlan(plansDir, 'impl/core', { title: 'Core', status: 'not_started', depends_on: ['contracts/types'] });
+
+    const t = new Trellis(tmpDir);
+    const result = t.chunks();
+    expect(result.chunks.length).toBeGreaterThan(0);
+    expect(Array.isArray(result.crossChunkEdges)).toBe(true);
+    expect(typeof result.config.maxLines).toBe('number');
   });
 });

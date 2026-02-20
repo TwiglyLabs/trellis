@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { archiveCommand } from '../../src/commands/archive.ts';
-import { Trellis } from '../../src/api.ts';
-import { createFixture } from '../../src/__tests__/helpers.ts';
+import { archiveCommand } from './command.ts';
+import { Trellis } from '../../api.ts';
+import { createFixture } from '../../__tests__/helpers.ts';
 
 describe('archiveCommand', () => {
   let originalCwd: () => string;
@@ -101,5 +101,54 @@ describe('archiveCommand', () => {
     expect(process.exitCode).toBe(1);
     const parsed = JSON.parse(errors[0]);
     expect(parsed).toHaveProperty('error');
+  });
+});
+
+describe('Trellis.archive', () => {
+  it('archives a plan by setting status to archived', () => {
+    const { root } = createFixture([
+      { id: 'test', title: 'Test', status: 'done', body: '\n## Problem\nText\n' },
+    ]);
+    const t = new Trellis(root);
+    const result = t.archive('test');
+
+    expect(result.previousStatus).toBe('done');
+    expect(result.newStatus).toBe('archived');
+  });
+
+  it('blocks archiving when plan has active dependents', () => {
+    const { root } = createFixture([
+      { id: 'upstream', title: 'Up', status: 'done', body: '\n## Problem\nText\n' },
+      { id: 'downstream', title: 'Down', status: 'in_progress', depends_on: ['upstream'], body: '\n## Problem\nText\n' },
+    ]);
+    const t = new Trellis(root);
+    expect(() => t.archive('upstream')).toThrow('active dependents');
+  });
+
+  it('allows archiving when dependents are also done/archived', () => {
+    const { root } = createFixture([
+      { id: 'upstream', title: 'Up', status: 'done', body: '\n## Problem\nText\n' },
+      { id: 'downstream', title: 'Down', status: 'done', depends_on: ['upstream'], body: '\n## Problem\nText\n' },
+    ]);
+    const t = new Trellis(root);
+    const result = t.archive('upstream');
+    expect(result.newStatus).toBe('archived');
+  });
+
+  it('rejects unknown plan', () => {
+    const { root } = createFixture([]);
+    const t = new Trellis(root);
+    expect(() => t.archive('nonexistent')).toThrow('not found');
+  });
+
+  it('archiving already-archived plan is idempotent', () => {
+    const { root } = createFixture([
+      { id: 'test', title: 'Test', status: 'archived', body: '\n## Problem\nText\n' },
+    ]);
+    const t = new Trellis(root);
+    const result = t.archive('test');
+
+    expect(result.previousStatus).toBe('archived');
+    expect(result.newStatus).toBe('archived');
   });
 });

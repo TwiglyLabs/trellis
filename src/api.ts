@@ -1,15 +1,10 @@
-import { join, dirname } from 'path';
+import { join } from 'path';
 import { EventEmitter } from 'events';
-import { watch as fsWatch, type FSWatcher, existsSync, readFileSync, writeFileSync, renameSync } from 'fs';
-import matter from 'gray-matter';
+import { watch as fsWatch, type FSWatcher } from 'fs';
 import {
   loadConfig, scanPlans,
   buildGraph, computeChunks,
-  parseFrontmatter, updatePlanFile,
-  readSection, writeSection,
-  filterPlans, validatePlanId,
   discoverManifest, fetchProjectPlans,
-  PlanFile,
 } from './core/index.ts';
 import { computeStatus } from './features/status/logic.ts';
 import { computeReady } from './features/ready/logic.ts';
@@ -17,16 +12,16 @@ import { computeShow } from './features/show/logic.ts';
 import { computeUpdate } from './features/update/logic.ts';
 import { computeLint } from './features/lint/logic.ts';
 import { computeCreate } from './features/create/logic.ts';
+import { computeSet } from './features/set/logic.ts';
+import { computeRename } from './features/rename/logic.ts';
+import { computeArchive } from './features/archive/logic.ts';
+import { computeWriteSection, computeReadSection } from './features/sections/logic.ts';
+import { computeEpic } from './features/epic/logic.ts';
+import { computeChunksFeature } from './features/chunks/logic.ts';
+import { computeMetrics } from './features/metrics/logic.ts';
 import type { GraphData, Chunk, CrossChunkEdge, ChunkResult } from './core/graph.ts';
-import type { Plan, PlanStatus, TrellisConfig, ContractSection, PlanFrontmatter } from './core/types.ts';
+import type { Plan, PlanStatus, TrellisConfig, ContractSection } from './core/types.ts';
 import type { GitExecutor } from './core/manifest.ts';
-
-function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
 
 // --- Return types ---
 
@@ -233,19 +228,6 @@ export type CreateOptions = {
   tags?: string[];
 };
 
-// Valid frontmatter field names for set()
-const EDITABLE_FIELDS = ['title', 'description', 'depends_on', 'tags', 'repo', 'assignee', 'sessions', 'deviation'] as const;
-const LIST_FIELDS = ['depends_on', 'tags'] as const;
-
-// Map from short file name to PlanFile enum
-const FILE_NAME_MAP: Record<string, PlanFile> = {
-  readme: PlanFile.README,
-  implementation: PlanFile.IMPLEMENTATION,
-  inputs: PlanFile.INPUTS,
-  outputs: PlanFile.OUTPUTS,
-};
-
-
 // --- Trellis class ---
 
 export class Trellis extends EventEmitter {
@@ -411,124 +393,25 @@ export class Trellis extends EventEmitter {
   }
 
   epic(name?: string): EpicResult[] {
-    const plans = this.plans;
-    const graph = this.graphData;
-    const epicMap = new Map<string, Plan[]>();
-
-    for (const plan of plans) {
-      for (const tag of plan.frontmatter.tags ?? []) {
-        if (tag.startsWith('epic:')) {
-          const epicName = tag.slice(5);
-          if (!epicMap.has(epicName)) epicMap.set(epicName, []);
-          epicMap.get(epicName)!.push(plan);
-        }
-      }
-    }
-
-    if (name) {
-      const epicPlans = epicMap.get(name);
-      if (!epicPlans) return [];
-      return [this.buildEpicResult(name, epicPlans, graph, true)];
-    }
-
-    return [...epicMap.entries()]
-      .map(([epicName, epicPlans]) => this.buildEpicResult(epicName, epicPlans, graph, false))
-      .sort((a, b) => a.epic.localeCompare(b.epic));
-  }
-
-  private buildEpicResult(name: string, epicPlans: Plan[], graph: GraphData, includePlans: boolean): EpicResult {
-    const total = epicPlans.length;
-    const done = epicPlans.filter(p => p.frontmatter.status === 'done').length;
-    const result: EpicResult = {
-      epic: name,
-      total,
-      done,
-      inProgress: epicPlans.filter(p => p.frontmatter.status === 'in_progress').length,
-      notStarted: epicPlans.filter(p => p.frontmatter.status === 'not_started').length,
-      blocked: epicPlans.filter(p => graph.blocked.has(p.id)).length,
-      draft: epicPlans.filter(p => p.frontmatter.status === 'draft').length,
-      progress: total > 0 ? done / total : 0,
-    };
-    if (includePlans) {
-      result.plans = epicPlans.map(p => this.toSummary(p));
-    }
-    return result;
+    return computeEpic({
+      plans: this.plans,
+      graph: this.graphData,
+      name,
+      toSummary: p => this.toSummary(p),
+    });
   }
 
   chunks(filters?: { tag?: string; repo?: string; strategy?: 'directory' | 'topological' }): ChunkResult {
-    let plans = this.plans;
-    if (filters?.tag || filters?.repo) {
-      plans = filterPlans(plans, { tag: filters.tag, repo: filters.repo });
-    }
-    const strategy = filters?.strategy ?? this.config.chunk_strategy;
-    return computeChunks(plans, this.graphData, { maxLines: this.config.chunk_max_lines, strategy });
+    return computeChunksFeature({
+      plans: this.plans,
+      graph: this.graphData,
+      config: this.config,
+      filters,
+    });
   }
 
   metrics(options?: { since?: string }): MetricsResult {
-    const donePlans = this.plans.filter(p => p.frontmatter.status === 'done');
-
-    let filtered = donePlans;
-    if (options?.since) {
-      const sinceDate = new Date(options.since);
-      if (isNaN(sinceDate.getTime())) {
-        throw new Error(`Invalid date: "${options.since}"`);
-      }
-      filtered = donePlans.filter(p => {
-        if (!p.frontmatter.completed_at) return false;
-        return new Date(p.frontmatter.completed_at) >= sinceDate;
-      });
-    }
-
-    // Sort by completion date (newest first)
-    filtered.sort((a, b) => {
-      const aDate = a.frontmatter.completed_at ? new Date(a.frontmatter.completed_at).getTime() : 0;
-      const bDate = b.frontmatter.completed_at ? new Date(b.frontmatter.completed_at).getTime() : 0;
-      return bDate - aDate;
-    });
-
-    const plans: PlanMetric[] = filtered.map(p => {
-      const fm = p.frontmatter;
-      const completedAt = fm.completed_at ? new Date(fm.completed_at).getTime() : null;
-      const startedAt = fm.started_at ? new Date(fm.started_at).getTime() : null;
-      const notStartedAt = fm.not_started_at ? new Date(fm.not_started_at).getTime() : null;
-
-      const cycleTimeHours = (completedAt && startedAt) ? (completedAt - startedAt) / 3_600_000 : null;
-      const queueTimeHours = (startedAt && notStartedAt) ? (startedAt - notStartedAt) / 3_600_000 : null;
-
-      const epicTag = (fm.tags ?? []).find(t => t.startsWith('epic:'));
-      const epic = epicTag ? epicTag.slice(5) : null;
-
-      return {
-        id: p.id,
-        title: fm.title,
-        completed_at: fm.completed_at ?? '',
-        cycle_time_hours: cycleTimeHours !== null ? Math.round(cycleTimeHours * 10) / 10 : null,
-        queue_time_hours: queueTimeHours !== null ? Math.round(queueTimeHours * 10) / 10 : null,
-        lines: p.lineCount,
-        tags: fm.tags ?? [],
-        epic,
-        sessions: fm.sessions ?? null,
-        deviation: fm.deviation ?? null,
-      };
-    });
-
-    // Aggregate stats
-    const cycleTimes = plans.map(p => p.cycle_time_hours).filter((v): v is number => v !== null);
-    const medianCycleTime = median(cycleTimes);
-
-    const plansPerEpic: Record<string, number> = {};
-    for (const p of plans) {
-      if (p.epic) {
-        plansPerEpic[p.epic] = (plansPerEpic[p.epic] ?? 0) + 1;
-      }
-    }
-
-    return {
-      plans,
-      total_completed: plans.length,
-      median_cycle_time_hours: medianCycleTime,
-      plans_per_epic: plansPerEpic,
-    };
+    return computeMetrics({ plans: this.plans, since: options?.since });
   }
 
   create(id: string, opts: CreateOptions): CreateResult {
@@ -540,198 +423,29 @@ export class Trellis extends EventEmitter {
   }
 
   set(planId: string, field: string, value: string | string[], mode: 'replace' | 'add' | 'remove' = 'replace'): SetResult {
-    const plan = this.graphData.plans.get(planId);
-    if (!plan) throw new Error(`Plan "${planId}" not found.`);
-
-    if (field === 'status') {
-      throw new Error('Cannot set "status" — use update() for status transitions.');
-    }
-
-    if (!(EDITABLE_FIELDS as readonly string[]).includes(field)) {
-      throw new Error(`Unknown field "${field}". Editable fields: ${EDITABLE_FIELDS.join(', ')}`);
-    }
-
-    const isList = (LIST_FIELDS as readonly string[]).includes(field);
-    const fm = plan.frontmatter as Record<string, any>;
-    const previousValue = fm[field];
-
-    if (mode !== 'replace' && !isList) {
-      throw new Error(`Field "${field}" is not a list — cannot use ${mode} mode.`);
-    }
-
-    let newValue: string | string[];
-
-    if (mode === 'add') {
-      const current = Array.isArray(fm[field]) ? [...fm[field]] : [];
-      const toAdd = Array.isArray(value) ? value : [value];
-      // Validate depends_on references
-      if (field === 'depends_on') {
-        for (const dep of toAdd) {
-          if (!this.graphData.plans.has(dep)) {
-            throw new Error(`Dependency "${dep}" not found.`);
-          }
-        }
-      }
-      newValue = [...current, ...toAdd];
-    } else if (mode === 'remove') {
-      const current = Array.isArray(fm[field]) ? [...fm[field]] : [];
-      const toRemove = Array.isArray(value) ? value : [value];
-      newValue = current.filter((item: string) => !toRemove.includes(item));
-    } else {
-      // replace mode
-      if (field === 'depends_on') {
-        const deps = Array.isArray(value) ? value : [value];
-        for (const dep of deps) {
-          if (!this.graphData.plans.has(dep)) {
-            throw new Error(`Dependency "${dep}" not found.`);
-          }
-        }
-        newValue = deps;
-      } else if (isList) {
-        newValue = Array.isArray(value) ? value : [value];
-      } else if (field === 'sessions') {
-        const raw = typeof value === 'string' ? value : value[0];
-        const num = Number(raw);
-        if (!Number.isInteger(num) || num < 1) {
-          throw new Error(`"sessions" must be a positive integer, got "${raw}".`);
-        }
-        newValue = num as any;
-      } else if (field === 'deviation') {
-        const raw = typeof value === 'string' ? value : value[0];
-        if (raw !== 'none' && raw !== 'minor' && raw !== 'major') {
-          throw new Error(`"deviation" must be "none", "minor", or "major", got "${raw}".`);
-        }
-        newValue = raw;
-      } else {
-        newValue = typeof value === 'string' ? value : value[0];
-      }
-    }
-
-    updatePlanFile(plan.filePath, { [field]: newValue } as Partial<PlanFrontmatter>);
-    this.refresh();
-
-    return { id: planId, field, value: newValue, previousValue };
+    return computeSet(
+      { planId, field, value, mode, graph: this.graphData },
+      { refresh: () => this.refresh() },
+    );
   }
 
   writeSection(planId: string, file: string, section: string, content: string): WriteSectionResult {
-    const plan = this.graphData.plans.get(planId);
-    if (!plan) throw new Error(`Plan "${planId}" not found.`);
-
-    const fileName = FILE_NAME_MAP[file];
-    if (!fileName) throw new Error(`Invalid file "${file}". Must be one of: ${Object.keys(FILE_NAME_MAP).join(', ')}`);
-
-    const planDir = dirname(plan.filePath);
-    const filePath = join(planDir, fileName);
-
-    if (fileName === PlanFile.README) {
-      // For README, we need to preserve frontmatter
-      const raw = readFileSync(filePath, 'utf8');
-      const parsed = matter(raw);
-      const newBody = writeSection(parsed.content, section, content);
-      const updated = matter.stringify(newBody, parsed.data);
-      writeFileSync(filePath, updated);
-    } else {
-      // For non-README files, create if missing (only inputs/outputs)
-      let existing = '';
-      if (existsSync(filePath)) {
-        existing = readFileSync(filePath, 'utf8');
-      } else if (fileName === PlanFile.INPUTS || fileName === PlanFile.OUTPUTS) {
-        // Create the file
-        existing = '';
-      } else {
-        throw new Error(`File ${fileName} does not exist for plan "${planId}".`);
-      }
-      const updated = writeSection(existing, section, content);
-      writeFileSync(filePath, updated);
-    }
-
-    this.refresh();
-    return { id: planId, file, section, content };
+    return computeWriteSection(
+      { planId, file, section, content, graph: this.graphData },
+      { refresh: () => this.refresh() },
+    );
   }
 
   readSection(planId: string, file?: string, section?: string): ReadSectionResult {
-    const plan = this.graphData.plans.get(planId);
-    if (!plan) throw new Error(`Plan "${planId}" not found.`);
-
-    if (!file) {
-      // Return all plan files concatenated
-      const planDir = dirname(plan.filePath);
-      let result = '';
-      for (const [name, fileName] of Object.entries(FILE_NAME_MAP)) {
-        const filePath = join(planDir, fileName);
-        if (existsSync(filePath)) {
-          let content = readFileSync(filePath, 'utf8');
-          // Strip frontmatter from README
-          if (fileName === PlanFile.README) {
-            const parsed = parseFrontmatter(content);
-            if (parsed) content = parsed.body;
-          }
-          if (result) result += '\n---\n\n';
-          result += `# ${name}\n\n${content}`;
-        }
-      }
-      return { id: planId, content: result };
-    }
-
-    const fileName = FILE_NAME_MAP[file];
-    if (!fileName) throw new Error(`Invalid file "${file}". Must be one of: ${Object.keys(FILE_NAME_MAP).join(', ')}`);
-
-    const planDir = dirname(plan.filePath);
-    const filePath = join(planDir, fileName);
-
-    if (!existsSync(filePath)) {
-      throw new Error(`File ${fileName} does not exist for plan "${planId}".`);
-    }
-
-    let content = readFileSync(filePath, 'utf8');
-
-    // For README, strip frontmatter for the body
-    if (fileName === PlanFile.README) {
-      const parsed = parseFrontmatter(content);
-      if (parsed) content = parsed.body;
-    }
-
-    if (!section) {
-      return { id: planId, file, content };
-    }
-
-    const sectionContent = readSection(content, section);
-    if (sectionContent === null) {
-      throw new Error(`Section "${section}" not found in ${fileName} for plan "${planId}".`);
-    }
-
-    return { id: planId, file, section, content: sectionContent };
+    return computeReadSection({ planId, file, section, graph: this.graphData });
   }
 
   rename(oldId: string, newId: string): RenameResult {
-    validatePlanId(newId);
-
-    const plan = this.graphData.plans.get(oldId);
-    if (!plan) throw new Error(`Plan "${oldId}" not found.`);
-
     const plansDir = join(this.projectDir, this.config.plans_dir);
-    const newDir = join(plansDir, newId);
-
-    if (existsSync(newDir)) {
-      throw new Error(`Plan "${newId}" already exists.`);
-    }
-
-    const oldDir = dirname(plan.filePath);
-    renameSync(oldDir, newDir);
-
-    // Update depends_on references in all other plans
-    const referencesUpdated: string[] = [];
-    for (const [id, p] of this.graphData.plans) {
-      if (id === oldId) continue;
-      if (p.frontmatter.depends_on?.includes(oldId)) {
-        const newDeps = p.frontmatter.depends_on.map(d => d === oldId ? newId : d);
-        updatePlanFile(join(plansDir, id, 'README.md'), { depends_on: newDeps });
-        referencesUpdated.push(id);
-      }
-    }
-
-    this.refresh();
-    return { oldId, newId, referencesUpdated };
+    return computeRename(
+      { oldId, newId, plansDir, graph: this.graphData },
+      { refresh: () => this.refresh() },
+    );
   }
 
   fetch(git?: GitExecutor): FetchResult {
@@ -772,24 +486,9 @@ export class Trellis extends EventEmitter {
   }
 
   archive(planId: string): ArchiveResult {
-    const plan = this.graphData.plans.get(planId);
-    if (!plan) throw new Error(`Plan "${planId}" not found.`);
-
-    // Check for active dependents
-    const dependents = this.graphData.dependents.get(planId) ?? [];
-    const activeDependents = dependents.filter(depId => {
-      const dep = this.graphData.plans.get(depId);
-      return dep && dep.frontmatter.status !== 'done' && dep.frontmatter.status !== 'archived';
-    });
-
-    if (activeDependents.length > 0) {
-      throw new Error(`Cannot archive "${planId}" — has active dependents: ${activeDependents.join(', ')}`);
-    }
-
-    const previousStatus = plan.frontmatter.status;
-    updatePlanFile(plan.filePath, { status: 'archived' });
-    this.refresh();
-
-    return { id: planId, previousStatus, newStatus: 'archived' };
+    return computeArchive(
+      { planId, graph: this.graphData },
+      { refresh: () => this.refresh() },
+    );
   }
 }

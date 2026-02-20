@@ -19,8 +19,8 @@ import { showCommand } from '../features/show/command.ts';
 import { updateCommand } from '../features/update/command.ts';
 import { lintCommand } from '../features/lint/command.ts';
 import { graphCommand } from '../commands/graph.ts';
-import { epicCommand } from '../commands/epic.ts';
-import { chunksCommand } from '../commands/chunks.ts';
+import { epicCommand } from '../features/epic/command.ts';
+import { chunksCommand } from '../features/chunks/command.ts';
 
 /**
  * API-CLI Consistency Tests

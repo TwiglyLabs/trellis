@@ -9,7 +9,7 @@ import { updateCommand } from '../src/features/update/command.ts';
 import { showCommand } from '../src/features/show/command.ts';
 import { lintCommand } from '../src/features/lint/command.ts';
 import { initCommand } from '../src/commands/init.ts';
-import { chunksCommand } from '../src/commands/chunks.ts';
+import { chunksCommand } from '../src/features/chunks/command.ts';
 
 describe('integration: full workflow', () => {
   let originalCwd: () => string;

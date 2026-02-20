@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { epicCommand } from '../../src/commands/epic.ts';
-import { createFixture } from '../../src/__tests__/helpers.ts';
+import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { epicCommand } from './command.ts';
+import { Trellis } from '../../api.ts';
+import { createFixture } from '../../__tests__/helpers.ts';
+
+// --- Command tests ---
 
 describe('epic command', () => {
   const logs: string[] = [];
@@ -125,5 +131,72 @@ describe('epic command', () => {
     expect(parsed[0].total).toBe(2);
     expect(parsed[0].done).toBe(1);
     expect(parsed[0].progress).toBeCloseTo(0.5);
+  });
+});
+
+// --- API tests ---
+
+function createTestProject() {
+  const tmpDir = join(tmpdir(), `trellis-epic-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const plansDir = join(tmpDir, 'plans');
+  mkdirSync(plansDir, { recursive: true });
+  writeFileSync(join(tmpDir, '.trellis'), 'project: test-project\nplans_dir: plans\n');
+  return { tmpDir, plansDir };
+}
+
+function writePlan(plansDir: string, id: string, frontmatter: Record<string, unknown>, body?: string) {
+  const fm = Object.entries(frontmatter)
+    .map(([k, v]) => {
+      if (Array.isArray(v)) return `${k}:\n${v.map(i => `  - ${i}`).join('\n')}`;
+      return `${k}: ${v}`;
+    })
+    .join('\n');
+  const planDir = join(plansDir, id);
+  mkdirSync(planDir, { recursive: true });
+  writeFileSync(join(planDir, 'README.md'), `---\n${fm}\n---\n${body ?? `\nBody for ${id}\n`}`);
+}
+
+describe('Trellis.epic()', () => {
+  let tmpDir: string;
+  let plansDir: string;
+
+  beforeEach(() => {
+    const project = createTestProject();
+    tmpDir = project.tmpDir;
+    plansDir = project.plansDir;
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns all epics when no name given', () => {
+    writePlan(plansDir, 'a', { title: 'A', status: 'done', tags: ['epic:v1'] });
+    writePlan(plansDir, 'b', { title: 'B', status: 'not_started', tags: ['epic:v1'] });
+    writePlan(plansDir, 'c', { title: 'C', status: 'not_started', tags: ['epic:v2'] });
+
+    const t = new Trellis(tmpDir);
+    const result = t.epic();
+    expect(result).toHaveLength(2);
+
+    const v1 = result.find(e => e.epic === 'v1')!;
+    expect(v1.total).toBe(2);
+    expect(v1.done).toBe(1);
+    expect(v1.progress).toBe(0.5);
+  });
+
+  it('returns single epic with plans when name given', () => {
+    writePlan(plansDir, 'a', { title: 'A', status: 'done', tags: ['epic:v1'] });
+    writePlan(plansDir, 'b', { title: 'B', status: 'not_started', tags: ['epic:v1'] });
+
+    const t = new Trellis(tmpDir);
+    const result = t.epic('v1');
+    expect(result).toHaveLength(1);
+    expect(result[0].plans).toHaveLength(2);
+  });
+
+  it('returns empty array for unknown epic', () => {
+    const t = new Trellis(tmpDir);
+    expect(t.epic('nonexistent')).toHaveLength(0);
   });
 });
