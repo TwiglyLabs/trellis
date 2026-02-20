@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { detectSections, validateStatusGate } from '../src/core/schema.ts';
-import { createFixture } from '../src/__tests__/helpers.ts';
-import { Trellis } from '../src/api.ts';
-import { updateCommand } from '../src/features/update/command.ts';
+import { detectSections, validateStatusGate } from './schema.ts';
+import { createFixture } from '../__tests__/helpers.ts';
+import { Trellis } from '../api.ts';
+import { updateCommand } from '../features/update/command.ts';
 
 describe('detectSections', () => {
   it('extracts ## headings', () => {

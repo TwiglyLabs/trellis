@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { derivePlanId, scanPlans, loadConfig } from '../src/core/scanner.ts';
+import { derivePlanId, scanPlans, loadConfig } from './scanner.ts';
 
 function createFixtureDir(): string {
   return mkdtempSync(join(tmpdir(), 'trellis-test-'));

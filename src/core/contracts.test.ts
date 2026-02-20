@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseOutputs, parseInputs } from '../src/core/contracts.ts';
+import { parseOutputs, parseInputs } from './contracts.ts';
 
 describe('parseOutputs', () => {
   it('parses H2 headings as deliverables with bullet items', () => {

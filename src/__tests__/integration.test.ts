@@ -2,14 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { createFixture } from '../src/__tests__/helpers.ts';
-import { statusCommand } from '../src/features/status/command.ts';
-import { readyCommand } from '../src/features/ready/command.ts';
-import { updateCommand } from '../src/features/update/command.ts';
-import { showCommand } from '../src/features/show/command.ts';
-import { lintCommand } from '../src/features/lint/command.ts';
-import { initCommand } from '../src/features/init/command.ts';
-import { chunksCommand } from '../src/features/chunks/command.ts';
+import { createFixture } from './helpers.ts';
+import { statusCommand } from '../features/status/command.ts';
+import { readyCommand } from '../features/ready/command.ts';
+import { updateCommand } from '../features/update/command.ts';
+import { showCommand } from '../features/show/command.ts';
+import { lintCommand } from '../features/lint/command.ts';
+import { initCommand } from '../features/init/command.ts';
+import { chunksCommand } from '../features/chunks/command.ts';
 
 describe('integration: full workflow', () => {
   let originalCwd: () => string;

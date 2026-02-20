@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildGraph, detectCycles, topologicalSort, transitiveDependents, newlyReady, computeCriticalPath, pickNext, computeChunks, computeDepths, groupByTopologicalDepth, interfaceWidthSplit, chunkContractAggregation } from '../src/core/graph.ts';
-import type { Plan, PlanContract } from '../src/core/types.ts';
+import { buildGraph, detectCycles, topologicalSort, transitiveDependents, newlyReady, computeCriticalPath, pickNext, computeChunks, computeDepths, groupByTopologicalDepth, interfaceWidthSplit, chunkContractAggregation } from './graph.ts';
+import type { Plan, PlanContract } from './types.ts';
 
 function makePlan(id: string, status: string, depends_on: string[] = [], opts?: { tags?: string[]; body?: string; inputs?: PlanContract; outputs?: PlanContract }): Plan {
   return {

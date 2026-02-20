@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { rmSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { createContext, refreshContext } from '../src/core/context.ts';
-import { createFixture } from '../src/__tests__/helpers.ts';
+import { createContext, refreshContext } from './context.ts';
+import { createFixture } from '../__tests__/helpers.ts';
 
 describe('createContext', () => {
   let root: string;

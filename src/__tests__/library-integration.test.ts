@@ -16,7 +16,7 @@ import {
   filterPlans,
   newlyReady,
   VALID_STATUSES,
-} from '../src/index.ts';
+} from '../index.ts';
 
 describe('library API integration', () => {
   let tmpDir: string;

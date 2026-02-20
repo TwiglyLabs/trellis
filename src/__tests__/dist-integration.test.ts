@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { execSync } from 'child_process';
 
 // Import from built ESM bundle — this is what Electron consumers see
-const distPath = resolve(__dirname, '../dist/index.mjs');
+const distPath = resolve(__dirname, '../../dist/index.mjs');
 
 describe('built artifact integration', () => {
   let lib: any;
@@ -13,7 +13,7 @@ describe('built artifact integration', () => {
   beforeAll(async () => {
     // Ensure build exists
     if (!existsSync(distPath)) {
-      execSync('npm run build', { cwd: resolve(__dirname, '..') });
+      execSync('npm run build', { cwd: resolve(__dirname, '../..') });
     }
     lib = await import(distPath);
   });
@@ -111,7 +111,7 @@ describe('built artifact integration', () => {
   });
 
   it('CJS require also works', () => {
-    const cjsLib = require(resolve(__dirname, '../dist/index.cjs'));
+    const cjsLib = require(resolve(__dirname, '../../dist/index.cjs'));
     expect(typeof cjsLib.scanPlans).toBe('function');
     expect(typeof cjsLib.buildGraph).toBe('function');
 

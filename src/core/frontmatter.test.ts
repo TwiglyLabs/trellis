@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { parseFrontmatter, validateFrontmatter, readPlanFile, updatePlanFile } from '../src/core/frontmatter.ts';
+import { parseFrontmatter, validateFrontmatter, readPlanFile, updatePlanFile } from './frontmatter.ts';
 
 describe('parseFrontmatter', () => {
   it('parses valid frontmatter', () => {
