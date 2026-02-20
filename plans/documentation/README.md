@@ -1,11 +1,13 @@
 ---
 title: Write layered documentation
-status: not_started
+status: done
 depends_on:
   - kill-trellis-class
 tags:
   - docs
 not_started_at: '2026-02-20T00:16:06.560Z'
+started_at: '2026-02-20T03:19:04.633Z'
+completed_at: '2026-02-20T03:35:38.497Z'
 ---
 
 ## Problem
