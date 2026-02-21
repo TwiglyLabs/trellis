@@ -84,5 +84,8 @@ export { parseInputs, parseOutputs } from './contracts.ts';
 // --- Cache ---
 export { ensureCacheDir, readCache, writeCache, isCacheStale } from './cache.ts';
 
+// --- Mutex ---
+export { createFileLock } from './mutex.ts';
+
 // --- Utilities ---
 export { VALID_STATUSES, filterPlans, resolveProjectPlans, buildReposArray, validatePlanId, parseQualifiedId, pluralize } from './utils.ts';
