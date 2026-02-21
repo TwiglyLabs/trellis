@@ -89,6 +89,79 @@ export function computeWriteSection(options: ComputeWriteSectionOptions, callbac
   return { id: planId, file, section, content };
 }
 
+export interface ComputeWriteSectionsOptions {
+  planId: string;
+  writes: Array<{ file: string; section: string; content: string }>;
+  graph: GraphData;
+}
+
+export interface WriteSectionsResult {
+  id: string;
+  writes: Array<{ file: string; section: string }>;
+}
+
+export function computeWriteSections(options: ComputeWriteSectionsOptions, callbacks: SectionCallbacks): WriteSectionsResult {
+  const { planId, writes, graph } = options;
+
+  const plan = graph.plans.get(planId);
+  if (!plan) throw new Error(`Plan "${planId}" not found.`);
+  if (plan.repoAlias != null) {
+    throw new Error(`Cannot modify remote plan '${planId}'. Write operations are local only.`);
+  }
+
+  // Validate all file names upfront
+  for (const w of writes) {
+    if (!FILE_NAME_MAP[w.file]) {
+      throw new Error(`Invalid file "${w.file}". Must be one of: ${Object.keys(FILE_NAME_MAP).join(', ')}`);
+    }
+  }
+
+  // Group by file
+  const byFile = new Map<string, Array<{ section: string; content: string }>>();
+  for (const w of writes) {
+    const arr = byFile.get(w.file) ?? [];
+    arr.push({ section: w.section, content: w.content });
+    byFile.set(w.file, arr);
+  }
+
+  const planDir = dirname(plan.filePath);
+
+  for (const [file, sections] of byFile) {
+    const fileName = FILE_NAME_MAP[file];
+    const filePath = join(planDir, fileName);
+
+    if (fileName === PlanFile.README) {
+      const raw = readFileSync(filePath, 'utf8');
+      const parsed = matter(raw);
+      let body = parsed.content;
+      for (const { section, content } of sections) {
+        body = writeSection(body, section, content);
+      }
+      writeFileSync(filePath, matter.stringify(body, parsed.data));
+    } else {
+      let existing = '';
+      if (existsSync(filePath)) {
+        existing = readFileSync(filePath, 'utf8');
+      } else if (fileName === PlanFile.INPUTS || fileName === PlanFile.OUTPUTS) {
+        existing = '';
+      } else {
+        throw new Error(`File ${fileName} does not exist for plan "${planId}".`);
+      }
+      let content = existing;
+      for (const { section, content: newContent } of sections) {
+        content = writeSection(content, section, newContent);
+      }
+      writeFileSync(filePath, content);
+    }
+  }
+
+  callbacks.refresh();
+  return {
+    id: planId,
+    writes: writes.map(w => ({ file: w.file, section: w.section })),
+  };
+}
+
 export function computeReadSection(options: ComputeReadSectionOptions): ReadSectionResult {
   const { planId, file, section, graph } = options;
 

@@ -4,7 +4,7 @@ import { join } from 'path';
 import matter from 'gray-matter';
 import { readSection, writeSection } from '../../core/schema.ts';
 import { createContext } from '../../core/index.ts';
-import { computeWriteSection, computeReadSection } from './logic.ts';
+import { computeWriteSection, computeReadSection, computeWriteSections } from './logic.ts';
 import { createFixture } from '../../__tests__/helpers.ts';
 
 // --- Core readSection/writeSection primitives ---
@@ -357,5 +357,142 @@ describe('computeReadSection', () => {
     expect(parsed.data.status).toBe('draft');
     expect(parsed.data.tags).toContain('foo');
     expect(content).toContain('New content');
+  });
+});
+
+// --- Batch computeWriteSections ---
+
+describe('computeWriteSections', () => {
+  it('writes multiple sections to readme in one pass', () => {
+    const { root } = createFixture([
+      { id: 'test', title: 'Test', status: 'draft',
+        body: '\n## Problem\n\n\n## Approach\n\n\n' },
+    ]);
+    const ctx = createContext(root);
+
+    const result = computeWriteSections(
+      {
+        planId: 'test',
+        writes: [
+          { file: 'readme', section: 'Problem', content: 'New problem' },
+          { file: 'readme', section: 'Approach', content: 'New approach' },
+        ],
+        graph: ctx.graph,
+      },
+      { refresh: () => {} },
+    );
+
+    expect(result.id).toBe('test');
+    expect(result.writes).toHaveLength(2);
+
+    const content = readFileSync(join(root, 'plans', 'test', 'README.md'), 'utf8');
+    expect(content).toContain('New problem');
+    expect(content).toContain('New approach');
+  });
+
+  it('writes to multiple files in one call', () => {
+    const { root } = createFixture([
+      { id: 'test', title: 'Test', status: 'draft',
+        body: '\n## Problem\nOld\n',
+        implementationMd: '## Steps\nOld\n' },
+    ]);
+    const ctx = createContext(root);
+
+    const result = computeWriteSections(
+      {
+        planId: 'test',
+        writes: [
+          { file: 'readme', section: 'Problem', content: 'New problem' },
+          { file: 'implementation', section: 'Steps', content: 'New steps' },
+        ],
+        graph: ctx.graph,
+      },
+      { refresh: () => {} },
+    );
+
+    expect(result.writes).toHaveLength(2);
+
+    const readme = readFileSync(join(root, 'plans', 'test', 'README.md'), 'utf8');
+    expect(readme).toContain('New problem');
+
+    const impl = readFileSync(join(root, 'plans', 'test', 'implementation.md'), 'utf8');
+    expect(impl).toContain('New steps');
+  });
+
+  it('auto-creates inputs and outputs files', () => {
+    const { root } = createFixture([
+      { id: 'test', title: 'Test', status: 'draft', body: '' },
+    ]);
+    const ctx = createContext(root);
+
+    computeWriteSections(
+      {
+        planId: 'test',
+        writes: [
+          { file: 'inputs', section: 'From plans', content: 'Some input' },
+          { file: 'outputs', section: 'Deliverables', content: 'Some output' },
+        ],
+        graph: ctx.graph,
+      },
+      { refresh: () => {} },
+    );
+
+    const inputs = readFileSync(join(root, 'plans', 'test', 'inputs.md'), 'utf8');
+    expect(inputs).toContain('Some input');
+
+    const outputs = readFileSync(join(root, 'plans', 'test', 'outputs.md'), 'utf8');
+    expect(outputs).toContain('Some output');
+  });
+
+  it('throws for non-existent implementation file', () => {
+    const { root } = createFixture([
+      { id: 'test', title: 'Test', status: 'draft', body: '' },
+    ]);
+    const ctx = createContext(root);
+
+    expect(() =>
+      computeWriteSections(
+        {
+          planId: 'test',
+          writes: [{ file: 'implementation', section: 'Steps', content: 'stuff' }],
+          graph: ctx.graph,
+        },
+        { refresh: () => {} },
+      ),
+    ).toThrow(/does not exist/);
+  });
+
+  it('throws for invalid file name', () => {
+    const { root } = createFixture([
+      { id: 'test', title: 'Test', status: 'draft', body: '' },
+    ]);
+    const ctx = createContext(root);
+
+    expect(() =>
+      computeWriteSections(
+        {
+          planId: 'test',
+          writes: [{ file: 'bogus', section: 'X', content: 'Y' }],
+          graph: ctx.graph,
+        },
+        { refresh: () => {} },
+      ),
+    ).toThrow(/Invalid file/);
+  });
+
+  it('throws for unknown plan', () => {
+    const { root } = createFixture([]);
+    const ctx = createContext(root);
+
+    expect(() =>
+      computeWriteSections(
+        {
+          planId: 'nope',
+          writes: [{ file: 'readme', section: 'Problem', content: 'X' }],
+          graph: ctx.graph,
+        },
+        { refresh: () => {} },
+      ),
+    ).toThrow(/not found/);
   });
 });
