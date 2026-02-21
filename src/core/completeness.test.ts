@@ -9,6 +9,8 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     frontmatter: { title: 'Test', status: 'draft' },
     body: '',
     lineCount: 10,
+    updatedAt: new Date(),
+    fileHashes: {},
     ...overrides,
   };
 }

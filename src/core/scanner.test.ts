@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, utimesSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { derivePlanId, scanPlans, loadConfig } from './scanner.ts';
@@ -117,6 +117,91 @@ describe('scanPlans', () => {
     expect(plans[0].frontmatter.tags).toEqual(['foundation']);
     expect(plans[0].frontmatter.repo).toBe('public');
     expect(plans[0].body).toContain('# Body');
+  });
+
+  it('computes updatedAt as a Date', () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    writePlan(dir, 'plans/test', { title: 'Test', status: 'draft' });
+
+    const plans = scanPlans(plansDir);
+    expect(plans[0].updatedAt).toBeInstanceOf(Date);
+    expect(plans[0].updatedAt.getTime()).toBeGreaterThan(0);
+  });
+
+  it('computes fileHashes with 16-char hex strings', () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    writePlan(dir, 'plans/test', { title: 'Test', status: 'draft' });
+
+    const plans = scanPlans(plansDir);
+    expect(plans[0].fileHashes).toHaveProperty('README.md');
+    expect(plans[0].fileHashes['README.md']).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('includes hashes for all existing plan files', () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    const planDir = join(dir, 'plans/test');
+    writePlan(dir, 'plans/test', { title: 'Test', status: 'draft' });
+    writeFileSync(join(planDir, 'implementation.md'), '## Steps\n1. Do stuff\n');
+    writeFileSync(join(planDir, 'inputs.md'), '## From plans\n- plan-a\n');
+
+    const plans = scanPlans(plansDir);
+    expect(Object.keys(plans[0].fileHashes).sort()).toEqual([
+      'README.md', 'implementation.md', 'inputs.md',
+    ]);
+  });
+
+  it('hash stays the same when file is touched but content unchanged', () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    writePlan(dir, 'plans/test', { title: 'Test', status: 'draft' }, 'same content');
+
+    const plans1 = scanPlans(plansDir);
+    const hash1 = plans1[0].fileHashes['README.md'];
+    const mtime1 = plans1[0].updatedAt.getTime();
+
+    // Touch the file: change mtime but not content
+    const future = new Date(Date.now() + 5000);
+    utimesSync(join(dir, 'plans/test/README.md'), future, future);
+
+    const plans2 = scanPlans(plansDir);
+    const hash2 = plans2[0].fileHashes['README.md'];
+    const mtime2 = plans2[0].updatedAt.getTime();
+
+    expect(hash2).toBe(hash1);             // hash unchanged
+    expect(mtime2).toBeGreaterThan(mtime1); // mtime changed
+  });
+
+  it('hash changes when file content changes', () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    writePlan(dir, 'plans/test', { title: 'Test', status: 'draft' }, 'original');
+
+    const plans1 = scanPlans(plansDir);
+    const hash1 = plans1[0].fileHashes['README.md'];
+
+    // Rewrite with different content
+    writePlan(dir, 'plans/test', { title: 'Test', status: 'draft' }, 'modified');
+    const plans2 = scanPlans(plansDir);
+    const hash2 = plans2[0].fileHashes['README.md'];
+
+    expect(hash1).not.toBe(hash2);
+  });
+
+  it('updatedAt reflects most recent file mtime', () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    const planDir = join(dir, 'plans/test');
+    writePlan(dir, 'plans/test', { title: 'Test', status: 'draft' });
+
+    // Write implementation.md slightly later
+    writeFileSync(join(planDir, 'implementation.md'), '## Steps\n');
+
+    const plans = scanPlans(plansDir);
+    // updatedAt should be >= the README mtime (implementation was written after)
+    expect(plans[0].updatedAt.getTime()).toBeGreaterThan(0);
   });
 });
 

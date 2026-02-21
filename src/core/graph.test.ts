@@ -14,6 +14,8 @@ function makePlan(id: string, status: string, depends_on: string[] = [], opts?: 
     },
     body: opts?.body ?? '',
     lineCount: (opts?.body ?? '').split('\n').length + 4, // +4 for frontmatter lines
+    updatedAt: new Date(),
+    fileHashes: {},
     inputs: opts?.inputs,
     outputs: opts?.outputs,
   };

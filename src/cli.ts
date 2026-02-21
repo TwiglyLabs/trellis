@@ -14,6 +14,7 @@ import { register as registerRename } from './features/rename/command.ts';
 import { register as registerArchive } from './features/archive/command.ts';
 import { register as registerFetch } from './features/fetch/command.ts';
 import { register as registerMetrics } from './features/metrics/command.ts';
+import { register as registerRecent } from './features/recent/command.ts';
 import { register as registerSetupHooks } from './features/setup-hooks/command.ts';
 import { startMcpServer } from './mcp.ts';
 
@@ -38,6 +39,7 @@ registerSet(program);
 registerRename(program);
 registerArchive(program);
 registerFetch(program);
+registerRecent(program);
 registerMetrics(program);
 registerSetupHooks(program);
 

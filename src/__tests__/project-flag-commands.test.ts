@@ -44,6 +44,8 @@ function makePlan(id: string, opts: {
     },
     body: '',
     lineCount: opts.lineCount ?? 10,
+    updatedAt: new Date(),
+    fileHashes: {},
     repoAlias: opts.repoAlias,
   };
 }

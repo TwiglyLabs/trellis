@@ -122,6 +122,8 @@ export function showCommand(planId: string, options?: ShowOptions): void {
       })),
       blocks: result.blocks,
       critical_path: result.criticalPath,
+      updated_at: result.updatedAt,
+      file_hashes: result.fileHashes,
       completeness: result.completeness,
     };
     if (showContracts) {

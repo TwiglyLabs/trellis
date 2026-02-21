@@ -37,6 +37,8 @@ export interface Plan {
   frontmatter: PlanFrontmatter;
   body: string;
   lineCount: number;
+  updatedAt: Date;
+  fileHashes: Record<string, string>;
   implementationContent?: string;
   completeness?: CompletenessResult;
   inputs?: PlanContract;
@@ -76,6 +78,12 @@ export interface SectionScore {
 export interface CompletenessResult {
   sections: Record<string, SectionScore>;
   aggregate: number; // 0–100, mean of applicable sections
+}
+
+export interface RecentActivity {
+  contentChanged: Plan[];
+  statusChanged: Plan[];
+  newlyCreated: Plan[];
 }
 
 export interface ValidationError {

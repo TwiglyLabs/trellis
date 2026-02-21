@@ -1,12 +1,13 @@
 ---
 title: Recency Metadata on Plans
-status: not_started
+status: done
 description: >-
   Add updatedAt (file mtime), content hashes, and what-changed queries to the
   Plan type
 tags:
   - canopy
 not_started_at: '2026-02-21T01:48:53.268Z'
+completed_at: '2026-02-21T03:30:25.992Z'
 ---
 
 ## Problem

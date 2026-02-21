@@ -48,6 +48,8 @@ function makePlan(id: string, opts: {
     },
     body: '',
     lineCount: 10,
+    updatedAt: new Date(),
+    fileHashes: {},
     repoAlias: opts.repoAlias,
   };
 }

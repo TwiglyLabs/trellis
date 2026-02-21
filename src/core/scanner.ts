@@ -1,8 +1,11 @@
 import { readdirSync, statSync, readFileSync, existsSync } from 'fs';
 import { join, relative, dirname, basename } from 'path';
+import { createHash } from 'crypto';
 import { parseFrontmatter } from './frontmatter.ts';
 import { parseInputs, parseOutputs } from './contracts.ts';
 import type { Plan, TrellisConfig } from './types.ts';
+
+const PLAN_FILES = ['README.md', 'implementation.md', 'inputs.md', 'outputs.md'] as const;
 
 export function derivePlanId(filePath: string, plansDir: string): string {
   // Plans are always directories — filePath points to the README.md
@@ -35,12 +38,30 @@ function walkDir(dir: string, plansDir: string, plans: Plan[]): void {
         const content = readFileSync(readmePath, 'utf8');
         const result = parseFrontmatter(content);
         if (result) {
+          // Compute recency metadata: max mtime and content hashes
+          const fileHashes: Record<string, string> = {};
+          let maxMtime = statSync(readmePath).mtime;
+          fileHashes['README.md'] = createHash('sha256').update(content).digest('hex').slice(0, 16);
+
+          for (const fileName of PLAN_FILES) {
+            if (fileName === 'README.md') continue;
+            const filePath = join(fullPath, fileName);
+            if (existsSync(filePath)) {
+              const fileStat = statSync(filePath);
+              if (fileStat.mtime > maxMtime) maxMtime = fileStat.mtime;
+              const fileContent = readFileSync(filePath, 'utf8');
+              fileHashes[fileName] = createHash('sha256').update(fileContent).digest('hex').slice(0, 16);
+            }
+          }
+
           const plan: Plan = {
             id: derivePlanId(readmePath, plansDir),
             filePath: readmePath,
             frontmatter: result.frontmatter,
             body: result.body,
             lineCount: content.split('\n').length,
+            updatedAt: maxMtime,
+            fileHashes,
           };
 
           // Load contracts

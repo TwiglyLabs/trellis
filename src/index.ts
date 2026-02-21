@@ -6,6 +6,7 @@ export type {
   ContractSection,
   PlanContract,
   Plan,
+  RecentActivity,
   TrellisConfig,
   ValidationError,
   GateResult,
@@ -95,3 +96,8 @@ export { computeMetrics } from './features/metrics/logic.ts';
 export type { PlanMetric, MetricsResult } from './features/metrics/logic.ts';
 
 export { computeChunksFeature } from './features/chunks/logic.ts';
+
+export { computeRecent } from './features/recent/logic.ts';
+export type { RecentResult, RecentPlanEntry } from './features/recent/logic.ts';
+
+export { computeRecentActivity } from './recency.ts';

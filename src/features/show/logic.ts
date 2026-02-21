@@ -26,6 +26,8 @@ export interface ShowResult {
   dependsOn: DependencyInfo[];
   blocks: string[];
   criticalPath: string[];
+  updatedAt: string;
+  fileHashes: Record<string, string>;
   completeness: CompletenessResult | null;
   inputs: ContractSection[] | null;
   outputs: ContractSection[] | null;
@@ -72,6 +74,8 @@ export function computeShow(opts: ComputeShowOptions): ShowResult | null {
     }),
     blocks: [...new Set([...directDeps, ...transitive])],
     criticalPath: critPath,
+    updatedAt: plan.updatedAt.toISOString(),
+    fileHashes: plan.fileHashes,
     completeness: plan.completeness ?? null,
     inputs: plan.inputs?.sections ?? null,
     outputs: plan.outputs?.sections ?? null,

@@ -6,6 +6,7 @@ export type {
   ContractSection,
   PlanContract,
   Plan,
+  RecentActivity,
   TrellisConfig,
   CacheEntry,
   ValidationError,

@@ -13,6 +13,9 @@ function makePlan(id: string, opts: { tags?: string[]; repo?: string } = {}): Pl
       repo: opts.repo,
     },
     body: '',
+    lineCount: 1,
+    updatedAt: new Date(),
+    fileHashes: {},
   };
 }
 

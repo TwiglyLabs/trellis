@@ -139,6 +139,8 @@ export function fetchRepoPlans(
       frontmatter: result.frontmatter,
       body: result.body,
       lineCount: content.split('\n').length,
+      updatedAt: new Date(0),
+      fileHashes: {},
       repoAlias: alias,
     });
   }

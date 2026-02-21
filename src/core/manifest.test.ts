@@ -435,6 +435,8 @@ describe('checkVisibility', () => {
       frontmatter: { title: id, status: 'not_started', depends_on },
       body: '',
       lineCount: 1,
+      updatedAt: new Date(),
+      fileHashes: {},
     };
   }
 
