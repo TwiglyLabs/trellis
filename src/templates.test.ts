@@ -17,6 +17,7 @@ import { computeSet } from './features/set/logic.ts';
 import { computeShow } from './features/show/logic.ts';
 import { createCommand } from './features/create/command.ts';
 import { initCommand } from './features/init/command.ts';
+import { computeStatus } from './features/status/logic.ts';
 import { createMcpServer } from './mcp.ts';
 import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
@@ -101,6 +102,12 @@ describe('stripHints', () => {
     const result = stripHints(input);
     expect(result).toContain('TODO: Fix this');
   });
+
+  it('passes through content with no hints unchanged', () => {
+    const input = '## Problem\n\nSome content here.\n\n## Approach\n\nMore content.\n';
+    const result = stripHints(input);
+    expect(result).toBe(input);
+  });
 });
 
 describe('loadTemplate', () => {
@@ -138,6 +145,20 @@ describe('loadTemplate', () => {
     expect(t).not.toBeNull();
     expect(t!['README.md']).toContain('Custom content');
   });
+
+  it('falls back to built-in when custom directory is empty', () => {
+    const { root } = createFixture([]);
+    const customDir = join(root, '.trellis', 'templates', 'feature');
+    mkdirSync(customDir, { recursive: true });
+    // Directory exists but has no .md files
+    writeFileSync(join(customDir, 'notes.txt'), 'not a markdown file');
+
+    const t = loadTemplate(root, 'feature');
+    expect(t).not.toBeNull();
+    // Should get the built-in feature template, not the empty custom one
+    expect(t!['README.md']).toContain('<!-- hint:');
+    expect(t!['implementation.md']).toBeDefined();
+  });
 });
 
 describe('listTemplateTypes', () => {
@@ -166,6 +187,19 @@ describe('listTemplateTypes', () => {
     const types = listTemplateTypes(root);
     const sorted = [...types].sort();
     expect(types).toEqual(sorted);
+  });
+
+  it('ignores non-directory entries in templates dir', () => {
+    const { root } = createFixture([]);
+    const templatesDir = join(root, '.trellis', 'templates');
+    mkdirSync(templatesDir, { recursive: true });
+    // Create a file (not a directory) in the templates dir
+    writeFileSync(join(templatesDir, 'stray-file.md'), '# Not a template');
+
+    const types = listTemplateTypes(root);
+    expect(types).not.toContain('stray-file.md');
+    // Built-in types should still be present
+    expect(types).toContain('feature');
   });
 });
 
@@ -391,6 +425,50 @@ describe('computeCreate with type', () => {
     const parsed = matter(readme);
     expect(parsed.data.type).toBe('bugfix');
   });
+
+  it('creates plan with type and depends_on', () => {
+    const { root } = createFixture([
+      { id: 'dep-plan', title: 'Dep', status: 'draft', body: '\n## Problem\nText\n' },
+    ]);
+    const ctx = createContext(root);
+
+    computeCreate({
+      id: 'with-deps',
+      opts: { title: 'With Deps', type: 'feature', depends_on: ['dep-plan'] },
+      plansDir: ctx.plansDir,
+      graph: ctx.graph,
+      projectDir: root,
+    }, { refresh: () => {} });
+
+    const readme = readFileSync(join(root, 'plans', 'with-deps', 'README.md'), 'utf8');
+    const parsed = matter(readme);
+    expect(parsed.data.type).toBe('feature');
+    expect(parsed.data.depends_on).toEqual(['dep-plan']);
+    expect(parsed.data.status).toBe('draft');
+    // Template content should be present
+    expect(readme).toContain('## Problem');
+    expect(readme).toContain('## Approach');
+    expect(existsSync(join(root, 'plans', 'with-deps', 'implementation.md'))).toBe(true);
+  });
+
+  it('uses built-in template when projectDir is not provided', () => {
+    const { root } = createFixture([]);
+    const ctx = createContext(root);
+
+    computeCreate({
+      id: 'no-project-dir',
+      opts: { title: 'No ProjectDir', type: 'investigation' },
+      plansDir: ctx.plansDir,
+      graph: ctx.graph,
+      // projectDir intentionally omitted
+    }, { refresh: () => {} });
+
+    const readme = readFileSync(join(root, 'plans', 'no-project-dir', 'README.md'), 'utf8');
+    const parsed = matter(readme);
+    expect(parsed.data.type).toBe('investigation');
+    expect(readme).toContain('## Findings');
+    expect(existsSync(join(root, 'plans', 'no-project-dir', 'implementation.md'))).toBe(false);
+  });
 });
 
 describe('CLI create with --type', () => {
@@ -584,6 +662,32 @@ describe('type in set and show', () => {
     const ctx2 = createContext(root);
     const plan = ctx2.plans.find(p => p.id === 'typed-plan');
     expect(plan?.frontmatter.type).toBe('feature');
+  });
+
+  it('type flows through computeStatus into JSON output', () => {
+    const { root } = createFixture([]);
+    const ctx = createContext(root);
+
+    computeCreate({
+      id: 'status-type-test',
+      opts: { title: 'Status Type Test', type: 'bugfix' },
+      plansDir: ctx.plansDir,
+      graph: ctx.graph,
+      projectDir: root,
+    }, { refresh: () => {} });
+
+    const ctx2 = createContext(root);
+    const result = computeStatus({
+      plans: ctx2.plans,
+      config: ctx2.config,
+      graph: ctx2.graph,
+      filters: { showDone: true, showArchived: true },
+    });
+
+    const draftPlans = result.byStatus.draft;
+    const typedPlan = draftPlans.find(p => p.id === 'status-type-test');
+    expect(typedPlan).toBeDefined();
+    expect(typedPlan!.type).toBe('bugfix');
   });
 });
 

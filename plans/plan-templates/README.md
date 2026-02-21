@@ -1,6 +1,6 @@
 ---
 title: Plan Templates by Type
-status: in_progress
+status: done
 description: >-
   Template system for different plan types (feature, bugfix, refactor,
   investigation) with tailored section scaffolds
@@ -8,6 +8,7 @@ tags:
   - refinement
 not_started_at: '2026-02-21T01:48:52.973Z'
 started_at: '2026-02-21T03:07:55.004Z'
+completed_at: '2026-02-21T03:16:08.116Z'
 ---
 
 ## Problem
