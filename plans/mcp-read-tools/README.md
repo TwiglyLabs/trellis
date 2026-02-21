@@ -1,6 +1,6 @@
 ---
 title: MCP Read Tools for Agent Self-Sufficiency
-status: not_started
+status: done
 description: >-
   Add trellis_status, trellis_ready, trellis_show, trellis_graph to MCP so
   agents can query graph state without CLI
@@ -8,6 +8,8 @@ tags:
   - mcp
   - agents
 not_started_at: '2026-02-21T01:48:51.321Z'
+started_at: '2026-02-21T01:51:53.756Z'
+completed_at: '2026-02-21T02:02:43.619Z'
 ---
 
 ## Problem
