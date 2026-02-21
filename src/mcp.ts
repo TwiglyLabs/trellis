@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { createContext } from './core/index.ts';
+import { createContext, createFileLock } from './core/index.ts';
 import type { PlanStatus } from './core/types.ts';
 import { computeCreate } from './features/create/logic.ts';
 import { computeWriteSection, computeReadSection } from './features/sections/logic.ts';
@@ -15,6 +15,8 @@ export function createMcpServer(): McpServer {
     name: 'trellis',
     version: '0.1.0',
   });
+
+  const withLock = createFileLock();
 
   // --- trellis_create ---
   server.registerTool('trellis_create', {
@@ -59,24 +61,26 @@ export function createMcpServer(): McpServer {
       content: z.string().describe('Markdown content to write into the section'),
     },
   }, async ({ plan_id, file, section, content }) => {
-    try {
-      const ctx = createContext(process.cwd());
-      const result = computeWriteSection(
-        { planId: plan_id, file, section, content, graph: ctx.graph },
-        { refresh: () => {} },
-      );
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({ id: result.id, file: result.file, section: result.section }, null, 2),
-        }],
-      };
-    } catch (error) {
-      return {
-        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
-        isError: true,
-      };
-    }
+    return withLock(plan_id, () => {
+      try {
+        const ctx = createContext(process.cwd());
+        const result = computeWriteSection(
+          { planId: plan_id, file, section, content, graph: ctx.graph },
+          { refresh: () => {} },
+        );
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ id: result.id, file: result.file, section: result.section }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
+          isError: true,
+        };
+      }
+    });
   });
 
   // --- trellis_read_section ---
@@ -120,29 +124,31 @@ export function createMcpServer(): McpServer {
       mode: z.enum(['replace', 'add', 'remove']).optional().describe('replace (default), add, or remove. add/remove only for list fields.'),
     },
   }, async ({ plan_id, field, value, mode }) => {
-    try {
-      const ctx = createContext(process.cwd());
-      const result = computeSet(
-        { planId: plan_id, field, value, mode: mode ?? 'replace', graph: ctx.graph },
-        { refresh: () => {} },
-      );
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            id: result.id,
-            field: result.field,
-            value: result.value,
-            previous_value: result.previousValue,
-          }, null, 2),
-        }],
-      };
-    } catch (error) {
-      return {
-        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
-        isError: true,
-      };
-    }
+    return withLock(plan_id, () => {
+      try {
+        const ctx = createContext(process.cwd());
+        const result = computeSet(
+          { planId: plan_id, field, value, mode: mode ?? 'replace', graph: ctx.graph },
+          { refresh: () => {} },
+        );
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              id: result.id,
+              field: result.field,
+              value: result.value,
+              previous_value: result.previousValue,
+            }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
+          isError: true,
+        };
+      }
+    });
   });
 
   // --- trellis_update ---
@@ -155,30 +161,32 @@ export function createMcpServer(): McpServer {
       force: z.boolean().optional().describe('Bypass status gate validation'),
     },
   }, async ({ plan_id, status, force }) => {
-    try {
-      const ctx = createContext(process.cwd());
-      const result = computeUpdate(
-        { planId: plan_id, status: status as PlanStatus, graph: ctx.graph, force },
-        { refresh: () => {} },
-      );
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            id: result.id,
-            previous_status: result.previousStatus,
-            status: result.newStatus,
-            backward: result.backward,
-            newly_ready: result.newlyReady,
-          }, null, 2),
-        }],
-      };
-    } catch (error) {
-      return {
-        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
-        isError: true,
-      };
-    }
+    return withLock(plan_id, () => {
+      try {
+        const ctx = createContext(process.cwd());
+        const result = computeUpdate(
+          { planId: plan_id, status: status as PlanStatus, graph: ctx.graph, force },
+          { refresh: () => {} },
+        );
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              id: result.id,
+              previous_status: result.previousStatus,
+              status: result.newStatus,
+              backward: result.backward,
+              newly_ready: result.newlyReady,
+            }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
+          isError: true,
+        };
+      }
+    });
   });
 
   return server;

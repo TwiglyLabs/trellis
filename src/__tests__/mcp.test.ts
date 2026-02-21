@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { createMcpServer } from '../mcp.ts';
 import { createFixture } from './helpers.ts';
 
@@ -336,5 +338,65 @@ describe('MCP server', () => {
     const output = JSON.parse(result.content[0].text);
     expect(output.previous_status).toBe('in_progress');
     expect(output.status).toBe('draft');
+  });
+
+  describe('concurrent write safety', () => {
+    it('parallel writes to the same file all persist', async () => {
+      const { root } = createFixture([
+        { id: 'test', title: 'Test', status: 'draft',
+          body: '\n## Problem\n\n\n## Approach\n\n\n## Notes\n\n\n' },
+      ]);
+      process.cwd = () => root;
+      const server = createMcpServer();
+
+      const [r1, r2, r3] = await Promise.all([
+        callTool(server, 'trellis_write_section', {
+          plan_id: 'test', file: 'readme', section: 'Problem', content: 'Problem content',
+        }),
+        callTool(server, 'trellis_write_section', {
+          plan_id: 'test', file: 'readme', section: 'Approach', content: 'Approach content',
+        }),
+        callTool(server, 'trellis_write_section', {
+          plan_id: 'test', file: 'readme', section: 'Notes', content: 'Notes content',
+        }),
+      ]);
+
+      expect(r1.isError).toBeFalsy();
+      expect(r2.isError).toBeFalsy();
+      expect(r3.isError).toBeFalsy();
+
+      const content = readFileSync(join(root, 'plans', 'test', 'README.md'), 'utf8');
+      expect(content).toContain('Problem content');
+      expect(content).toContain('Approach content');
+      expect(content).toContain('Notes content');
+    });
+
+    it('parallel writes to different files both persist', async () => {
+      const { root } = createFixture([
+        { id: 'test', title: 'Test', status: 'draft',
+          body: '\n## Problem\nOld\n',
+          implementationMd: '## Steps\nOld\n' },
+      ]);
+      process.cwd = () => root;
+      const server = createMcpServer();
+
+      const [r1, r2] = await Promise.all([
+        callTool(server, 'trellis_write_section', {
+          plan_id: 'test', file: 'readme', section: 'Problem', content: 'New problem',
+        }),
+        callTool(server, 'trellis_write_section', {
+          plan_id: 'test', file: 'implementation', section: 'Steps', content: 'New steps',
+        }),
+      ]);
+
+      expect(r1.isError).toBeFalsy();
+      expect(r2.isError).toBeFalsy();
+
+      const readme = readFileSync(join(root, 'plans', 'test', 'README.md'), 'utf8');
+      expect(readme).toContain('New problem');
+
+      const impl = readFileSync(join(root, 'plans', 'test', 'implementation.md'), 'utf8');
+      expect(impl).toContain('New steps');
+    });
   });
 });
