@@ -273,6 +273,28 @@ describe('createMultiContext', () => {
     expect(result.graph.blocked.has('repo-b:b2')).toBe(true);
   });
 
+  it('returns empty results for empty repos array', () => {
+    const result = createMultiContext([]);
+
+    expect(result.plans).toEqual([]);
+    expect(result.repos).toEqual([]);
+    expect(result.graph.plans.size).toBe(0);
+  });
+
+  it('preserves original filePath on qualified plans', () => {
+    const repoA = createFixture([
+      { id: 'plan-1', title: 'Plan 1', status: 'not_started' },
+    ]);
+
+    const result = createMultiContext([
+      { path: repoA.root, alias: 'repo-a' },
+    ]);
+
+    expect(result.plans[0].id).toBe('repo-a:plan-1');
+    expect(result.plans[0].filePath).toContain(repoA.root);
+    expect(result.plans[0].filePath).toContain('plan-1/README.md');
+  });
+
   it('returns a valid context shape', () => {
     const repoA = createFixture([
       { id: 'plan-1', title: 'Plan 1', status: 'not_started' },

@@ -49,6 +49,7 @@ describe('library exports', () => {
     const lib = await import('../index.ts');
     expect(typeof lib.createContext).toBe('function');
     expect(typeof lib.refreshContext).toBe('function');
+    expect(typeof lib.createMultiContext).toBe('function');
   });
 
   it('exports schema functions', async () => {
