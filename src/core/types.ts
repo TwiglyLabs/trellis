@@ -139,6 +139,21 @@ export interface CacheEntry<T> {
   fetchedAt: string;  // ISO 8601
 }
 
+// --- Multi-repo context ---
+
+export interface RepoSpec {
+  path: string;   // absolute path to repo root
+  alias: string;  // short name used to prefix plan IDs
+}
+
+export interface MultiRepoEntry {
+  alias: string;
+  path: string;
+  planCount: number;
+  configFound: boolean;
+  error?: string;
+}
+
 // --- Shared API types ---
 
 export interface PlanSummary {

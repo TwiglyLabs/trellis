@@ -1,9 +1,10 @@
 import { join } from 'path';
+import { existsSync } from 'fs';
 import { loadConfig, scanPlans } from './scanner.ts';
 import { buildGraph } from './graph.ts';
 import { readCache, writeCache, isCacheStale } from './cache.ts';
 import { discoverManifest, fetchRepoPlans } from './manifest.ts';
-import type { Plan, TrellisConfig, ProjectManifest } from './types.ts';
+import type { Plan, TrellisConfig, ProjectManifest, RepoSpec, MultiRepoEntry } from './types.ts';
 import type { GraphData } from './graph.ts';
 
 export interface TrellisContext {
@@ -161,4 +162,85 @@ export function refreshContext(ctx: TrellisContext, options?: CreateContextOptio
   const graph = buildGraph(plans);
 
   return { ...ctx, plans, graph, manifest: manifest ?? ctx.manifest };
+}
+
+// --- Multi-repo context ---
+
+export interface MultiContext {
+  readonly plans: Plan[];
+  readonly graph: GraphData;
+  readonly repos: MultiRepoEntry[];
+}
+
+/**
+ * Qualify a plan's ID and deps with its repo alias.
+ * Bare IDs become `alias:id`; already-qualified deps are preserved as-is.
+ */
+function qualifyPlan(plan: Plan, alias: string): Plan {
+  const qualifiedId = `${alias}:${plan.id}`;
+  const deps = plan.frontmatter.depends_on;
+  const qualifiedDeps = deps?.map(dep =>
+    dep.indexOf(':') !== -1 ? dep : `${alias}:${dep}`
+  );
+
+  return {
+    ...plan,
+    id: qualifiedId,
+    repoAlias: alias,
+    frontmatter: {
+      ...plan.frontmatter,
+      depends_on: qualifiedDeps,
+    },
+  };
+}
+
+/**
+ * Scan multiple local repo directories and return a unified multi-repo context.
+ * All plan IDs are qualified with their repo alias (`alias:planId`).
+ * Bare intra-repo deps are rewritten; already-qualified cross-repo deps are preserved.
+ */
+export function createMultiContext(repos: RepoSpec[]): MultiContext {
+  // Validate alias uniqueness
+  const aliases = repos.map(r => r.alias);
+  const seen = new Set<string>();
+  for (const alias of aliases) {
+    if (seen.has(alias)) {
+      throw new Error(`Duplicate alias "${alias}". Each repo must have a unique alias.`);
+    }
+    seen.add(alias);
+  }
+
+  const allPlans: Plan[] = [];
+  const repoEntries: MultiRepoEntry[] = [];
+
+  for (const repo of repos) {
+    let configFound = false;
+    let plans: Plan[] = [];
+    let error: string | undefined;
+
+    try {
+      const configPath = join(repo.path, '.trellis');
+      configFound = existsSync(configPath);
+      const config = loadConfig(repo.path);
+      const plansDir = join(repo.path, config.plans_dir);
+      plans = scanPlans(plansDir);
+    } catch (e: any) {
+      error = e.message;
+    }
+
+    const qualified = plans.map(p => qualifyPlan(p, repo.alias));
+    allPlans.push(...qualified);
+
+    repoEntries.push({
+      alias: repo.alias,
+      path: repo.path,
+      planCount: plans.length,
+      configFound,
+      ...(error ? { error } : {}),
+    });
+  }
+
+  const graph = buildGraph(allPlans);
+
+  return { plans: allPlans, graph, repos: repoEntries };
 }

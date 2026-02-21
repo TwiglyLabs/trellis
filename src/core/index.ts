@@ -16,13 +16,15 @@ export type {
   PlanSummary,
   BlockedPlanSummary,
   CreateOptions,
+  RepoSpec,
+  MultiRepoEntry,
 } from './types.ts';
 
 export { PlanFile, SECTION_REQUIREMENTS, STATUS_GATES, toSummary } from './types.ts';
 
 // --- Context ---
-export type { TrellisContext, CreateContextOptions } from './context.ts';
-export { createContext, refreshContext, mergeWithRemote } from './context.ts';
+export type { TrellisContext, CreateContextOptions, MultiContext } from './context.ts';
+export { createContext, refreshContext, mergeWithRemote, createMultiContext } from './context.ts';
 
 // --- Scanner ---
 export { scanPlans, loadConfig, parseConfigContent, derivePlanId } from './scanner.ts';

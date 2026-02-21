@@ -13,6 +13,9 @@ export type {
   ProjectManifest,
   StatusGate,
   TrellisContext,
+  MultiContext,
+  RepoSpec,
+  MultiRepoEntry,
   GraphData,
   Cycle,
   ChunkPlan,
@@ -31,7 +34,7 @@ export type {
 
 export {
   PlanFile, SECTION_REQUIREMENTS, STATUS_GATES,
-  createContext, refreshContext, toSummary,
+  createContext, refreshContext, createMultiContext, toSummary,
   scanPlans, loadConfig, parseConfigContent, derivePlanId,
   buildGraph, detectCycles, topologicalSort, transitiveDependents,
   computeCriticalPath, pickNext, computeChunks, groupByDirectory,
