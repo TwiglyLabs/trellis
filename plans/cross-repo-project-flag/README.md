@@ -1,6 +1,6 @@
 ---
 title: Project-Wide Display Flag
-status: not_started
+status: done
 description: >-
   --project flag for status/ready/graph/lint/show to display plans across all
   repos grouped by repo
@@ -11,6 +11,7 @@ tags:
   - display
   - plan-management
 not_started_at: '2026-02-21T00:05:10.578Z'
+completed_at: '2026-02-21T00:29:06.624Z'
 ---
 
 ## Problem
