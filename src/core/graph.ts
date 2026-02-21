@@ -1,4 +1,5 @@
 import type { Plan } from './types.ts';
+import type { PlanChangeEvent } from '../features/watch/types.ts';
 
 export interface GraphData {
   plans: Map<string, Plan>;
@@ -777,4 +778,256 @@ export function newlyReady(
   }
 
   return result;
+}
+
+// --- Incremental graph patching ---
+
+/**
+ * Recompute ready/blocked status for a single plan based on the current
+ * plan map and dependency information.
+ */
+function recomputeStatus(
+  planId: string,
+  planMap: Map<string, Plan>,
+  _dependencies: Map<string, string[]>,
+  ready: Set<string>,
+  blocked: Set<string>,
+): void {
+  ready.delete(planId);
+  blocked.delete(planId);
+
+  const plan = planMap.get(planId);
+  if (!plan || plan.frontmatter.status !== 'not_started') return;
+
+  const deps = plan.frontmatter.depends_on ?? [];
+  if (deps.length === 0) {
+    ready.add(planId);
+    return;
+  }
+
+  const allDone = deps.every(depId => {
+    const dep = planMap.get(depId);
+    return dep && dep.frontmatter.status === 'done';
+  });
+
+  if (allDone) {
+    ready.add(planId);
+  } else {
+    blocked.add(planId);
+  }
+}
+
+/**
+ * Incrementally patch a graph given a set of typed change events.
+ *
+ * Returns a new GraphData object (immutable update). Unchanged nodes preserve
+ * referential equality. Critical path and topological ordering are NOT
+ * recomputed — left for full buildGraph().
+ *
+ * Events are processed in order: removes first, then adds, then updates.
+ * Ready/blocked is recomputed only for affected nodes and their one-hop neighbors.
+ */
+export function patchGraph(
+  graph: GraphData,
+  events: PlanChangeEvent[],
+): GraphData {
+  if (events.length === 0) return graph;
+
+  // Clone graph data structures (shallow clone — node references preserved)
+  const newPlans = new Map(graph.plans);
+  const newDependents = new Map<string, string[]>();
+  for (const [k, v] of graph.dependents) newDependents.set(k, [...v]);
+  const newDependencies = new Map<string, string[]>();
+  for (const [k, v] of graph.dependencies) newDependencies.set(k, [...v]);
+  const newReady = new Set(graph.ready);
+  const newBlocked = new Set(graph.blocked);
+
+  // Collect all affected node IDs for final status recomputation
+  const affected = new Set<string>();
+
+  // Partition events: removes, adds, updates
+  const removes: PlanChangeEvent[] = [];
+  const adds: PlanChangeEvent[] = [];
+  const updates: PlanChangeEvent[] = [];
+
+  for (const event of events) {
+    if (event.type === 'plan-removed') removes.push(event);
+    else if (event.type === 'plan-added') adds.push(event);
+    else updates.push(event);
+  }
+
+  // --- Process removes ---
+  for (const event of removes) {
+    if (event.type !== 'plan-removed') continue;
+    const { planId } = event;
+
+    if (!newPlans.has(planId)) continue;
+
+    // Collect dependents before removing
+    for (const depId of newDependents.get(planId) ?? []) {
+      affected.add(depId);
+    }
+    // Remove planId from dependents lists of plans it depends on
+    for (const depId of newDependencies.get(planId) ?? []) {
+      const depList = newDependents.get(depId);
+      if (depList) {
+        newDependents.set(depId, depList.filter(d => d !== planId));
+      }
+    }
+    // Remove planId from dependencies lists of its dependents
+    for (const depId of newDependents.get(planId) ?? []) {
+      const depsList = newDependencies.get(depId);
+      if (depsList) {
+        newDependencies.set(depId, depsList.filter(d => d !== planId));
+      }
+    }
+
+    newPlans.delete(planId);
+    newDependents.delete(planId);
+    newDependencies.delete(planId);
+    newReady.delete(planId);
+    newBlocked.delete(planId);
+  }
+
+  // --- Process adds ---
+  for (const event of adds) {
+    if (event.type !== 'plan-added') continue;
+    const { planId, plan } = event;
+
+    newPlans.set(planId, plan);
+    affected.add(planId);
+
+    // Set up dependency edges
+    const deps = (plan.frontmatter.depends_on ?? []).filter(d => newPlans.has(d));
+    newDependencies.set(planId, deps);
+    newDependents.set(planId, []);
+
+    // Add this plan to the dependents list of each of its dependencies
+    for (const depId of deps) {
+      const existing = newDependents.get(depId);
+      if (existing) {
+        existing.push(planId);
+      }
+    }
+
+    // Check if any existing plan has a dangling depends_on that matches this new plan
+    for (const [existingId, existingPlan] of newPlans) {
+      if (existingId === planId) continue;
+      const existingDeps = existingPlan.frontmatter.depends_on ?? [];
+      if (existingDeps.includes(planId)) {
+        const fwdDeps = newDependencies.get(existingId);
+        if (fwdDeps && !fwdDeps.includes(planId)) {
+          fwdDeps.push(planId);
+        }
+        const revDeps = newDependents.get(planId);
+        if (revDeps && !revDeps.includes(existingId)) {
+          revDeps.push(existingId);
+        }
+        affected.add(existingId);
+      }
+    }
+  }
+
+  // --- Process updates ---
+  for (const event of updates) {
+    if (event.type !== 'plan-updated') continue;
+    const { planId, plan } = event;
+
+    const oldPlan = newPlans.get(planId);
+    if (!oldPlan) {
+      // Plan not in graph — treat as add
+      newPlans.set(planId, plan);
+      affected.add(planId);
+
+      const deps = (plan.frontmatter.depends_on ?? []).filter(d => newPlans.has(d));
+      newDependencies.set(planId, deps);
+      newDependents.set(planId, []);
+
+      for (const depId of deps) {
+        const existing = newDependents.get(depId);
+        if (existing) {
+          existing.push(planId);
+        }
+      }
+
+      for (const [existingId, existingPlan] of newPlans) {
+        if (existingId === planId) continue;
+        const existingDeps = existingPlan.frontmatter.depends_on ?? [];
+        if (existingDeps.includes(planId)) {
+          const fwdDeps = newDependencies.get(existingId);
+          if (fwdDeps && !fwdDeps.includes(planId)) {
+            fwdDeps.push(planId);
+          }
+          const revDeps = newDependents.get(planId);
+          if (revDeps && !revDeps.includes(existingId)) {
+            revDeps.push(existingId);
+          }
+          affected.add(existingId);
+        }
+      }
+      continue;
+    }
+
+    // Replace node data
+    newPlans.set(planId, plan);
+    affected.add(planId);
+
+    // Check if depends_on changed
+    const oldDeps = oldPlan.frontmatter.depends_on ?? [];
+    const newDeps = plan.frontmatter.depends_on ?? [];
+    const oldDepsSet = new Set(oldDeps);
+    const newDepsSet = new Set(newDeps);
+
+    const depsChanged = oldDeps.length !== newDeps.length ||
+      oldDeps.some(d => !newDepsSet.has(d)) ||
+      newDeps.some(d => !oldDepsSet.has(d));
+
+    if (depsChanged) {
+      // Remove old edges
+      for (const depId of oldDeps) {
+        const revList = newDependents.get(depId);
+        if (revList) {
+          newDependents.set(depId, revList.filter(d => d !== planId));
+        }
+        affected.add(depId);
+      }
+
+      // Add new edges
+      const resolvedNewDeps = newDeps.filter(d => newPlans.has(d));
+      newDependencies.set(planId, resolvedNewDeps);
+      for (const depId of resolvedNewDeps) {
+        const revList = newDependents.get(depId);
+        if (revList) {
+          if (!revList.includes(planId)) revList.push(planId);
+        }
+        affected.add(depId);
+      }
+    }
+
+    // Always add immediate dependents to affected set
+    for (const depId of newDependents.get(planId) ?? []) {
+      affected.add(depId);
+    }
+  }
+
+  // --- Recompute ready/blocked for all affected nodes and their one-hop neighbors ---
+  const toRecompute = new Set(affected);
+  for (const id of affected) {
+    for (const depId of newDependents.get(id) ?? []) {
+      toRecompute.add(depId);
+    }
+  }
+
+  for (const id of toRecompute) {
+    if (!newPlans.has(id)) continue;
+    recomputeStatus(id, newPlans, newDependencies, newReady, newBlocked);
+  }
+
+  return {
+    plans: newPlans,
+    dependents: newDependents,
+    dependencies: newDependencies,
+    ready: newReady,
+    blocked: newBlocked,
+  };
 }

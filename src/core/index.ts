@@ -62,6 +62,7 @@ export {
   groupByTopologicalDepth,
   chunkContractAggregation,
   newlyReady,
+  patchGraph,
 } from './graph.ts';
 
 // --- Frontmatter ---

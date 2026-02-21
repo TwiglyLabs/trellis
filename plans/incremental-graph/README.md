@@ -1,6 +1,6 @@
 ---
 title: Incremental Graph Patching
-status: not_started
+status: done
 description: >-
   patchGraph() for partial graph rebuild from typed change events, avoiding full
   scanPlans + buildGraph on every file change
@@ -10,6 +10,8 @@ tags:
   - canopy
   - performance
 not_started_at: '2026-02-21T01:48:50.940Z'
+started_at: '2026-02-21T04:03:05.564Z'
+completed_at: '2026-02-21T04:15:51.706Z'
 ---
 
 ## Problem

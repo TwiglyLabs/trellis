@@ -47,7 +47,7 @@ export {
   scanPlans, loadConfig, parseConfigContent, derivePlanId,
   buildGraph, detectCycles, topologicalSort, transitiveDependents,
   computeCriticalPath, pickNext, computeChunks, groupByDirectory,
-  groupByTopologicalDepth, chunkContractAggregation, newlyReady,
+  groupByTopologicalDepth, chunkContractAggregation, newlyReady, patchGraph,
   parseFrontmatter, validateFrontmatter, readPlanFile, updatePlanFile,
   detectSections, readSection, writeSection, validateStatusGate,
   computeCompleteness, DEFAULT_THRESHOLDS, PLACEHOLDER_PATTERNS,
