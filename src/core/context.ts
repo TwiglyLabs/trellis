@@ -228,16 +228,18 @@ export function createMultiContext(repos: RepoSpec[]): MultiContext {
     let plans: Plan[] = [];
     let error: string | undefined;
 
+    let config: TrellisConfig | undefined;
     try {
       const configPath = join(repo.path, '.trellis');
       configFound = existsSync(configPath);
-      const config = loadConfig(repo.path);
+      config = loadConfig(repo.path);
       const plansDir = join(repo.path, config.plans_dir);
       plans = scanPlans(plansDir);
     } catch (e: any) {
       error = e.message;
     }
 
+    if (config) attachCompleteness(plans, config);
     const qualified = plans.map(p => qualifyPlan(p, repo.alias));
     allPlans.push(...qualified);
 

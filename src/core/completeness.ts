@@ -102,6 +102,7 @@ function scoreSection(
 export function computeCompleteness(
   plan: Plan,
   config: TrellisConfig,
+  _type?: string,
 ): CompletenessResult {
   const status = plan.frontmatter.status;
   const expectedSections = STATUS_SECTIONS[status] ?? [];
