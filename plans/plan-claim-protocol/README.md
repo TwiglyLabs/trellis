@@ -1,6 +1,6 @@
 ---
 title: Plan Claim Protocol
-status: draft
+status: not_started
 depends_on:
   - plan-schema
 tags:
@@ -11,6 +11,7 @@ tags:
 description: >-
   Reusable GitHub Actions workflow for agents to safely claim plans without PR
   bypass
+not_started_at: '2026-02-21T01:49:00.704Z'
 ---
 
 # Plan Claim Protocol
