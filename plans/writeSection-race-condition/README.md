@@ -1,6 +1,6 @@
 ---
 title: Fix writeSection race condition on parallel MCP writes to same file
-status: not_started
+status: done
 description: >-
   Parallel trellis_write_section calls to the same file corrupt content — each
   reads the same state, writes independently, last writer wins and others are
@@ -9,6 +9,8 @@ tags:
   - bug
   - mcp
 not_started_at: '2026-02-21T00:46:09.333Z'
+started_at: '2026-02-21T00:47:59.887Z'
+completed_at: '2026-02-21T00:57:46.799Z'
 ---
 
 ## Problem
