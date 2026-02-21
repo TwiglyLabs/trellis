@@ -219,4 +219,81 @@ describe('lint command', () => {
     expect(output).toMatch(/^.*2 plans OK$/m);
     expect(process.exitCode).toBeUndefined();
   });
+
+  describe('--completeness flag', () => {
+    it('emits warnings for stub sections', () => {
+      const { root } = createFixture([
+        { id: 'stub', title: 'Stub Plan', status: 'draft', body: '\n## Problem\nTBD\n' },
+      ]);
+      process.cwd = () => root;
+
+      lintCommand({ completeness: true });
+
+      const output = logs.join('\n');
+      expect(output).toContain('stub: Problem is stub');
+    });
+
+    it('does not emit completeness warnings without --completeness', () => {
+      const { root } = createFixture([
+        { id: 'stub', title: 'Stub Plan', status: 'draft', body: '\n## Problem\nTBD\n' },
+      ]);
+      process.cwd = () => root;
+
+      lintCommand();
+
+      const output = logs.join('\n');
+      expect(output).not.toContain('Problem is stub');
+    });
+
+    it('emits warnings for thin sections', () => {
+      const words25 = Array(25).fill('word').join(' ');
+      const { root } = createFixture([
+        { id: 'thin', title: 'Thin Plan', status: 'draft', body: `\n## Problem\n${words25}\n` },
+      ]);
+      process.cwd = () => root;
+
+      lintCommand({ completeness: true });
+
+      const output = logs.join('\n');
+      expect(output).toContain('thin: Problem is thin (25 words)');
+    });
+
+    it('does not warn for complete sections', () => {
+      const words60 = Array(60).fill('word').join(' ');
+      const { root } = createFixture([
+        { id: 'full', title: 'Full Plan', status: 'draft', body: `\n## Problem\n${words60}\n` },
+      ]);
+      process.cwd = () => root;
+
+      lintCommand({ completeness: true });
+
+      const output = logs.join('\n');
+      expect(output).not.toContain('full: Problem');
+    });
+
+    it('with --strict, stub sections cause exit code 1', () => {
+      const { root } = createFixture([
+        { id: 'stub', title: 'Stub Plan', status: 'draft', body: '\n## Problem\nTBD\n' },
+      ]);
+      process.cwd = () => root;
+
+      lintCommand({ completeness: true, strict: true });
+
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('includes completeness warnings in JSON output', () => {
+      const { root } = createFixture([
+        { id: 'stub', title: 'Stub Plan', status: 'draft', body: '\n## Problem\nTBD\n' },
+      ]);
+      process.cwd = () => root;
+
+      lintCommand({ completeness: true, json: true });
+
+      const parsed = JSON.parse(logs.join(''));
+      const completenessWarnings = parsed.warnings.filter((w: any) => w.type === 'completeness');
+      expect(completenessWarnings.length).toBeGreaterThan(0);
+      expect(completenessWarnings[0].message).toContain('Problem is stub');
+    });
+  });
 });

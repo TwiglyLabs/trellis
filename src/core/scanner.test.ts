@@ -257,6 +257,35 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('completeness threshold config', () => {
+    it('parses completeness threshold keys', () => {
+      const dir = createFixtureDir();
+      writeFileSync(join(dir, '.trellis'), 'project: test\ncompleteness_problem_low: 10\ncompleteness_problem_high: 30\n');
+
+      const config = loadConfig(dir);
+      expect(config.completenessThresholds).toEqual({
+        completeness_problem_low: 10,
+        completeness_problem_high: 30,
+      });
+    });
+
+    it('ignores non-numeric completeness values', () => {
+      const dir = createFixtureDir();
+      writeFileSync(join(dir, '.trellis'), 'project: test\ncompleteness_problem_low: abc\n');
+
+      const config = loadConfig(dir);
+      expect(config.completenessThresholds).toBeUndefined();
+    });
+
+    it('returns undefined completenessThresholds when no keys present', () => {
+      const dir = createFixtureDir();
+      writeFileSync(join(dir, '.trellis'), 'project: test\n');
+
+      const config = loadConfig(dir);
+      expect(config.completenessThresholds).toBeUndefined();
+    });
+  });
+
   describe('file format upgrade hint', () => {
     afterEach(() => {
       vi.restoreAllMocks();

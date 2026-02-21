@@ -2,6 +2,7 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { loadConfig, scanPlans } from './scanner.ts';
 import { buildGraph } from './graph.ts';
+import { computeCompleteness } from './completeness.ts';
 import { readCache, writeCache, isCacheStale } from './cache.ts';
 import { discoverManifest, fetchRepoPlans } from './manifest.ts';
 import type { Plan, TrellisConfig, ProjectManifest, RepoSpec, MultiRepoEntry } from './types.ts';
@@ -140,6 +141,13 @@ function resolveFromCacheOnly(
   return { remotePlans, manifest };
 }
 
+/** Attach completeness scores to all plans. */
+function attachCompleteness(plans: Plan[], config: TrellisConfig): void {
+  for (const plan of plans) {
+    plan.completeness = computeCompleteness(plan, config);
+  }
+}
+
 /** Build a full TrellisContext from a project directory. */
 export function createContext(projectDir: string, options?: CreateContextOptions): TrellisContext {
   const config = loadConfig(projectDir);
@@ -148,6 +156,7 @@ export function createContext(projectDir: string, options?: CreateContextOptions
 
   const { remotePlans, manifest } = resolveRemotePlans(projectDir, config, options);
   const plans = remotePlans.length > 0 ? mergeWithRemote(localPlans, remotePlans, config.project) : localPlans;
+  attachCompleteness(plans, config);
   const graph = buildGraph(plans);
 
   return { projectDir, config, plansDir, plans, graph, manifest };
@@ -159,6 +168,7 @@ export function refreshContext(ctx: TrellisContext, options?: CreateContextOptio
 
   const { remotePlans, manifest } = resolveRemotePlans(ctx.projectDir, ctx.config, options);
   const plans = remotePlans.length > 0 ? mergeWithRemote(localPlans, remotePlans, ctx.config.project) : localPlans;
+  attachCompleteness(plans, ctx.config);
   const graph = buildGraph(plans);
 
   return { ...ctx, plans, graph, manifest: manifest ?? ctx.manifest };

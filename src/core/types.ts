@@ -36,6 +36,8 @@ export interface Plan {
   frontmatter: PlanFrontmatter;
   body: string;
   lineCount: number;
+  implementationContent?: string;
+  completeness?: CompletenessResult;
   inputs?: PlanContract;
   outputs?: PlanContract;
   repoAlias?: string;
@@ -47,6 +49,7 @@ export interface TrellisConfig {
   chunk_max_lines?: number;
   chunk_strategy?: 'directory' | 'topological';
   manifest?: string;
+  completenessThresholds?: Record<string, number>;
 }
 
 export interface RepoEntry {
@@ -58,6 +61,19 @@ export interface RepoEntry {
 export interface ProjectManifest {
   name: string;
   repos: Record<string, RepoEntry>;
+}
+
+// --- Completeness scoring ---
+
+export interface SectionScore {
+  score: 0 | 50 | 100;
+  wordCount: number;
+  reason: 'missing' | 'placeholder' | 'thin' | 'complete';
+}
+
+export interface CompletenessResult {
+  sections: Record<string, SectionScore>;
+  aggregate: number; // 0–100, mean of applicable sections
 }
 
 export interface ValidationError {

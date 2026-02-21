@@ -122,6 +122,7 @@ export function showCommand(planId: string, options?: ShowOptions): void {
       })),
       blocks: result.blocks,
       critical_path: result.criticalPath,
+      completeness: result.completeness,
     };
     if (showContracts) {
       output.inputs = result.inputs;

@@ -1,5 +1,5 @@
 import { transitiveDependents, computeCriticalPath } from '../../core/index.ts';
-import type { PlanStatus, ContractSection } from '../../core/types.ts';
+import type { PlanStatus, ContractSection, CompletenessResult } from '../../core/types.ts';
 import type { GraphData } from '../../core/graph.ts';
 
 export interface DependencyInfo {
@@ -25,6 +25,7 @@ export interface ShowResult {
   dependsOn: DependencyInfo[];
   blocks: string[];
   criticalPath: string[];
+  completeness: CompletenessResult | null;
   inputs: ContractSection[] | null;
   outputs: ContractSection[] | null;
 }
@@ -69,6 +70,7 @@ export function computeShow(opts: ComputeShowOptions): ShowResult | null {
     }),
     blocks: [...new Set([...directDeps, ...transitive])],
     criticalPath: critPath,
+    completeness: plan.completeness ?? null,
     inputs: plan.inputs?.sections ?? null,
     outputs: plan.outputs?.sections ?? null,
   };

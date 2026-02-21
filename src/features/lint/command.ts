@@ -13,13 +13,14 @@ export function register(program: Command): void {
     .option('--strict', 'Exit with error on warnings too')
     .option('--json', 'Output as JSON')
     .option('--fix', 'Auto-scaffold missing files and sections')
+    .option('--completeness', 'Warn about stub and thin plan sections')
     .option('--offline', 'Skip remote fetch, use cache or local only')
     .option('--project', 'Show plans from all repos in the project')
-    .addHelpText('after', '\nExamples:\n  $ trellis lint\n  $ trellis lint --strict\n  $ trellis lint --json\n  $ trellis lint --fix\n  $ trellis lint --project')
+    .addHelpText('after', '\nExamples:\n  $ trellis lint\n  $ trellis lint --strict\n  $ trellis lint --json\n  $ trellis lint --fix\n  $ trellis lint --completeness\n  $ trellis lint --project')
     .action((options) => lintCommand(options));
 }
 
-export function lintCommand(options?: { strict?: boolean; json?: boolean; fix?: boolean; offline?: boolean; project?: boolean }): void {
+export function lintCommand(options?: { strict?: boolean; json?: boolean; fix?: boolean; completeness?: boolean; offline?: boolean; project?: boolean }): void {
   const ctx = createContext(process.cwd(), { offline: options?.offline });
   const { isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options?.project);
 
@@ -30,7 +31,7 @@ export function lintCommand(options?: { strict?: boolean; json?: boolean; fix?: 
     plansDir: join(ctx.projectDir, ctx.config.plans_dir),
     manifest: ctx.manifest,
     projectName: ctx.config.project,
-    options: { strict: options?.strict, fix: options?.fix },
+    options: { strict: options?.strict, fix: options?.fix, completeness: options?.completeness },
   });
 
   if (options?.json) {

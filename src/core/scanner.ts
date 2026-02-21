@@ -53,11 +53,12 @@ function walkDir(dir: string, plansDir: string, plans: Plan[]): void {
             plan.outputs = parseOutputs(readFileSync(outputsPath, 'utf8'));
           }
 
-          // Load implementation.md content for lineCount aggregation
+          // Load implementation.md content for lineCount aggregation and completeness scoring
           const implPath = join(fullPath, 'implementation.md');
           if (existsSync(implPath)) {
             const implContent = readFileSync(implPath, 'utf8');
             plan.lineCount += implContent.split('\n').length;
+            plan.implementationContent = implContent;
           }
 
           plans.push(plan);
@@ -90,6 +91,13 @@ export function parseConfigContent(content: string, cwd: string): TrellisConfig 
         config.chunk_strategy = value;
       }
       if (key === 'manifest') config.manifest = value;
+      if (key.startsWith('completeness_') && (key.endsWith('_low') || key.endsWith('_high'))) {
+        const parsed = parseInt(value, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          if (!config.completenessThresholds) config.completenessThresholds = {};
+          config.completenessThresholds[key] = parsed;
+        }
+      }
     }
   }
   return {
@@ -98,6 +106,7 @@ export function parseConfigContent(content: string, cwd: string): TrellisConfig 
     chunk_max_lines: config.chunk_max_lines,
     chunk_strategy: config.chunk_strategy,
     manifest: config.manifest,
+    completenessThresholds: config.completenessThresholds,
   };
 }
 

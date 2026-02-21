@@ -10,6 +10,8 @@ export type {
   CacheEntry,
   ValidationError,
   GateResult,
+  SectionScore,
+  CompletenessResult,
   RepoEntry,
   ProjectManifest,
   StatusGate,
@@ -65,6 +67,9 @@ export {
 
 // --- Schema ---
 export { detectSections, readSection, writeSection, validateStatusGate } from './schema.ts';
+
+// --- Completeness ---
+export { computeCompleteness, DEFAULT_THRESHOLDS, PLACEHOLDER_PATTERNS } from './completeness.ts';
 
 // --- Manifest ---
 export type { GitExecutor, FetchRepoResult } from './manifest.ts';

@@ -31,7 +31,7 @@ export interface ComputeLintOptions {
   plansDir: string;
   manifest?: ProjectManifest;
   projectName?: string;
-  options?: { strict?: boolean; fix?: boolean };
+  options?: { strict?: boolean; fix?: boolean; completeness?: boolean };
 }
 
 export function computeLint(opts: ComputeLintOptions): LintResult {
@@ -187,6 +187,21 @@ export function computeLint(opts: ComputeLintOptions): LintResult {
       // --fix: scaffold missing files and sections
       if (options?.fix) {
         fixStructuralIssues(plan, gate.missing, fixed);
+      }
+    }
+  }
+
+  // Completeness checks (opt-in via --completeness flag)
+  if (options?.completeness) {
+    for (const plan of plans) {
+      if (!plan.completeness) continue;
+      for (const [section, score] of Object.entries(plan.completeness.sections)) {
+        if (score.score === 0) {
+          const label = score.reason === 'missing' ? 'missing' : 'stub';
+          warnings.push({ planId: plan.id, type: 'completeness', message: `${plan.id}: ${section} is ${label} (${score.wordCount} words)` });
+        } else if (score.score === 50) {
+          warnings.push({ planId: plan.id, type: 'completeness', message: `${plan.id}: ${section} is thin (${score.wordCount} words)` });
+        }
       }
     }
   }
