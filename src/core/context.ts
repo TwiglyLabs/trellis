@@ -1,12 +1,13 @@
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { loadConfig, scanPlans } from './scanner.ts';
-import { buildGraph } from './graph.ts';
+import { buildGraph, patchGraph } from './graph.ts';
 import { computeCompleteness } from './completeness.ts';
 import { readCache, writeCache, isCacheStale } from './cache.ts';
 import { discoverManifest, fetchRepoPlans } from './manifest.ts';
 import type { Plan, TrellisConfig, ProjectManifest, RepoSpec, MultiRepoEntry } from './types.ts';
 import type { GraphData } from './graph.ts';
+import type { PlanChangeBatch } from '../features/watch/types.ts';
 
 export interface TrellisContext {
   readonly projectDir: string;
@@ -141,8 +142,8 @@ function resolveFromCacheOnly(
   return { remotePlans, manifest };
 }
 
-/** Attach completeness scores to all plans. */
-function attachCompleteness(plans: Plan[], config: TrellisConfig): void {
+/** Attach completeness scores to all plans (mutates in place). */
+export function attachCompleteness(plans: Plan[], config: TrellisConfig): void {
   for (const plan of plans) {
     plan.completeness = computeCompleteness(plan, config);
   }
@@ -255,4 +256,40 @@ export function createMultiContext(repos: RepoSpec[]): MultiContext {
   const graph = buildGraph(allPlans);
 
   return { plans: allPlans, graph, repos: repoEntries };
+}
+
+// --- Reactive context ---
+
+/**
+ * Apply a watch batch to an existing context, returning a new context.
+ * Uses patchGraph for incremental graph updates and attaches completeness
+ * scores to changed plans. This is the primary reactive primitive for UI
+ * consumers: pair with watchPlans() for a complete subscribe-and-update loop.
+ *
+ * ```ts
+ * let ctx = createContext(projectDir);
+ * const handle = watchPlans(ctx.plansDir, (batch) => {
+ *   ctx = applyBatch(ctx, batch);
+ *   // ctx.plans, ctx.graph are now up-to-date
+ * });
+ * ```
+ */
+export function applyBatch(ctx: TrellisContext, batch: PlanChangeBatch): TrellisContext {
+  if (batch.events.length === 0) return ctx;
+
+  const newGraph = patchGraph(ctx.graph, batch.events);
+
+  // Attach completeness to plans that were added or updated
+  for (const event of batch.events) {
+    if (event.type === 'plan-removed') continue;
+    const plan = newGraph.plans.get(event.planId);
+    if (plan) {
+      plan.completeness = computeCompleteness(plan, ctx.config);
+    }
+  }
+
+  // Derive plans array from the graph's Map (single source of truth)
+  const plans = Array.from(newGraph.plans.values());
+
+  return { ...ctx, plans, graph: newGraph };
 }

@@ -33,7 +33,7 @@ export { PlanFile, SECTION_REQUIREMENTS, STATUS_GATES, toSummary } from './types
 
 // --- Context ---
 export type { TrellisContext, CreateContextOptions, MultiContext } from './context.ts';
-export { createContext, refreshContext, mergeWithRemote, createMultiContext } from './context.ts';
+export { createContext, refreshContext, mergeWithRemote, createMultiContext, attachCompleteness, applyBatch } from './context.ts';
 
 // --- Scanner ---
 export { scanPlans, loadConfig, parseConfigContent, derivePlanId } from './scanner.ts';

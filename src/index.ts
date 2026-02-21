@@ -43,7 +43,7 @@ export type {
 
 export {
   PlanFile, SECTION_REQUIREMENTS, STATUS_GATES,
-  createContext, refreshContext, createMultiContext, toSummary,
+  createContext, refreshContext, createMultiContext, attachCompleteness, applyBatch, toSummary,
   scanPlans, loadConfig, parseConfigContent, derivePlanId,
   buildGraph, detectCycles, topologicalSort, transitiveDependents,
   computeCriticalPath, pickNext, computeChunks, groupByDirectory,
@@ -86,8 +86,8 @@ export type { CreateResult } from './features/create/logic.ts';
 export { computeSet } from './features/set/logic.ts';
 export type { SetResult } from './features/set/logic.ts';
 
-export { computeWriteSection, computeReadSection } from './features/sections/logic.ts';
-export type { WriteSectionResult, ReadSectionResult } from './features/sections/logic.ts';
+export { computeWriteSection, computeWriteSections, computeReadSection } from './features/sections/logic.ts';
+export type { WriteSectionResult, WriteSectionsResult, ReadSectionResult } from './features/sections/logic.ts';
 
 export { computeRename } from './features/rename/logic.ts';
 export type { RenameResult } from './features/rename/logic.ts';
