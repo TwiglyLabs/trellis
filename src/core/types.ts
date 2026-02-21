@@ -149,6 +149,7 @@ export interface PlanSummary {
   tags: string[];
   repo?: string;
   assignee?: string;
+  repoAlias?: string;
 }
 
 export interface BlockedPlanSummary extends PlanSummary {
@@ -172,5 +173,6 @@ export function toSummary(p: Plan): PlanSummary {
     tags: p.frontmatter.tags ?? [],
     repo: p.frontmatter.repo,
     assignee: p.frontmatter.assignee,
+    repoAlias: p.repoAlias,
   };
 }

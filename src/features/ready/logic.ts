@@ -10,19 +10,20 @@ export interface ReadyResult {
 export interface ComputeReadyOptions {
   plans: Plan[];
   graph: GraphData;
-  filters?: { tag?: string; repo?: string };
+  filters?: { tag?: string; repo?: string; project?: boolean };
   toSummary?: (p: Plan) => PlanSummary;
 }
 
 export function computeReady(opts: ComputeReadyOptions): ReadyResult {
   const { plans, graph, filters, toSummary = defaultToSummary } = opts;
 
-  // Display local plans only — remote plans are in the graph for dep resolution but not shown
-  let readyPlans = plans.filter(p => graph.ready.has(p.id) && p.repoAlias == null);
+  // Display local plans only — unless --project, which shows all repos
+  let readyPlans = plans.filter(p => graph.ready.has(p.id) && (filters?.project || p.repoAlias == null));
   readyPlans = filterPlans(readyPlans, { tag: filters?.tag, repo: filters?.repo });
 
-  const filteredIds = new Set(readyPlans.map(p => p.id));
-  const next = pickNext(graph, filteredIds);
+  // --next always picks from local plans only (you can't work on remote plans)
+  const localReadyIds = new Set(readyPlans.filter(p => p.repoAlias == null).map(p => p.id));
+  const next = pickNext(graph, localReadyIds);
 
   return {
     plans: readyPlans.map(p => toSummary(p)),

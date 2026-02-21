@@ -12,6 +12,7 @@ export interface GraphNode {
   tags: string[];
   repo?: string;
   assignee?: string;
+  repoAlias?: string;
 }
 
 export interface GraphEdge {
@@ -50,6 +51,7 @@ export function computeGraph(opts: ComputeGraphOptions): GraphResult {
     tags: p.frontmatter.tags ?? [],
     repo: p.frontmatter.repo,
     assignee: p.frontmatter.assignee,
+    repoAlias: p.repoAlias,
   }));
 
   const edges: GraphEdge[] = [];

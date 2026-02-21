@@ -20,16 +20,18 @@ export interface ComputeStatusOptions {
   plans: Plan[];
   config: TrellisConfig;
   graph: GraphData;
-  filters?: { tag?: string; repo?: string; showDone?: boolean; showArchived?: boolean };
+  filters?: { tag?: string; repo?: string; showDone?: boolean; showArchived?: boolean; project?: boolean };
   toSummary?: (p: Plan) => PlanSummary;
 }
 
 export function computeStatus(opts: ComputeStatusOptions): StatusResult {
   const { plans: allPlansRaw, config, graph, filters, toSummary = defaultToSummary } = opts;
 
-  // Display local plans only — remote plans are in the graph for dep resolution but not shown
-  const localPlansRaw = allPlansRaw.filter(p => p.repoAlias == null);
-  const allPlans = filterPlans(localPlansRaw, { tag: filters?.tag, repo: filters?.repo });
+  // Display local plans only — unless --project, which shows all repos
+  const scopedPlans = filters?.project
+    ? allPlansRaw
+    : allPlansRaw.filter(p => p.repoAlias == null);
+  const allPlans = filterPlans(scopedPlans, { tag: filters?.tag, repo: filters?.repo });
   const total = allPlans.length;
 
   let plans = allPlans;

@@ -1,4 +1,4 @@
-import type { Plan, PlanStatus } from './types.ts';
+import type { Plan, PlanStatus, ProjectManifest } from './types.ts';
 
 export const VALID_STATUSES: readonly PlanStatus[] = ['draft', 'not_started', 'in_progress', 'done', 'archived'] as const;
 
@@ -46,6 +46,50 @@ export function parseQualifiedId(ref: string): { repo?: string; planId: string }
   const colonIdx = ref.indexOf(':');
   if (colonIdx === -1) return { planId: ref };
   return { repo: ref.substring(0, colonIdx), planId: ref.substring(colonIdx + 1) };
+}
+
+/**
+ * Resolve which plans to display based on --project flag.
+ * Without --project: local plans only. With --project: all plans from all repos.
+ * If --project but no manifest: warn and fall back to local-only.
+ */
+export function resolveProjectPlans(
+  plans: Plan[],
+  manifest?: ProjectManifest,
+  project?: boolean,
+): { plans: Plan[]; isProject: boolean } {
+  if (!project) return { plans: plans.filter(p => p.repoAlias == null), isProject: false };
+  if (!manifest) {
+    console.error('No manifest configured — showing local plans only');
+    return { plans: plans.filter(p => p.repoAlias == null), isProject: false };
+  }
+  return { plans, isProject: true };
+}
+
+/**
+ * Build the `repos` array for --project --json output.
+ * Groups items by repoAlias, counts them, sorts local first then alphabetical.
+ */
+export function buildReposArray(
+  items: { repoAlias?: string }[],
+  localProject: string,
+): { alias: string; local: boolean; plan_count: number }[] {
+  const repoCounts = new Map<string, number>();
+  for (const item of items) {
+    const key = item.repoAlias ?? localProject;
+    repoCounts.set(key, (repoCounts.get(key) ?? 0) + 1);
+  }
+  return [...repoCounts.entries()]
+    .sort((a, b) => {
+      if (a[0] === localProject) return -1;
+      if (b[0] === localProject) return 1;
+      return a[0].localeCompare(b[0]);
+    })
+    .map(([alias, count]) => ({
+      alias,
+      local: alias === localProject,
+      plan_count: count,
+    }));
 }
 
 export function filterPlans(plans: Plan[], filters: { tag?: string; repo?: string }): Plan[] {

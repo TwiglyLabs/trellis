@@ -1,7 +1,8 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
 import { createContext } from '../../core/index.ts';
-import { padRight, computeColumnWidth } from '../../core/utils.ts';
+import type { PlanSummary } from '../../core/types.ts';
+import { padRight, computeColumnWidth, resolveProjectPlans, buildReposArray } from '../../core/utils.ts';
 import { computeReady } from './logic.ts';
 import { computeShow } from '../show/logic.ts';
 
@@ -14,7 +15,8 @@ export function register(program: Command): void {
     .option('--json', 'Output as JSON')
     .option('--next', 'Return only the highest-priority ready plan')
     .option('--offline', 'Skip remote fetch, use cache or local only')
-    .addHelpText('after', '\nExamples:\n  $ trellis ready\n  $ trellis ready --repo public\n  $ trellis ready --json\n  $ trellis ready --next\n  $ trellis ready --next --json')
+    .option('--project', 'Show plans from all repos in the project')
+    .addHelpText('after', '\nExamples:\n  $ trellis ready\n  $ trellis ready --repo public\n  $ trellis ready --json\n  $ trellis ready --next\n  $ trellis ready --next --json\n  $ trellis ready --project')
     .action((options) => readyCommand(options));
 }
 
@@ -24,10 +26,12 @@ interface ReadyOptions {
   json?: boolean;
   next?: boolean;
   offline?: boolean;
+  project?: boolean;
 }
 
 export function readyCommand(options: ReadyOptions): void {
   const ctx = createContext(process.cwd(), { offline: options.offline });
+  const { isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options.project);
 
   const result = computeReady({
     plans: ctx.plans,
@@ -35,6 +39,7 @@ export function readyCommand(options: ReadyOptions): void {
     filters: {
       tag: options.tag,
       repo: options.repo,
+      project: isProject,
     },
   });
 
@@ -55,6 +60,7 @@ export function readyCommand(options: ReadyOptions): void {
           repo: nextPlan.repo,
           description: nextPlan.description,
           assignee: nextPlan.assignee,
+          repoAlias: nextPlan.repoAlias ?? null,
         }, null, 2));
       }
       return;
@@ -72,7 +78,7 @@ export function readyCommand(options: ReadyOptions): void {
   }
 
   if (options.json) {
-    const output = result.plans.map((p) => {
+    const plans = result.plans.map((p) => {
       const planDetails = computeShow({ planId: p.id, graph: ctx.graph });
       return {
         id: p.id,
@@ -83,9 +89,20 @@ export function readyCommand(options: ReadyOptions): void {
         repo: p.repo,
         description: p.description,
         assignee: p.assignee,
+        repoAlias: p.repoAlias ?? null,
       };
     });
-    console.log(JSON.stringify(output, null, 2));
+
+    if (isProject) {
+      console.log(JSON.stringify({
+        plans,
+        next: result.next,
+        repos: buildReposArray(result.plans, ctx.config.project),
+      }, null, 2));
+    } else {
+      // Backwards compatible: bare array
+      console.log(JSON.stringify(plans, null, 2));
+    }
     return;
   }
 
@@ -96,9 +113,36 @@ export function readyCommand(options: ReadyOptions): void {
 
   const idWidth = computeColumnWidth(result.plans.map((p) => p.id));
 
-  for (const p of result.plans) {
-    const desc = p.description || p.title;
-    const tags = p.repo ? `[${p.repo}]` : '';
-    console.log(`${chalk.white(padRight(p.id, idWidth))} ${padRight(desc, 40)} ${chalk.dim(tags)}`);
+  if (isProject) {
+    // Group by repo
+    const byRepo = new Map<string, PlanSummary[]>();
+    for (const p of result.plans) {
+      const key = p.repoAlias ?? ctx.config.project;
+      if (!byRepo.has(key)) byRepo.set(key, []);
+      byRepo.get(key)!.push(p);
+    }
+    const repoKeys = [...byRepo.keys()].sort((a, b) => {
+      if (a === ctx.config.project) return -1;
+      if (b === ctx.config.project) return 1;
+      return a.localeCompare(b);
+    });
+    for (const repoKey of repoKeys) {
+      const isLocal = repoKey === ctx.config.project;
+      const label = isLocal ? `${repoKey} (local)` : repoKey;
+      console.log(chalk.bold(label));
+      for (const p of byRepo.get(repoKey)!) {
+        const desc = p.description || p.title;
+        const tags = p.repo ? `[${p.repo}]` : '';
+        console.log(`  ${chalk.white(padRight(p.id, idWidth))} ${padRight(desc, 40)} ${chalk.dim(tags)}`);
+      }
+      console.log();
+    }
+  } else {
+    for (const p of result.plans) {
+      const desc = p.description || p.title;
+      const tags = p.repo ? `[${p.repo}]` : '';
+      console.log(`${chalk.white(padRight(p.id, idWidth))} ${padRight(desc, 40)} ${chalk.dim(tags)}`);
+    }
   }
 }
+

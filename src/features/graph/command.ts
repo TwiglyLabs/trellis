@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { createContext, computeCriticalPath, pluralize } from '../../core/index.ts';
+import { resolveProjectPlans, buildReposArray } from '../../core/utils.ts';
 import { computeGraph } from './logic.ts';
 
 export function register(program: Command): void {
@@ -8,16 +9,16 @@ export function register(program: Command): void {
     .description('Show plan dependency graph')
     .option('--json', 'Output graph as JSON (nodes + edges)')
     .option('--offline', 'Skip remote fetch, use cache or local only')
-    .addHelpText('after', '\nExamples:\n  $ trellis graph\n  $ trellis graph --json')
+    .option('--project', 'Show plans from all repos in the project')
+    .addHelpText('after', '\nExamples:\n  $ trellis graph\n  $ trellis graph --json\n  $ trellis graph --project')
     .action((options) => graphCommand(options));
 }
 
-export function graphCommand(options: { json?: boolean; offline?: boolean }): void {
+export function graphCommand(options: { json?: boolean; offline?: boolean; project?: boolean }): void {
   const cwd = process.cwd();
   const ctx = createContext(cwd, { offline: options.offline });
-  // Display local plans only — remote plans are in the graph for dep resolution
-  const localPlans = ctx.plans.filter(p => p.repoAlias == null);
-  const result = computeGraph({ plans: localPlans, graph: ctx.graph, config: ctx.config });
+  const { plans: displayPlans, isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options.project);
+  const result = computeGraph({ plans: displayPlans, graph: ctx.graph, config: ctx.config });
 
   if (options.json) {
     const nodes = result.nodes.map((n) => ({
@@ -30,6 +31,7 @@ export function graphCommand(options: { json?: boolean; offline?: boolean }): vo
       tags: n.tags,
       repo: n.repo,
       assignee: n.assignee,
+      repoAlias: n.repoAlias ?? null,
     }));
 
     const edges = result.edges.map((e) => ({
@@ -37,7 +39,12 @@ export function graphCommand(options: { json?: boolean; offline?: boolean }): vo
       to: e.to,
     }));
 
-    console.log(JSON.stringify({ nodes, edges }, null, 2));
+    const output: Record<string, unknown> = { nodes, edges };
+    if (isProject) {
+      output.repos = buildReposArray(result.nodes, ctx.config.project);
+    }
+
+    console.log(JSON.stringify(output, null, 2));
     return;
   }
 
@@ -91,3 +98,4 @@ export function graphCommand(options: { json?: boolean; offline?: boolean }): vo
     console.log(`Critical path: ${longestPath.join(' → ')} (${longestPath.length} steps)`);
   }
 }
+

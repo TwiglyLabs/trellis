@@ -1,7 +1,8 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
 import { createContext } from '../../core/index.ts';
-import { padRight, computeColumnWidth } from '../../core/utils.ts';
+import type { PlanSummary } from '../../core/types.ts';
+import { padRight, computeColumnWidth, resolveProjectPlans, buildReposArray } from '../../core/utils.ts';
 import { computeEpic } from './logic.ts';
 import { computeGraph } from '../graph/logic.ts';
 
@@ -10,12 +11,16 @@ export function register(program: Command): void {
     .command('epic [name]')
     .description('Show epic completion status')
     .option('--json', 'Output as JSON')
-    .addHelpText('after', '\nExamples:\n  $ trellis epic\n  $ trellis epic v1\n  $ trellis epic --json')
+    .option('--offline', 'Skip remote fetch, use cache or local only')
+    .option('--project', 'Show plans from all repos in the project')
+    .addHelpText('after', '\nExamples:\n  $ trellis epic\n  $ trellis epic v1\n  $ trellis epic --json\n  $ trellis epic --project')
     .action((name, options) => epicCommand(options, name));
 }
 
 interface EpicOptions {
   json?: boolean;
+  offline?: boolean;
+  project?: boolean;
 }
 
 function progressBar(ratio: number, width: number): string {
@@ -25,8 +30,9 @@ function progressBar(ratio: number, width: number): string {
 }
 
 export function epicCommand(options: EpicOptions, name?: string): void {
-  const ctx = createContext(process.cwd());
-  const epics = computeEpic({ plans: ctx.plans, graph: ctx.graph, name });
+  const ctx = createContext(process.cwd(), { offline: options.offline });
+  const { plans, isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options.project);
+  const epics = computeEpic({ plans, graph: ctx.graph, name });
 
   if (epics.length === 0) {
     if (name) {
@@ -49,10 +55,10 @@ export function epicCommand(options: EpicOptions, name?: string): void {
 
   if (name) {
     const epic = epics[0];
-    const graphResult = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
+    const graphResult = computeGraph({ plans, graph: ctx.graph, config: ctx.config });
 
     if (options.json) {
-      const plans = (epic.plans ?? []).map((p) => {
+      const epicPlans = (epic.plans ?? []).map((p) => {
         const node = graphResult.nodes.find((n) => n.id === p.id);
         return {
           id: p.id,
@@ -60,10 +66,11 @@ export function epicCommand(options: EpicOptions, name?: string): void {
           status: p.status,
           blocked: node?.blocked ?? false,
           ready: node?.ready ?? false,
+          repoAlias: p.repoAlias ?? null,
         };
       });
 
-      console.log(JSON.stringify({
+      const output: Record<string, unknown> = {
         epic: epic.epic,
         total: epic.total,
         done: epic.done,
@@ -72,8 +79,14 @@ export function epicCommand(options: EpicOptions, name?: string): void {
         blocked: epic.blocked,
         draft: epic.draft,
         progress: epic.progress,
-        plans,
-      }, null, 2));
+        plans: epicPlans,
+      };
+
+      if (isProject) {
+        output.repos = buildReposArray(epic.plans ?? [], ctx.config.project);
+      }
+
+      console.log(JSON.stringify(output, null, 2));
       return;
     }
 
@@ -91,7 +104,8 @@ export function epicCommand(options: EpicOptions, name?: string): void {
       for (const p of remaining) {
         const node = graphResult.nodes.find((n) => n.id === p.id);
         const statusLabel = node?.blocked ? chalk.red('blocked') : chalk.dim(p.status);
-        console.log(`    ${chalk.white(padRight(p.id, idWidth))} ${p.title}  ${statusLabel}`);
+        const repoPrefix = isProject && p.repoAlias ? chalk.dim(`[${p.repoAlias}] `) : '';
+        console.log(`    ${repoPrefix}${chalk.white(padRight(p.id, idWidth))} ${p.title}  ${statusLabel}`);
       }
       console.log();
     }
@@ -99,7 +113,8 @@ export function epicCommand(options: EpicOptions, name?: string): void {
     if (done.length > 0) {
       console.log(chalk.green.bold(`  DONE (${done.length})`));
       for (const p of done) {
-        console.log(`    ${chalk.dim(padRight(p.id, idWidth))} ${chalk.dim(p.title)}`);
+        const repoPrefix = isProject && p.repoAlias ? chalk.dim(`[${p.repoAlias}] `) : '';
+        console.log(`    ${repoPrefix}${chalk.dim(padRight(p.id, idWidth))} ${chalk.dim(p.title)}`);
       }
       console.log();
     }
@@ -128,3 +143,4 @@ export function epicCommand(options: EpicOptions, name?: string): void {
     console.log(`  ${chalk.white(padRight(e.epic, nameWidth))}  ${e.done}/${e.total} done  ${bar}  ${pct}%`);
   }
 }
+

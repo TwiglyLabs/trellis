@@ -85,4 +85,4 @@ export { parseInputs, parseOutputs } from './contracts.ts';
 export { ensureCacheDir, readCache, writeCache, isCacheStale } from './cache.ts';
 
 // --- Utilities ---
-export { VALID_STATUSES, filterPlans, validatePlanId, parseQualifiedId, pluralize } from './utils.ts';
+export { VALID_STATUSES, filterPlans, resolveProjectPlans, buildReposArray, validatePlanId, parseQualifiedId, pluralize } from './utils.ts';
