@@ -22,7 +22,7 @@ export function computeArchive(options: ComputeArchiveOptions, callbacks: Comput
 
   const plan = graph.plans.get(planId);
   if (!plan) throw new Error(`Plan "${planId}" not found.`);
-  if (plan.repoAlias != null) {
+  if (plan.remote) {
     throw new Error(`Cannot modify remote plan '${planId}'. Write operations are local only.`);
   }
 

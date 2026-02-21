@@ -1,6 +1,6 @@
 ---
 title: MCP Multi-Repo Mode
-status: not_started
+status: done
 description: >-
   Add --project flag to trellis mcp that enables multi-repo mode using
   createMultiContext. Allows reading and writing plans across all project repos
@@ -13,6 +13,8 @@ tags:
   - mcp
   - cross-repo
 type: feature
+started_at: '2026-02-21T15:50:37.773Z'
+completed_at: '2026-02-21T16:09:48.416Z'
 ---
 
 ## Problem

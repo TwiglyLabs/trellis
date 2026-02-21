@@ -92,6 +92,62 @@ export function buildReposArray(
     }));
 }
 
+export interface ResolvedPlanId {
+  qualifiedId: string;
+  alias?: string;
+  localId: string;
+}
+
+/**
+ * Resolve a raw plan ID against a graph.
+ * - Qualified IDs (alias:planId): verified to exist in graph.
+ * - Unqualified IDs: searched across all qualified entries. Errors if ambiguous.
+ */
+export function resolvePlanId(graph: import('./graph.ts').GraphData, rawId: string): ResolvedPlanId {
+  // Direct lookup first (works for both qualified and unqualified)
+  if (graph.plans.has(rawId)) {
+    const parsed = parseQualifiedId(rawId);
+    return {
+      qualifiedId: rawId,
+      alias: parsed.repo,
+      localId: parsed.planId,
+    };
+  }
+
+  // If it was qualified but not found, that's an error
+  const parsed = parseQualifiedId(rawId);
+  if (parsed.repo) {
+    throw new Error(`Plan "${rawId}" not found.`);
+  }
+
+  // Unqualified — search all qualified entries for a match
+  const matches: string[] = [];
+  for (const id of graph.plans.keys()) {
+    const p = parseQualifiedId(id);
+    if (p.planId === rawId) {
+      matches.push(id);
+    }
+  }
+
+  if (matches.length === 1) {
+    const match = parseQualifiedId(matches[0]);
+    return {
+      qualifiedId: matches[0],
+      alias: match.repo,
+      localId: match.planId,
+    };
+  }
+
+  if (matches.length === 0) {
+    throw new Error(`Plan "${rawId}" not found.`);
+  }
+
+  // Ambiguous
+  throw new Error(
+    `Ambiguous plan ID "${rawId}" — matches: ${matches.join(', ')}. Use a qualified ID (alias:planId).`
+  );
+}
+
 export function filterPlans(plans: Plan[], filters: { tag?: string; repo?: string }): Plan[] {
   let filtered = plans;
   if (filters.tag) {

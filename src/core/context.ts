@@ -228,14 +228,15 @@ export function createMultiContext(repos: RepoSpec[]): MultiContext {
     let configFound = false;
     let plans: Plan[] = [];
     let error: string | undefined;
+    let resolvedPlansDir: string | undefined;
 
     let config: TrellisConfig | undefined;
     try {
       const configPath = join(repo.path, '.trellis');
       configFound = existsSync(configPath);
       config = loadConfig(repo.path);
-      const plansDir = join(repo.path, config.plans_dir);
-      plans = scanPlans(plansDir);
+      resolvedPlansDir = join(repo.path, config.plans_dir);
+      plans = scanPlans(resolvedPlansDir);
     } catch (e: any) {
       error = e.message;
     }
@@ -249,6 +250,8 @@ export function createMultiContext(repos: RepoSpec[]): MultiContext {
       path: repo.path,
       planCount: plans.length,
       configFound,
+      ...(resolvedPlansDir ? { plansDir: resolvedPlansDir } : {}),
+      ...(config ? { config } : {}),
       ...(error ? { error } : {}),
     });
   }

@@ -21,8 +21,8 @@ export function computeReady(opts: ComputeReadyOptions): ReadyResult {
   let readyPlans = plans.filter(p => graph.ready.has(p.id) && (filters?.project || p.repoAlias == null));
   readyPlans = filterPlans(readyPlans, { tag: filters?.tag, repo: filters?.repo });
 
-  // --next always picks from local plans only (you can't work on remote plans)
-  const localReadyIds = new Set(readyPlans.filter(p => p.repoAlias == null).map(p => p.id));
+  // --next picks from writable plans only (excludes git-fetched remote plans)
+  const localReadyIds = new Set(readyPlans.filter(p => !p.remote).map(p => p.id));
   const next = pickNext(graph, localReadyIds);
 
   return {

@@ -40,20 +40,37 @@ export function parseManifest(content: string): ProjectManifest {
     if (!entry || typeof entry !== 'object') {
       throw new Error(`Invalid manifest: repo "${alias}" is not an object`);
     }
-    if (!entry.url || typeof entry.url !== 'string') {
-      throw new Error(`Invalid manifest: repo "${alias}" missing "url"`);
+
+    const hasPath = entry.path && typeof entry.path === 'string';
+    const hasUrl = entry.url && typeof entry.url === 'string';
+
+    // Entries must have either url+branch+visibility (for git fetch) or path (for local)
+    if (!hasUrl && !hasPath) {
+      throw new Error(`Invalid manifest: repo "${alias}" missing "url" or "path"`);
     }
-    if (!entry.branch || typeof entry.branch !== 'string') {
-      throw new Error(`Invalid manifest: repo "${alias}" missing "branch"`);
+
+    if (hasUrl) {
+      if (!entry.branch || typeof entry.branch !== 'string') {
+        throw new Error(`Invalid manifest: repo "${alias}" missing "branch"`);
+      }
+      if (entry.visibility !== 'public' && entry.visibility !== 'private') {
+        throw new Error(`Invalid manifest: repo "${alias}" has invalid visibility "${entry.visibility}" (must be "public" or "private")`);
+      }
+      result[alias] = {
+        url: entry.url as string,
+        branch: entry.branch as string,
+        visibility: entry.visibility as 'public' | 'private',
+        ...(hasPath ? { path: entry.path as string } : {}),
+      };
+    } else {
+      // path-only entry (local repo, no git remote)
+      result[alias] = {
+        url: '',
+        branch: '',
+        visibility: 'private',
+        path: entry.path as string,
+      };
     }
-    if (entry.visibility !== 'public' && entry.visibility !== 'private') {
-      throw new Error(`Invalid manifest: repo "${alias}" has invalid visibility "${entry.visibility}" (must be "public" or "private")`);
-    }
-    result[alias] = {
-      url: entry.url,
-      branch: entry.branch,
-      visibility: entry.visibility,
-    };
   }
   return { name: doc.name, repos: result };
 }
@@ -142,6 +159,7 @@ export function fetchRepoPlans(
       updatedAt: new Date(0),
       fileHashes: {},
       repoAlias: alias,
+      remote: true,
     });
   }
 

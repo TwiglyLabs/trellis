@@ -44,6 +44,7 @@ export interface Plan {
   inputs?: PlanContract;
   outputs?: PlanContract;
   repoAlias?: string;
+  remote?: boolean;
 }
 
 export interface TrellisConfig {
@@ -62,6 +63,7 @@ export interface RepoEntry {
   url: string;
   branch: string;
   visibility: 'public' | 'private';
+  path?: string;
 }
 
 export interface ProjectManifest {
@@ -179,6 +181,8 @@ export interface MultiRepoEntry {
   path: string;
   planCount: number;
   configFound: boolean;
+  plansDir?: string;
+  config?: TrellisConfig;
   error?: string;
 }
 
@@ -193,6 +197,7 @@ export interface PlanSummary {
   repo?: string;
   assignee?: string;
   repoAlias?: string;
+  remote?: boolean;
   type?: string;
 }
 
@@ -266,6 +271,7 @@ export function toSummary(p: Plan): PlanSummary {
     repo: p.frontmatter.repo,
     assignee: p.frontmatter.assignee,
     repoAlias: p.repoAlias,
+    ...(p.remote ? { remote: true } : {}),
     type: p.frontmatter.type,
   };
 }

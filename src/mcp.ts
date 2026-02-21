@@ -1,8 +1,11 @@
+import { existsSync, readFileSync } from 'fs';
+import { resolve, isAbsolute, join } from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { createContext, createFileLock } from './core/index.ts';
-import type { PlanStatus } from './core/types.ts';
+import { createContext, createMultiContext, createFileLock, resolvePlanId, parseQualifiedId, parseManifest } from './core/index.ts';
+import type { PlanStatus, RepoSpec, MultiRepoEntry, TrellisConfig } from './core/types.ts';
+import type { GraphData } from './core/graph.ts';
 import { computeCreate } from './features/create/logic.ts';
 import { computeWriteSection, computeWriteSections, computeReadSection } from './features/sections/logic.ts';
 import { computeSet } from './features/set/logic.ts';
@@ -16,13 +19,158 @@ import { computeBottlenecks } from './features/bottlenecks/logic.ts';
 
 const STATUS_VALUES = ['draft', 'not_started', 'in_progress', 'done', 'archived'] as const;
 
-export function createMcpServer(): McpServer {
+/**
+ * Parse --repos flag: "alias=path,alias=path" → RepoSpec[].
+ */
+export function parseReposFlag(input: string): RepoSpec[] {
+  const specs: RepoSpec[] = [];
+  const seen = new Set<string>();
+
+  for (const pair of input.split(',')) {
+    const trimmed = pair.trim();
+    if (!trimmed) continue;
+
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) {
+      throw new Error(`Invalid repo spec "${trimmed}" — expected alias=path format.`);
+    }
+
+    const alias = trimmed.substring(0, eqIdx).trim();
+    const rawPath = trimmed.substring(eqIdx + 1).trim();
+
+    if (!alias) {
+      throw new Error(`Empty alias in repo spec "${trimmed}".`);
+    }
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(alias)) {
+      throw new Error(`Invalid alias "${alias}" — must start with a letter and contain only letters, digits, hyphens, underscores.`);
+    }
+    if (seen.has(alias)) {
+      throw new Error(`Duplicate alias "${alias}".`);
+    }
+    seen.add(alias);
+
+    const absPath = isAbsolute(rawPath) ? rawPath : resolve(rawPath);
+    if (!existsSync(absPath)) {
+      throw new Error(`Path does not exist for alias "${alias}": ${absPath}`);
+    }
+
+    specs.push({ alias, path: absPath });
+  }
+
+  if (specs.length === 0) {
+    throw new Error('No repo specs provided.');
+  }
+
+  return specs;
+}
+
+/**
+ * Load RepoSpec[] from a .trellis-project manifest, using entries that have a `path` field.
+ */
+export function loadProjectRepos(projectDir: string): RepoSpec[] {
+  const absDir = isAbsolute(projectDir) ? projectDir : resolve(projectDir);
+  const manifestPath = join(absDir, '.trellis-project');
+
+  if (!existsSync(manifestPath)) {
+    throw new Error(`No .trellis-project manifest found in ${absDir}`);
+  }
+
+  const content = readFileSync(manifestPath, 'utf8');
+  const manifest = parseManifest(content);
+
+  const specs: RepoSpec[] = [];
+  for (const [alias, entry] of Object.entries(manifest.repos)) {
+    if (!entry.path) continue;
+
+    const absPath = isAbsolute(entry.path) ? entry.path : resolve(absDir, entry.path);
+    if (!existsSync(absPath)) {
+      throw new Error(`Path does not exist for repo "${alias}": ${absPath}`);
+    }
+
+    specs.push({ alias, path: absPath });
+  }
+
+  if (specs.length === 0) {
+    throw new Error(`No repos with local "path" found in manifest at ${manifestPath}`);
+  }
+
+  return specs;
+}
+
+/** Internal context returned by getToolContext() */
+interface ToolContext {
+  plans: import('./core/types.ts').Plan[];
+  graph: GraphData;
+  isMultiRepo: boolean;
+  repoEntries?: MultiRepoEntry[];
+  getPlansDir(alias?: string): string;
+  getConfig(alias?: string): TrellisConfig;
+  projectDir?: string;
+}
+
+export interface McpServerOptions {
+  repos?: RepoSpec[];
+}
+
+export function createMcpServer(options?: McpServerOptions): McpServer {
   const server = new McpServer({
     name: 'trellis',
     version: '0.1.0',
   });
 
   const withLock = createFileLock();
+  const repos = options?.repos;
+
+  /** Build a fresh ToolContext for the current call. */
+  function getToolContext(): ToolContext {
+    if (repos) {
+      // Multi-repo mode
+      const multi = createMultiContext(repos);
+      return {
+        plans: multi.plans,
+        graph: multi.graph,
+        isMultiRepo: true,
+        repoEntries: multi.repos,
+        getPlansDir(alias?: string): string {
+          if (!alias) throw new Error('Alias required in multi-repo mode.');
+          const entry = multi.repos.find(r => r.alias === alias);
+          if (!entry) throw new Error(`Unknown repo alias "${alias}".`);
+          if (!entry.plansDir) throw new Error(`Repo "${alias}" has no plans directory.`);
+          return entry.plansDir;
+        },
+        getConfig(alias?: string): TrellisConfig {
+          if (!alias) throw new Error('Alias required in multi-repo mode.');
+          const entry = multi.repos.find(r => r.alias === alias);
+          if (!entry) throw new Error(`Unknown repo alias "${alias}".`);
+          if (!entry.config) throw new Error(`Repo "${alias}" has no config.`);
+          return entry.config;
+        },
+      };
+    }
+
+    // Single-repo mode (current behavior)
+    const ctx = createContext(process.cwd());
+    return {
+      plans: ctx.plans,
+      graph: ctx.graph,
+      isMultiRepo: false,
+      projectDir: ctx.projectDir,
+      getPlansDir(): string { return ctx.plansDir; },
+      getConfig(): TrellisConfig { return ctx.config; },
+    };
+  }
+
+  /**
+   * Resolve a plan_id in the current context.
+   * In multi-repo mode, uses resolvePlanId for qualified/unqualified resolution.
+   * In single-repo mode, returns the ID as-is.
+   */
+  function resolveId(graph: GraphData, rawId: string, isMultiRepo: boolean): { qualifiedId: string; alias?: string; localId: string } {
+    if (isMultiRepo) {
+      return resolvePlanId(graph, rawId);
+    }
+    return { qualifiedId: rawId, localId: rawId };
+  }
 
   // --- trellis_create ---
   server.registerTool('trellis_create', {
@@ -38,17 +186,37 @@ export function createMcpServer(): McpServer {
     },
   }, async ({ id, title, description, depends_on, tags, type: planType }) => {
     try {
-      const projectDir = process.cwd();
-      const ctx = createContext(projectDir);
-      const resolvedType = planType ?? ctx.config.default_plan_type;
+      const ctx = getToolContext();
+      let plansDir: string;
+      let projectDir: string | undefined;
+      let localId: string;
+
+      if (ctx.isMultiRepo) {
+        const parsed = parseQualifiedId(id);
+        if (!parsed.repo) {
+          throw new Error('In multi-repo mode, plan ID must be qualified (alias:planId).');
+        }
+        plansDir = ctx.getPlansDir(parsed.repo);
+        projectDir = ctx.repoEntries?.find(r => r.alias === parsed.repo)?.path;
+        localId = parsed.planId;
+      } else {
+        plansDir = ctx.getPlansDir();
+        projectDir = ctx.projectDir;
+        localId = id;
+      }
+
+      const config = ctx.isMultiRepo
+        ? ctx.getConfig(parseQualifiedId(id).repo)
+        : ctx.getConfig();
+      const resolvedType = planType ?? config.default_plan_type;
       const result = computeCreate(
-        { id, opts: { title, description, depends_on, tags, type: resolvedType }, plansDir: ctx.plansDir, graph: ctx.graph, projectDir },
+        { id: localId, opts: { title, description, depends_on, tags, type: resolvedType }, plansDir, graph: ctx.graph, projectDir },
         { refresh: () => {} },
       );
       return {
         content: [{
           type: 'text' as const,
-          text: JSON.stringify({ id: result.id, filePath: result.filePath }, null, 2),
+          text: JSON.stringify({ id: ctx.isMultiRepo ? id : result.id, filePath: result.filePath }, null, 2),
         }],
       };
     } catch (error) {
@@ -72,9 +240,10 @@ export function createMcpServer(): McpServer {
   }, async ({ plan_id, file, section, content }) => {
     return withLock(plan_id, () => {
       try {
-        const ctx = createContext(process.cwd());
+        const ctx = getToolContext();
+        const resolved = resolveId(ctx.graph, plan_id, ctx.isMultiRepo);
         const result = computeWriteSection(
-          { planId: plan_id, file, section, content, graph: ctx.graph },
+          { planId: resolved.qualifiedId, file, section, content, graph: ctx.graph },
           { refresh: () => {} },
         );
         return {
@@ -107,9 +276,10 @@ export function createMcpServer(): McpServer {
   }, async ({ plan_id, writes }) => {
     return withLock(plan_id, () => {
       try {
-        const ctx = createContext(process.cwd());
+        const ctx = getToolContext();
+        const resolved = resolveId(ctx.graph, plan_id, ctx.isMultiRepo);
         const result = computeWriteSections(
-          { planId: plan_id, writes, graph: ctx.graph },
+          { planId: resolved.qualifiedId, writes, graph: ctx.graph },
           { refresh: () => {} },
         );
         return {
@@ -144,8 +314,9 @@ export function createMcpServer(): McpServer {
           isError: true,
         };
       }
-      const ctx = createContext(process.cwd());
-      const result = computeReadSection({ planId: plan_id, file, section, graph: ctx.graph });
+      const ctx = getToolContext();
+      const resolved = resolveId(ctx.graph, plan_id, ctx.isMultiRepo);
+      const result = computeReadSection({ planId: resolved.qualifiedId, file, section, graph: ctx.graph });
       return {
         content: [{ type: 'text' as const, text: result.content }],
       };
@@ -170,9 +341,10 @@ export function createMcpServer(): McpServer {
   }, async ({ plan_id, field, value, mode }) => {
     return withLock(plan_id, () => {
       try {
-        const ctx = createContext(process.cwd());
+        const ctx = getToolContext();
+        const resolved = resolveId(ctx.graph, plan_id, ctx.isMultiRepo);
         const result = computeSet(
-          { planId: plan_id, field, value, mode: mode ?? 'replace', graph: ctx.graph },
+          { planId: resolved.qualifiedId, field, value, mode: mode ?? 'replace', graph: ctx.graph },
           { refresh: () => {} },
         );
         return {
@@ -207,9 +379,10 @@ export function createMcpServer(): McpServer {
   }, async ({ plan_id, status, force }) => {
     return withLock(plan_id, () => {
       try {
-        const ctx = createContext(process.cwd());
+        const ctx = getToolContext();
+        const resolved = resolveId(ctx.graph, plan_id, ctx.isMultiRepo);
         const result = computeUpdate(
-          { planId: plan_id, status: status as PlanStatus, graph: ctx.graph, force },
+          { planId: resolved.qualifiedId, status: status as PlanStatus, graph: ctx.graph, force },
           { refresh: () => {} },
         );
         return {
@@ -242,12 +415,15 @@ export function createMcpServer(): McpServer {
     },
   }, async ({ tag }) => {
     try {
-      const ctx = createContext(process.cwd());
+      const ctx = getToolContext();
+      const config = ctx.isMultiRepo
+        ? (ctx.repoEntries?.[0]?.config ?? { project: 'multi-repo', plans_dir: 'plans' })
+        : ctx.getConfig();
       const result = computeStatus({
         plans: ctx.plans,
-        config: ctx.config,
+        config,
         graph: ctx.graph,
-        filters: { tag, showDone: true, showArchived: true },
+        filters: { tag, showDone: true, showArchived: true, project: ctx.isMultiRepo },
       });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
@@ -267,10 +443,11 @@ export function createMcpServer(): McpServer {
     inputSchema: {},
   }, async () => {
     try {
-      const ctx = createContext(process.cwd());
+      const ctx = getToolContext();
       const result = computeReady({
         plans: ctx.plans,
         graph: ctx.graph,
+        filters: { project: ctx.isMultiRepo },
       });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
@@ -292,8 +469,9 @@ export function createMcpServer(): McpServer {
     },
   }, async ({ plan_id }) => {
     try {
-      const ctx = createContext(process.cwd());
-      const result = computeShow({ planId: plan_id, graph: ctx.graph });
+      const ctx = getToolContext();
+      const resolved = resolveId(ctx.graph, plan_id, ctx.isMultiRepo);
+      const result = computeShow({ planId: resolved.qualifiedId, graph: ctx.graph });
       if (!result) {
         return {
           content: [{ type: 'text' as const, text: `Plan "${plan_id}" not found` }],
@@ -318,11 +496,14 @@ export function createMcpServer(): McpServer {
     inputSchema: {},
   }, async () => {
     try {
-      const ctx = createContext(process.cwd());
+      const ctx = getToolContext();
+      const config = ctx.isMultiRepo
+        ? (ctx.repoEntries?.[0]?.config ?? { project: 'multi-repo', plans_dir: 'plans' })
+        : ctx.getConfig();
       const result = computeGraph({
         plans: ctx.plans,
         graph: ctx.graph,
-        config: ctx.config,
+        config,
       });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
@@ -344,14 +525,29 @@ export function createMcpServer(): McpServer {
     },
   }, async ({ strict }) => {
     try {
-      const ctx = createContext(process.cwd());
+      const ctx = getToolContext();
+      if (ctx.isMultiRepo) {
+        // In multi-repo mode, lint across the unified graph
+        const result = computeLint({
+          plans: ctx.plans,
+          graph: ctx.graph,
+          projectDir: ctx.repoEntries?.[0]?.path ?? '',
+          plansDir: ctx.repoEntries?.[0]?.plansDir ?? '',
+          options: { strict },
+        });
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      const singleCtx = createContext(process.cwd());
       const result = computeLint({
-        plans: ctx.plans,
-        graph: ctx.graph,
-        projectDir: ctx.projectDir,
-        plansDir: ctx.plansDir,
-        manifest: ctx.manifest,
-        projectName: ctx.config.project,
+        plans: singleCtx.plans,
+        graph: singleCtx.graph,
+        projectDir: singleCtx.projectDir,
+        plansDir: singleCtx.plansDir,
+        manifest: singleCtx.manifest,
+        projectName: singleCtx.config.project,
         options: { strict },
       });
       return {
@@ -372,11 +568,14 @@ export function createMcpServer(): McpServer {
     inputSchema: {},
   }, async () => {
     try {
-      const ctx = createContext(process.cwd());
+      const ctx = getToolContext();
+      const config = ctx.isMultiRepo
+        ? (ctx.repoEntries?.[0]?.config ?? { project: 'multi-repo', plans_dir: 'plans' })
+        : ctx.getConfig();
       const result = computeBottlenecks({
         plans: ctx.plans,
         graph: ctx.graph,
-        config: ctx.config,
+        config,
       });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
@@ -392,8 +591,8 @@ export function createMcpServer(): McpServer {
   return server;
 }
 
-export async function startMcpServer(): Promise<void> {
-  const server = createMcpServer();
+export async function startMcpServer(options?: McpServerOptions): Promise<void> {
+  const server = createMcpServer(options);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

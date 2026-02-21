@@ -103,4 +103,5 @@ export { ensureCacheDir, readCache, writeCache, isCacheStale } from './cache.ts'
 export { createFileLock } from './mutex.ts';
 
 // --- Utilities ---
-export { VALID_STATUSES, filterPlans, resolveProjectPlans, buildReposArray, validatePlanId, parseQualifiedId, pluralize } from './utils.ts';
+export type { ResolvedPlanId } from './utils.ts';
+export { VALID_STATUSES, filterPlans, resolveProjectPlans, buildReposArray, validatePlanId, parseQualifiedId, resolvePlanId, pluralize } from './utils.ts';

@@ -17,7 +17,7 @@ import { register as registerMetrics } from './features/metrics/command.ts';
 import { register as registerRecent } from './features/recent/command.ts';
 import { register as registerSetupHooks } from './features/setup-hooks/command.ts';
 import { register as registerBottlenecks } from './features/bottlenecks/command.ts';
-import { startMcpServer } from './mcp.ts';
+import { startMcpServer, parseReposFlag, loadProjectRepos } from './mcp.ts';
 
 const program = new Command();
 
@@ -48,8 +48,20 @@ registerBottlenecks(program);
 program
   .command('mcp')
   .description('Start MCP server on stdio (for Claude Code integration)')
-  .action(async () => {
-    await startMcpServer();
+  .option('--repos <repos>', 'Comma-separated alias=path pairs for multi-repo mode')
+  .option('--project <dir>', 'Path to directory containing .trellis-project manifest')
+  .action(async (opts: { repos?: string; project?: string }) => {
+    if (opts.repos && opts.project) {
+      console.error('Error: --repos and --project are mutually exclusive.');
+      process.exit(1);
+    }
+    let repos;
+    if (opts.repos) {
+      repos = parseReposFlag(opts.repos);
+    } else if (opts.project) {
+      repos = loadProjectRepos(opts.project);
+    }
+    await startMcpServer(repos ? { repos } : undefined);
   });
 
 program.parse();

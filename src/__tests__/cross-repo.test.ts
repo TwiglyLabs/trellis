@@ -18,7 +18,7 @@ import {
 import type { Plan, ProjectManifest } from '../core/types.ts';
 import { computeUpdate } from '../features/update/logic.ts';
 import { computeSet } from '../features/set/logic.ts';
-import { computeWriteSection, computeReadSection } from '../features/sections/logic.ts';
+import { computeWriteSection, computeWriteSections, computeReadSection } from '../features/sections/logic.ts';
 import { computeRename } from '../features/rename/logic.ts';
 import { computeArchive } from '../features/archive/logic.ts';
 import { computeReady } from '../features/ready/logic.ts';
@@ -33,6 +33,7 @@ function makePlan(id: string, opts: {
   status?: string;
   depends_on?: string[];
   repoAlias?: string;
+  remote?: boolean;
   tags?: string[];
 } = {}): Plan {
   return {
@@ -51,6 +52,8 @@ function makePlan(id: string, opts: {
     updatedAt: new Date(),
     fileHashes: {},
     repoAlias: opts.repoAlias,
+    // Default remote=true when repoAlias is set (simulates fetchRepoPlans behavior)
+    ...(opts.repoAlias && opts.remote !== false ? { remote: true } : {}),
   };
 }
 
@@ -323,6 +326,19 @@ describe('write operation guards', () => {
     expect(() =>
       computeWriteSection(
         { planId: 'canopy:ui-lib', file: 'readme', section: 'Problem', content: 'test', graph },
+        { refresh: () => {} },
+      )
+    ).toThrow("Cannot modify remote plan 'canopy:ui-lib'. Write operations are local only.");
+  });
+
+  it('computeWriteSections rejects remote plans', () => {
+    const remote = [makePlan('ui-lib', { repoAlias: 'canopy' })];
+    const merged = mergeWithRemote([], remote);
+    const graph = buildGraph(merged);
+
+    expect(() =>
+      computeWriteSections(
+        { planId: 'canopy:ui-lib', writes: [{ file: 'readme', section: 'Problem', content: 'test' }], graph },
         { refresh: () => {} },
       )
     ).toThrow("Cannot modify remote plan 'canopy:ui-lib'. Write operations are local only.");
