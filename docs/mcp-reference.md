@@ -1,6 +1,6 @@
 # MCP Reference
 
-Trellis exposes five tools via the [Model Context Protocol](https://modelcontextprotocol.io/) for AI agent integration. The server runs on stdio transport.
+Trellis exposes six tools via the [Model Context Protocol](https://modelcontextprotocol.io/) for AI agent integration. The server runs on stdio transport.
 
 ## Starting the Server
 
@@ -84,6 +84,50 @@ Write prose content into a specific section of a plan file. Replaces everything 
 ```
 
 If the section doesn't exist in the file, it is appended at the end. If the file doesn't exist, it is created.
+
+---
+
+### trellis_write_sections
+
+Write multiple sections to a plan in one atomic operation. Groups writes by file — each file gets a single read-modify-write cycle. Preferred over multiple `trellis_write_section` calls when writing several sections at once.
+
+**Input Schema:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `plan_id` | string | Yes | Plan ID |
+| `writes` | array | Yes | Array of section writes (min 1) |
+| `writes[].file` | enum | Yes | `readme`, `implementation`, `inputs`, or `outputs` |
+| `writes[].section` | string | Yes | Section name (e.g., `"Problem"`, `"Steps"`) |
+| `writes[].content` | string | Yes | Markdown content for the section |
+
+**Example Request:**
+
+```json
+{
+  "plan_id": "auth-system",
+  "writes": [
+    { "file": "readme", "section": "Problem", "content": "Users cannot log in.\n" },
+    { "file": "readme", "section": "Approach", "content": "Add OAuth2 with session tokens.\n" },
+    { "file": "implementation", "section": "Steps", "content": "1. Add login endpoint\n2. Add session middleware\n" }
+  ]
+}
+```
+
+**Example Response:**
+
+```json
+{
+  "id": "auth-system",
+  "writes": [
+    { "file": "readme", "section": "Problem" },
+    { "file": "readme", "section": "Approach" },
+    { "file": "implementation", "section": "Steps" }
+  ]
+}
+```
+
+This tool eliminates race conditions when writing multiple sections — all writes to the same file are applied to a single in-memory copy before writing back to disk.
 
 ---
 
