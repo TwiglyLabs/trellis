@@ -242,12 +242,15 @@ describe('computeWriteSection', () => {
     expect(content).toContain('## Done-when');
   });
 
-  it('throws for implementation file that does not exist', () => {
+  it('creates implementation file when it does not exist', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    expect(() => computeWriteSection({ planId: 'test', file: 'implementation', section: 'Steps', content: '1. Step\n', graph: ctx.graph }, { refresh: () => {} })).toThrow('does not exist');
+    const result = computeWriteSection({ planId: 'test', file: 'implementation', section: 'Steps', content: '1. Step\n', graph: ctx.graph }, { refresh: () => {} });
+    expect(result.section).toBe('Steps');
+    const content = readFileSync(join(root, 'plans', 'test', 'implementation.md'), 'utf8');
+    expect(content).toContain('1. Step');
   });
 });
 
@@ -444,22 +447,23 @@ describe('computeWriteSections', () => {
     expect(outputs).toContain('Some output');
   });
 
-  it('throws for non-existent implementation file', () => {
+  it('creates implementation file when it does not exist', () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '' },
     ]);
     const ctx = createContext(root);
 
-    expect(() =>
-      computeWriteSections(
-        {
-          planId: 'test',
-          writes: [{ file: 'implementation', section: 'Steps', content: 'stuff' }],
-          graph: ctx.graph,
-        },
-        { refresh: () => {} },
-      ),
-    ).toThrow(/does not exist/);
+    const result = computeWriteSections(
+      {
+        planId: 'test',
+        writes: [{ file: 'implementation', section: 'Steps', content: 'stuff' }],
+        graph: ctx.graph,
+      },
+      { refresh: () => {} },
+    );
+    expect(result.writes).toHaveLength(1);
+    const content = readFileSync(join(root, 'plans', 'test', 'implementation.md'), 'utf8');
+    expect(content).toContain('stuff');
   });
 
   it('throws for invalid file name', () => {

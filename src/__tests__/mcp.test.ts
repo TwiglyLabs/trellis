@@ -208,14 +208,13 @@ describe('MCP server', () => {
     expect(result.content[0].text).toContain('not found');
   });
 
-  it('trellis_write_section to implementation when file does not exist returns error', async () => {
+  it('trellis_write_section creates implementation file when it does not exist', async () => {
     const { root } = createFixture([
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     process.cwd = () => root;
 
     const server = createMcpServer();
-    // implementation.md doesn't exist — write to it should throw since it's not inputs/outputs
     const result = await callTool(server, 'trellis_write_section', {
       plan_id: 'test',
       file: 'implementation',
@@ -223,8 +222,11 @@ describe('MCP server', () => {
       content: 'Step 1\n',
     });
 
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('does not exist');
+    expect(result.isError).toBeFalsy();
+    const output = JSON.parse(result.content[0].text);
+    expect(output.section).toBe('Steps');
+    const content = readFileSync(join(root, 'plans', 'test', 'implementation.md'), 'utf8');
+    expect(content).toContain('Step 1');
   });
 
   it('trellis_read_section whole plan mode strips frontmatter', async () => {
