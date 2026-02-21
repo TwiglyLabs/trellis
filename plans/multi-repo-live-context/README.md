@@ -1,6 +1,6 @@
 ---
 title: Multi-Repo Live Context for Canopy
-status: not_started
+status: done
 description: >-
   Build unified graphs across local repos by scanning plan directories directly
   — the API Canopy needs for the big-picture view
@@ -8,6 +8,7 @@ tags:
   - foundation
   - canopy
 not_started_at: '2026-02-21T01:48:51.983Z'
+completed_at: '2026-02-21T02:32:48.919Z'
 ---
 
 ## Problem
