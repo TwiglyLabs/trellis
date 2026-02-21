@@ -1,6 +1,6 @@
 ---
 title: Fix writeSection race condition on parallel MCP writes to same file
-status: draft
+status: not_started
 description: >-
   Parallel trellis_write_section calls to the same file corrupt content — each
   reads the same state, writes independently, last writer wins and others are
@@ -8,6 +8,7 @@ description: >-
 tags:
   - bug
   - mcp
+not_started_at: '2026-02-21T00:46:09.333Z'
 ---
 
 ## Problem
@@ -24,4 +25,10 @@ The lost writes produce corrupted files: `## Heading` markers get concatenated o
 
 **Scope:** Only affects parallel writes to the same file. Parallel writes to different files (e.g., readme + implementation) are fine. Sequential writes to the same file also work correctly — the `writeSection` function itself is sound (unit tests pass).
 ## Approach
+Two complementary fixes, both in the MCP server layer (CLI is unaffected — it's sequential by nature):
 
+**1. Per-plan mutex.** A lightweight async lock keyed by plan ID serializes all concurrent writes (section writes, field sets, status updates) to the same plan. The lock lives inside `createMcpServer()` so each server instance is independent (important for test isolation). Writes to different plans proceed in parallel. The lock is a simple promise chain: each operation awaits the previous operation on the same key before proceeding.
+
+**2. Batch write tool.** A new `trellis_write_sections` MCP tool accepts an array of `{file, section, content}` writes for a single plan. Writes are grouped by file — each file gets a single read-modify-write cycle applying all section changes sequentially to the in-memory string. This eliminates the race by design (one read-modify-write per file, not N) and is more efficient (fewer filesystem calls).
+
+The mutex is the safety net (prevents data loss from any parallel write pattern). The batch tool is the efficient API (eliminates the need for parallel calls in the first place).
