@@ -1,6 +1,6 @@
 ---
 title: Plan Completeness Scoring
-status: not_started
+status: done
 description: >-
   Section depth analysis, word counts, and completeness metrics so Canopy can
   surface a needs-refinement queue
@@ -9,6 +9,8 @@ tags:
   - refinement
 depends_on: []
 not_started_at: '2026-02-21T01:48:52.428Z'
+started_at: '2026-02-21T02:47:23.596Z'
+completed_at: '2026-02-21T03:02:39.347Z'
 ---
 
 ## Problem
