@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { rmSync } from 'fs';
+import { rmSync, utimesSync } from 'fs';
+import { join } from 'path';
 import { createFixture } from './helpers.ts';
 
 import { statusCommand } from '../features/status/command.ts';
@@ -10,6 +11,7 @@ import { lintCommand } from '../features/lint/command.ts';
 import { graphCommand } from '../features/graph/command.ts';
 import { epicCommand } from '../features/epic/command.ts';
 import { chunksCommand } from '../features/chunks/command.ts';
+import { bottlenecksCommand } from '../features/bottlenecks/command.ts';
 
 /**
  * JSON Contract Tests
@@ -557,6 +559,148 @@ describe('JSON contracts', () => {
       expect(chunk).toHaveProperty('totalLines');
 
       expect(Array.isArray(chunk.plans)).toBe(true);
+    });
+  });
+
+  describe('bottlenecks --json', () => {
+    it('outputs correct top-level structure', () => {
+      const { root } = createFixture([
+        { id: 'blocker', title: 'Blocker', status: 'in_progress', started_at: '2020-01-01' },
+        { id: 'blocked-a', title: 'Blocked A', status: 'not_started', depends_on: ['blocker'] },
+        { id: 'blocked-b', title: 'Blocked B', status: 'not_started', depends_on: ['blocker'] },
+        { id: 'ready-plan', title: 'Ready Plan', status: 'not_started' },
+      ]);
+      fixtureRoot = root;
+      process.cwd = () => root;
+
+      bottlenecksCommand({ json: true });
+
+      const output = JSON.parse(logs[0]);
+
+      expect(output).toHaveProperty('highBlockingPlans');
+      expect(output).toHaveProperty('stuckPlans');
+      expect(output).toHaveProperty('stalePlans');
+      expect(output).toHaveProperty('layerPressure');
+      expect(output).toHaveProperty('healthSummary');
+
+      expect(Array.isArray(output.highBlockingPlans)).toBe(true);
+      expect(Array.isArray(output.stuckPlans)).toBe(true);
+      expect(Array.isArray(output.stalePlans)).toBe(true);
+      expect(Array.isArray(output.layerPressure)).toBe(true);
+    });
+
+    it('highBlockingPlans have correct fields', () => {
+      const { root } = createFixture([
+        { id: 'root', title: 'Root', status: 'in_progress', started_at: '2020-01-01' },
+        { id: 'child', title: 'Child', status: 'not_started', depends_on: ['root'] },
+      ]);
+      fixtureRoot = root;
+      process.cwd = () => root;
+
+      bottlenecksCommand({ json: true });
+
+      const output = JSON.parse(logs[0]);
+      expect(output.highBlockingPlans.length).toBeGreaterThan(0);
+
+      const plan = output.highBlockingPlans[0];
+      expect(plan).toHaveProperty('id');
+      expect(plan).toHaveProperty('title');
+      expect(plan).toHaveProperty('status');
+      expect(plan).toHaveProperty('blockingFactor');
+      expect(typeof plan.blockingFactor).toBe('number');
+    });
+
+    it('stuckPlans have correct fields', () => {
+      const { root } = createFixture([
+        { id: 'stuck', title: 'Stuck Plan', status: 'in_progress', started_at: '2020-01-01' },
+      ]);
+      fixtureRoot = root;
+      // Set old mtime so updatedAt is also old (stuck = stale + no recent content edits)
+      const oldDate = new Date('2020-01-02');
+      utimesSync(join(root, 'plans', 'stuck', 'README.md'), oldDate, oldDate);
+      process.cwd = () => root;
+
+      bottlenecksCommand({ json: true });
+
+      const output = JSON.parse(logs[0]);
+      expect(output.stuckPlans.length).toBeGreaterThan(0);
+
+      const plan = output.stuckPlans[0];
+      expect(plan).toHaveProperty('id');
+      expect(plan).toHaveProperty('title');
+      expect(plan).toHaveProperty('daysInStatus');
+      expect(typeof plan.daysInStatus).toBe('number');
+    });
+
+    it('stalePlans have correct fields', () => {
+      const { root } = createFixture([
+        { id: 'stale', title: 'Stale Plan', status: 'in_progress', started_at: '2020-01-01' },
+      ]);
+      fixtureRoot = root;
+      process.cwd = () => root;
+
+      bottlenecksCommand({ json: true });
+
+      const output = JSON.parse(logs[0]);
+      expect(output.stalePlans.length).toBeGreaterThan(0);
+
+      const plan = output.stalePlans[0];
+      expect(plan).toHaveProperty('id');
+      expect(plan).toHaveProperty('title');
+      expect(plan).toHaveProperty('status');
+      expect(plan).toHaveProperty('daysInStatus');
+      expect(typeof plan.daysInStatus).toBe('number');
+    });
+
+    it('layerPressure entries have correct fields', () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'A', status: 'in_progress' },
+        { id: 'b', title: 'B', status: 'not_started', depends_on: ['a'] },
+      ]);
+      fixtureRoot = root;
+      process.cwd = () => root;
+
+      bottlenecksCommand({ json: true });
+
+      const output = JSON.parse(logs[0]);
+      const layers = output.layerPressure.filter((l: any) => l.blocked > 0 || l.inProgress > 0);
+      expect(layers.length).toBeGreaterThan(0);
+
+      const layer = layers[0];
+      expect(layer).toHaveProperty('depth');
+      expect(layer).toHaveProperty('blocked');
+      expect(layer).toHaveProperty('inProgress');
+      expect(layer).toHaveProperty('ratio');
+      expect(typeof layer.depth).toBe('number');
+      expect(typeof layer.ratio).toBe('number');
+    });
+
+    it('healthSummary has correct fields', () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'A', status: 'in_progress' },
+        { id: 'b', title: 'B', status: 'not_started' },
+      ]);
+      fixtureRoot = root;
+      process.cwd = () => root;
+
+      bottlenecksCommand({ json: true });
+
+      const output = JSON.parse(logs[0]);
+      const hs = output.healthSummary;
+
+      expect(hs).toHaveProperty('totalPlans');
+      expect(hs).toHaveProperty('activePlans');
+      expect(hs).toHaveProperty('blockedPlans');
+      expect(hs).toHaveProperty('stuckPlans');
+      expect(hs).toHaveProperty('highBlockingPlans');
+      expect(hs).toHaveProperty('estimatedParallelism');
+
+      expect(typeof hs.totalPlans).toBe('number');
+      expect(typeof hs.activePlans).toBe('number');
+      expect(typeof hs.blockedPlans).toBe('number');
+      expect(typeof hs.stuckPlans).toBe('number');
+      expect(typeof hs.highBlockingPlans).toBe('number');
+      expect(typeof hs.estimatedParallelism).toBe('number');
     });
   });
 });

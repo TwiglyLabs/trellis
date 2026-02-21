@@ -59,6 +59,7 @@ export function computeBottlenecks(options: ComputeBottlenecksOptions): Bottlene
       }
     }
   }
+  stalePlans.sort((a, b) => b.daysInStatus - a.daysInStatus);
 
   // --- Stuck detection ---
   const stuckPlans: StuckPlan[] = [];

@@ -12,6 +12,7 @@ export interface FixturePlan {
   description?: string;
   assignee?: string;
   started_at?: string;
+  not_started_at?: string;
   completed_at?: string;
   body?: string;
   directory?: boolean; // ignored — all plans are directory-based now
@@ -62,6 +63,10 @@ export function createFixture(plans: FixturePlan[]): { root: string; plansDir: s
 
     if (plan.started_at) {
       fmLines.push(`started_at: '${plan.started_at}'`);
+    }
+
+    if (plan.not_started_at) {
+      fmLines.push(`not_started_at: '${plan.not_started_at}'`);
     }
 
     if (plan.completed_at) {

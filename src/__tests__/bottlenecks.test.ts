@@ -135,7 +135,7 @@ describe('computeBottlenecks', () => {
       expect(result.stalePlans[0].status).toBe('not_started');
     });
 
-    it('respects config override for thresholds', () => {
+    it('respects stale_in_progress_days config override', () => {
       const plans = [
         makePlan({ id: 'recent', status: 'in_progress', started_at: '2026-02-15' }),
       ];
@@ -145,6 +145,34 @@ describe('computeBottlenecks', () => {
 
       expect(result.stalePlans).toHaveLength(1);
       expect(result.stalePlans[0].id).toBe('recent');
+    });
+
+    it('respects stale_not_started_days config override', () => {
+      const plans = [
+        makePlan({ id: 'waiting', status: 'not_started', not_started_at: '2026-02-10' }),
+      ];
+      // 10 days old, default threshold is 30, override to 7
+      const config: TrellisConfig = { ...defaultConfig, stale_not_started_days: 7 };
+      const graph = buildGraph(plans);
+      const result = computeBottlenecks({ plans, graph, config, now: NOW });
+
+      expect(result.stalePlans).toHaveLength(1);
+      expect(result.stalePlans[0].id).toBe('waiting');
+    });
+
+    it('sorts stalePlans by daysInStatus descending', () => {
+      const plans = [
+        makePlan({ id: 'newer', status: 'in_progress', started_at: '2026-02-04' }), // 16 days
+        makePlan({ id: 'oldest', status: 'in_progress', started_at: '2026-01-20' }), // 31 days
+        makePlan({ id: 'middle', status: 'in_progress', started_at: '2026-02-01' }), // 19 days
+      ];
+      const graph = buildGraph(plans);
+      const result = computeBottlenecks({ plans, graph, config: defaultConfig, now: NOW });
+
+      expect(result.stalePlans).toHaveLength(3);
+      expect(result.stalePlans[0].id).toBe('oldest');
+      expect(result.stalePlans[1].id).toBe('middle');
+      expect(result.stalePlans[2].id).toBe('newer');
     });
   });
 
@@ -229,22 +257,23 @@ describe('computeBottlenecks', () => {
       expect(layer1!.ratio).toBe(4); // 4 / max(0, 1) = 4
     });
 
-    it('uses max(inProgress, 1) for denominator', () => {
+    it('uses max(inProgress, 1) as denominator when no plans are in_progress', () => {
+      // 'a' is in_progress at depth 0, 'b' depends on 'a' AND 'c'
+      // 'c' is not_started (no deps) so it's ready, not blocking
+      // 'b' is blocked because 'a' is not done
+      // Layer 1 has 1 blocked plan and 0 in_progress → ratio = 1/max(0,1) = 1
       const plans = [
-        makePlan({ id: 'a', status: 'done', completed_at: '2026-02-19' }),
+        makePlan({ id: 'a', status: 'in_progress' }),
         makePlan({ id: 'b', status: 'not_started', depends_on: ['a'] }),
-        makePlan({ id: 'c', status: 'not_started', depends_on: ['a'] }),
-        makePlan({ id: 'd', status: 'not_started', depends_on: ['a'] }),
       ];
       const graph = buildGraph(plans);
       const result = computeBottlenecks({ plans, graph, config: defaultConfig, now: NOW });
 
-      // Layer 1 has 3 plans (all ready, 0 blocked) — should have ratio 0
       const layer1 = result.layerPressure.find(l => l.depth === 1);
-      // These are ready, not blocked, so ratio should be 0
-      if (layer1) {
-        expect(layer1.ratio).toBe(0);
-      }
+      expect(layer1).toBeDefined();
+      expect(layer1!.blocked).toBe(1);
+      expect(layer1!.inProgress).toBe(0);
+      expect(layer1!.ratio).toBe(1); // 1 / max(0, 1) = 1
     });
 
     it('sorts layers by pressure ratio descending', () => {
