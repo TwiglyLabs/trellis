@@ -75,11 +75,9 @@ export function computeWriteSection(options: ComputeWriteSectionOptions, callbac
     let existing = '';
     if (existsSync(filePath)) {
       existing = readFileSync(filePath, 'utf8');
-    } else if (fileName === PlanFile.INPUTS || fileName === PlanFile.OUTPUTS) {
-      // Create the file
-      existing = '';
     } else {
-      throw new Error(`File ${fileName} does not exist for plan "${planId}".`);
+      // Create the file (implementation, inputs, outputs)
+      existing = '';
     }
     const updated = writeSection(existing, section, content);
     writeFileSync(filePath, updated);
@@ -142,10 +140,9 @@ export function computeWriteSections(options: ComputeWriteSectionsOptions, callb
       let existing = '';
       if (existsSync(filePath)) {
         existing = readFileSync(filePath, 'utf8');
-      } else if (fileName === PlanFile.INPUTS || fileName === PlanFile.OUTPUTS) {
-        existing = '';
       } else {
-        throw new Error(`File ${fileName} does not exist for plan "${planId}".`);
+        // Create the file (implementation, inputs, outputs)
+        existing = '';
       }
       let content = existing;
       for (const { section, content: newContent } of sections) {
