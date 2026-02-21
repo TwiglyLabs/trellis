@@ -12,6 +12,7 @@ import { computeReady } from './features/ready/logic.ts';
 import { computeShow } from './features/show/logic.ts';
 import { computeGraph } from './features/graph/logic.ts';
 import { computeLint } from './features/lint/logic.ts';
+import { computeBottlenecks } from './features/bottlenecks/logic.ts';
 
 const STATUS_VALUES = ['draft', 'not_started', 'in_progress', 'done', 'archived'] as const;
 
@@ -352,6 +353,30 @@ export function createMcpServer(): McpServer {
         manifest: ctx.manifest,
         projectName: ctx.config.project,
         options: { strict },
+      });
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
+        isError: true,
+      };
+    }
+  });
+
+  // --- trellis_bottlenecks (read-only) ---
+  server.registerTool('trellis_bottlenecks', {
+    title: 'Bottleneck Analysis',
+    description: 'Analyze project bottlenecks: blocking factors, stuck plans, staleness, queue pressure, and health summary.',
+    inputSchema: {},
+  }, async () => {
+    try {
+      const ctx = createContext(process.cwd());
+      const result = computeBottlenecks({
+        plans: ctx.plans,
+        graph: ctx.graph,
+        config: ctx.config,
       });
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],

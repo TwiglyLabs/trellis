@@ -33,6 +33,12 @@ export type {
   BlockedPlanSummary,
   CreateOptions,
   CacheEntry,
+  BlockingPlan,
+  StuckPlan,
+  StalePlan,
+  LayerPressure,
+  HealthSummary,
+  BottleneckResult,
 } from './core/index.ts';
 
 export {
@@ -101,3 +107,6 @@ export { computeRecent } from './features/recent/logic.ts';
 export type { RecentResult, RecentPlanEntry } from './features/recent/logic.ts';
 
 export { computeRecentActivity } from './recency.ts';
+
+export { computeBottlenecks } from './features/bottlenecks/logic.ts';
+export type { ComputeBottlenecksOptions } from './features/bottlenecks/logic.ts';

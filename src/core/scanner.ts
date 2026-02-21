@@ -113,6 +113,14 @@ export function parseConfigContent(content: string, cwd: string): TrellisConfig 
       }
       if (key === 'manifest') config.manifest = value;
       if (key === 'default_plan_type') config.default_plan_type = value;
+      if (key === 'stale_in_progress_days') {
+        const parsed = parseInt(value, 10);
+        if (!isNaN(parsed) && parsed > 0) config.stale_in_progress_days = parsed;
+      }
+      if (key === 'stale_not_started_days') {
+        const parsed = parseInt(value, 10);
+        if (!isNaN(parsed) && parsed > 0) config.stale_not_started_days = parsed;
+      }
       if (key.startsWith('completeness_') && (key.endsWith('_low') || key.endsWith('_high'))) {
         const parsed = parseInt(value, 10);
         if (!isNaN(parsed) && parsed > 0) {
@@ -130,6 +138,8 @@ export function parseConfigContent(content: string, cwd: string): TrellisConfig 
     manifest: config.manifest,
     completenessThresholds: config.completenessThresholds,
     default_plan_type: config.default_plan_type,
+    stale_in_progress_days: config.stale_in_progress_days,
+    stale_not_started_days: config.stale_not_started_days,
   };
 }
 

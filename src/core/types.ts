@@ -54,6 +54,8 @@ export interface TrellisConfig {
   manifest?: string;
   completenessThresholds?: Record<string, number>;
   default_plan_type?: string;
+  stale_in_progress_days?: number;
+  stale_not_started_days?: number;
 }
 
 export interface RepoEntry {
@@ -205,6 +207,53 @@ export type CreateOptions = {
   tags?: string[];
   type?: string;
 };
+
+// --- Bottleneck analysis ---
+
+export interface BlockingPlan {
+  id: string;
+  title: string;
+  status: PlanStatus;
+  blockingFactor: number;
+}
+
+export interface StuckPlan {
+  id: string;
+  title: string;
+  daysInStatus: number;
+  lastContentUpdate?: Date;
+}
+
+export interface StalePlan {
+  id: string;
+  title: string;
+  status: PlanStatus;
+  daysInStatus: number;
+}
+
+export interface LayerPressure {
+  depth: number;
+  blocked: number;
+  inProgress: number;
+  ratio: number;
+}
+
+export interface HealthSummary {
+  totalPlans: number;
+  activePlans: number;
+  blockedPlans: number;
+  stuckPlans: number;
+  highBlockingPlans: number;
+  estimatedParallelism: number;
+}
+
+export interface BottleneckResult {
+  highBlockingPlans: BlockingPlan[];
+  stuckPlans: StuckPlan[];
+  stalePlans: StalePlan[];
+  layerPressure: LayerPressure[];
+  healthSummary: HealthSummary;
+}
 
 /** Convert a Plan to a PlanSummary. */
 export function toSummary(p: Plan): PlanSummary {

@@ -1,6 +1,6 @@
 ---
 title: Bottleneck Analysis API
-status: not_started
+status: in_progress
 description: >-
   Blocking factor, staleness, queue pressure, and project health metrics beyond
   critical path
@@ -10,6 +10,7 @@ tags:
 depends_on:
   - recency-metadata
 not_started_at: '2026-02-21T01:48:50.503Z'
+started_at: '2026-02-21T03:37:47.391Z'
 ---
 
 ## Problem

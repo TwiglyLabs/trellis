@@ -21,6 +21,12 @@ export type {
   CreateOptions,
   RepoSpec,
   MultiRepoEntry,
+  BlockingPlan,
+  StuckPlan,
+  StalePlan,
+  LayerPressure,
+  HealthSummary,
+  BottleneckResult,
 } from './types.ts';
 
 export { PlanFile, SECTION_REQUIREMENTS, STATUS_GATES, toSummary } from './types.ts';

@@ -16,6 +16,7 @@ import { register as registerFetch } from './features/fetch/command.ts';
 import { register as registerMetrics } from './features/metrics/command.ts';
 import { register as registerRecent } from './features/recent/command.ts';
 import { register as registerSetupHooks } from './features/setup-hooks/command.ts';
+import { register as registerBottlenecks } from './features/bottlenecks/command.ts';
 import { startMcpServer } from './mcp.ts';
 
 const program = new Command();
@@ -42,6 +43,7 @@ registerFetch(program);
 registerRecent(program);
 registerMetrics(program);
 registerSetupHooks(program);
+registerBottlenecks(program);
 
 program
   .command('mcp')
