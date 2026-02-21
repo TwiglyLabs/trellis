@@ -7,6 +7,11 @@ import { computeCreate } from './features/create/logic.ts';
 import { computeWriteSection, computeWriteSections, computeReadSection } from './features/sections/logic.ts';
 import { computeSet } from './features/set/logic.ts';
 import { computeUpdate } from './features/update/logic.ts';
+import { computeStatus } from './features/status/logic.ts';
+import { computeReady } from './features/ready/logic.ts';
+import { computeShow } from './features/show/logic.ts';
+import { computeGraph } from './features/graph/logic.ts';
+import { computeLint } from './features/lint/logic.ts';
 
 const STATUS_VALUES = ['draft', 'not_started', 'in_progress', 'done', 'archived'] as const;
 
@@ -222,6 +227,138 @@ export function createMcpServer(): McpServer {
         };
       }
     });
+  });
+
+  // --- trellis_status (read-only) ---
+  server.registerTool('trellis_status', {
+    title: 'Plan Status',
+    description: 'Get a summary of all plans grouped by status: counts per status, and a flat list of plans with their key fields. Optional tag filter to scope to a single epic.',
+    inputSchema: {
+      tag: z.string().optional().describe('Filter plans by tag prefix (e.g. "epic:auth")'),
+    },
+  }, async ({ tag }) => {
+    try {
+      const ctx = createContext(process.cwd());
+      const result = computeStatus({
+        plans: ctx.plans,
+        config: ctx.config,
+        graph: ctx.graph,
+        filters: { tag, showDone: true, showArchived: true },
+      });
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
+        isError: true,
+      };
+    }
+  });
+
+  // --- trellis_ready (read-only) ---
+  server.registerTool('trellis_ready', {
+    title: 'Ready Plans',
+    description: 'Get plans that are ready to work on (not blocked, status is not_started). Includes the next recommendation — the highest-priority plan by forward path depth.',
+    inputSchema: {},
+  }, async () => {
+    try {
+      const ctx = createContext(process.cwd());
+      const result = computeReady({
+        plans: ctx.plans,
+        graph: ctx.graph,
+      });
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
+        isError: true,
+      };
+    }
+  });
+
+  // --- trellis_show (read-only) ---
+  server.registerTool('trellis_show', {
+    title: 'Show Plan',
+    description: 'Get full detail for a single plan: title, status, tags, assignee, dependencies, dependents, blocking status, and critical path position.',
+    inputSchema: {
+      plan_id: z.string().describe('Plan ID to show'),
+    },
+  }, async ({ plan_id }) => {
+    try {
+      const ctx = createContext(process.cwd());
+      const result = computeShow({ planId: plan_id, graph: ctx.graph });
+      if (!result) {
+        return {
+          content: [{ type: 'text' as const, text: `Plan "${plan_id}" not found` }],
+          isError: true,
+        };
+      }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
+        isError: true,
+      };
+    }
+  });
+
+  // --- trellis_graph (read-only) ---
+  server.registerTool('trellis_graph', {
+    title: 'Plan Graph',
+    description: 'Get the full dependency graph as nodes and edges. Each node has id, title, status, tags; each edge is a { from, to } dependency pair.',
+    inputSchema: {},
+  }, async () => {
+    try {
+      const ctx = createContext(process.cwd());
+      const result = computeGraph({
+        plans: ctx.plans,
+        graph: ctx.graph,
+        config: ctx.config,
+      });
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
+        isError: true,
+      };
+    }
+  });
+
+  // --- trellis_lint (read-only) ---
+  server.registerTool('trellis_lint', {
+    title: 'Lint Plans',
+    description: 'Validate plans and return issues: cycles, missing deps, frontmatter errors, orphans, status gate violations. Returns issues array and summary counts.',
+    inputSchema: {
+      strict: z.boolean().optional().describe('When true, warnings also cause ok=false'),
+    },
+  }, async ({ strict }) => {
+    try {
+      const ctx = createContext(process.cwd());
+      const result = computeLint({
+        plans: ctx.plans,
+        graph: ctx.graph,
+        projectDir: ctx.projectDir,
+        plansDir: ctx.plansDir,
+        manifest: ctx.manifest,
+        projectName: ctx.config.project,
+        options: { strict },
+      });
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
+        isError: true,
+      };
+    }
   });
 
   return server;

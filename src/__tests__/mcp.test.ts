@@ -23,7 +23,7 @@ describe('MCP server', () => {
     process.cwd = originalCwd;
   });
 
-  it('creates a server with six tools', () => {
+  it('creates a server with eleven tools', () => {
     const server = createMcpServer();
     const tools = Object.keys((server as any)._registeredTools);
     expect(tools).toContain('trellis_create');
@@ -32,7 +32,12 @@ describe('MCP server', () => {
     expect(tools).toContain('trellis_read_section');
     expect(tools).toContain('trellis_set');
     expect(tools).toContain('trellis_update');
-    expect(tools).toHaveLength(6);
+    expect(tools).toContain('trellis_status');
+    expect(tools).toContain('trellis_ready');
+    expect(tools).toContain('trellis_show');
+    expect(tools).toContain('trellis_graph');
+    expect(tools).toContain('trellis_lint');
+    expect(tools).toHaveLength(11);
   });
 
   it('trellis_create creates a plan', async () => {
@@ -408,6 +413,280 @@ describe('MCP server', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('not found');
+    });
+  });
+
+  // --- Read tools ---
+
+  describe('trellis_status', () => {
+    it('returns plans grouped by status', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nText\n' },
+        { id: 'b', title: 'Plan B', status: 'in_progress', body: '\n## Problem\nText\n' },
+        { id: 'c', title: 'Plan C', status: 'draft', body: '\n## Problem\nText\n' },
+        { id: 'd', title: 'Plan D', status: 'done', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_status', {});
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.total).toBe(4);
+      expect(output.byStatus.ready).toHaveLength(1);
+      expect(output.byStatus.ready[0].id).toBe('a');
+      expect(output.byStatus.inProgress).toHaveLength(1);
+      expect(output.byStatus.draft).toHaveLength(1);
+      expect(output.byStatus.done).toHaveLength(1);
+    });
+
+    it('filters by tag', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'not_started', tags: ['epic:auth'], body: '\n## Problem\nText\n' },
+        { id: 'b', title: 'Plan B', status: 'in_progress', tags: ['epic:auth'], body: '\n## Problem\nText\n' },
+        { id: 'c', title: 'Plan C', status: 'draft', tags: ['epic:payments'], body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_status', { tag: 'epic:auth' });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.total).toBe(2);
+    });
+
+    it('includes done and archived by default', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'done', body: '\n## Problem\nText\n' },
+        { id: 'b', title: 'Plan B', status: 'archived', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_status', {});
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.byStatus.done).toHaveLength(1);
+      expect(output.byStatus.archived).toHaveLength(1);
+    });
+  });
+
+  describe('trellis_ready', () => {
+    it('returns ready plans with next recommendation', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nText\n' },
+        { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], body: '\n## Problem\nText\n' },
+        { id: 'c', title: 'Plan C', status: 'draft', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_ready', {});
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      // Only 'a' is ready (b is blocked, c is draft)
+      expect(output.plans).toHaveLength(1);
+      expect(output.plans[0].id).toBe('a');
+      expect(output.next).toBe('a');
+    });
+
+    it('returns empty when nothing is ready', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'draft', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_ready', {});
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.plans).toHaveLength(0);
+      expect(output.next).toBeNull();
+    });
+  });
+
+  describe('trellis_show', () => {
+    it('returns full plan detail', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'done', body: '\n## Problem\nText\n' },
+        { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], tags: ['epic:auth'], assignee: 'alice', body: '\n## Problem\nB problem\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_show', { plan_id: 'b' });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.id).toBe('b');
+      expect(output.title).toBe('Plan B');
+      expect(output.status).toBe('not_started');
+      expect(output.tags).toContain('epic:auth');
+      expect(output.assignee).toBe('alice');
+      expect(output.dependsOn).toHaveLength(1);
+      expect(output.dependsOn[0].id).toBe('a');
+      expect(output.dependsOn[0].satisfied).toBe(true);
+      expect(output.ready).toBe(true);
+      expect(output.blocked).toBe(false);
+    });
+
+    it('returns error for nonexistent plan', async () => {
+      const { root } = createFixture([]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_show', { plan_id: 'ghost' });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('not found');
+    });
+
+    it('shows blocked status when deps are incomplete', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'in_progress', body: '\n## Problem\nText\n' },
+        { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_show', { plan_id: 'b' });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.blocked).toBe(true);
+      expect(output.ready).toBe(false);
+      expect(output.dependsOn[0].satisfied).toBe(false);
+    });
+  });
+
+  describe('trellis_graph', () => {
+    it('returns nodes and edges', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'done', body: '\n## Problem\nText\n' },
+        { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], body: '\n## Problem\nText\n' },
+        { id: 'c', title: 'Plan C', status: 'draft', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_graph', {});
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.nodes).toHaveLength(3);
+      expect(output.edges).toHaveLength(1);
+      expect(output.edges[0]).toEqual({ from: 'a', to: 'b' });
+      expect(output.project).toBe('test-project');
+    });
+
+    it('returns empty graph for no plans', async () => {
+      const { root } = createFixture([]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_graph', {});
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.nodes).toHaveLength(0);
+      expect(output.edges).toHaveLength(0);
+    });
+  });
+
+  describe('trellis_lint', () => {
+    it('returns ok for valid plans', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'draft', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_lint', {});
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.ok).toBe(true);
+      expect(output.total).toBe(1);
+    });
+
+    it('detects missing dependencies', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'not_started', depends_on: ['nonexistent'], body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_lint', {});
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.ok).toBe(false);
+      expect(output.errors.length).toBeGreaterThan(0);
+      expect(output.errors.some((e: any) => e.type === 'missing_dependency')).toBe(true);
+    });
+
+    it('strict mode fails on warnings', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'draft', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_lint', { strict: true });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      // Draft orphan plan generates a warning — strict makes ok=false
+      expect(output.warnings.length).toBeGreaterThan(0);
+      expect(output.ok).toBe(false);
+    });
+
+    it('detects inconsistency: done plan with incomplete dep', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'in_progress', body: '\n## Problem\nText\n' },
+        { id: 'b', title: 'Plan B', status: 'done', depends_on: ['a'], body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const result = await callTool(server, 'trellis_lint', {});
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.ok).toBe(false);
+      expect(output.errors.some((e: any) => e.type === 'inconsistency')).toBe(true);
+    });
+  });
+
+  describe('read tool context freshness', () => {
+    it('each call gets fresh context reflecting filesystem changes', async () => {
+      const { root, plansDir } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+
+      // First call: one ready plan
+      const r1 = await callTool(server, 'trellis_ready', {});
+      const out1 = JSON.parse(r1.content[0].text);
+      expect(out1.plans).toHaveLength(1);
+
+      // Add another plan to filesystem
+      const newPlanDir = join(plansDir, 'b');
+      const { mkdirSync, writeFileSync } = await import('fs');
+      mkdirSync(newPlanDir, { recursive: true });
+      writeFileSync(join(newPlanDir, 'README.md'), '---\ntitle: Plan B\nstatus: not_started\n---\n\n## Problem\nText\n');
+
+      // Second call: two ready plans
+      const r2 = await callTool(server, 'trellis_ready', {});
+      const out2 = JSON.parse(r2.content[0].text);
+      expect(out2.plans).toHaveLength(2);
     });
   });
 
