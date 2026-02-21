@@ -8,16 +8,18 @@ export function register(program: Command): void {
     .command('create <id>')
     .description('Scaffold a new plan directory')
     .requiredOption('-t, --title <title>', 'Plan title')
+    .option('--type <type>', 'Template type (feature, bugfix, refactor, investigation)')
     .option('--depends-on <ids...>', 'Plan IDs this depends on')
     .option('--tags <tags...>', 'Freeform tags')
     .option('-d, --description <desc>', 'One-line description')
     .option('--json', 'Output as JSON')
-    .addHelpText('after', '\nExamples:\n  $ trellis create my-plan --title "My Plan"\n  $ trellis create my-plan --title "Plan" --depends-on core-types --tags foundation')
+    .addHelpText('after', '\nExamples:\n  $ trellis create my-plan --title "My Plan"\n  $ trellis create my-plan --title "Plan" --type bugfix\n  $ trellis create my-plan --title "Plan" --depends-on core-types --tags foundation')
     .action((id, options) => createCommand(id, options));
 }
 
 interface CreateOptions {
   title: string;
+  type?: string;
   dependsOn?: string[];
   tags?: string[];
   description?: string;
@@ -25,7 +27,11 @@ interface CreateOptions {
 }
 
 export function createCommand(id: string, options: CreateOptions): void {
-  const ctx = createContext(process.cwd());
+  const projectDir = process.cwd();
+  const ctx = createContext(projectDir);
+
+  // Resolve type: explicit flag > config default > undefined
+  const type = options.type ?? ctx.config.default_plan_type;
 
   try {
     const result = computeCreate(
@@ -36,9 +42,11 @@ export function createCommand(id: string, options: CreateOptions): void {
           description: options.description,
           depends_on: options.dependsOn,
           tags: options.tags,
+          type,
         },
         plansDir: ctx.plansDir,
         graph: ctx.graph,
+        projectDir,
       },
       { refresh: () => {} },
     );

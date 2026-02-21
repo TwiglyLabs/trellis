@@ -3,6 +3,7 @@ import { join, basename } from 'path';
 import type { Command } from 'commander';
 import { setupHooks } from '../setup-hooks/logic.ts';
 import { prompt, setupMcpJson } from './logic.ts';
+import { writeBuiltInTemplates } from '../../templates.ts';
 
 const TRELLIS_GITIGNORE = 'cache/\n';
 
@@ -25,6 +26,13 @@ export async function initCommand(options?: { yes?: boolean }): Promise<void> {
     if (stat.isDirectory()) {
       // Already migrated to directory format
       console.log('.trellis/ already exists');
+
+      // Backfill any missing built-in templates
+      const written = writeBuiltInTemplates(cwd);
+      if (written.length > 0) {
+        console.log(`Created ${written.length} plan templates in .trellis/templates/`);
+      }
+
       setupMcpJson(cwd);
       const hookResult = setupHooks(cwd);
       for (const msg of hookResult.messages) {
@@ -56,6 +64,12 @@ export async function initCommand(options?: { yes?: boolean }): Promise<void> {
     writeFileSync(join(trellisPath, '.gitignore'), TRELLIS_GITIGNORE);
     console.log('Migrated .trellis file to .trellis/ directory format.');
 
+    // Write built-in plan templates
+    const written = writeBuiltInTemplates(cwd);
+    if (written.length > 0) {
+      console.log(`Created ${written.length} plan templates in .trellis/templates/`);
+    }
+
     setupMcpJson(cwd);
     const hookResult = setupHooks(cwd);
     for (const msg of hookResult.messages) {
@@ -85,6 +99,12 @@ export async function initCommand(options?: { yes?: boolean }): Promise<void> {
 
   mkdirSync(join(cwd, plansDir), { recursive: true });
   console.log(`Created .trellis/ and ${plansDir}/`);
+
+  // Write built-in plan templates
+  const written = writeBuiltInTemplates(cwd);
+  if (written.length > 0) {
+    console.log(`Created ${written.length} plan templates in .trellis/templates/`);
+  }
 
   setupMcpJson(cwd);
 

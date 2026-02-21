@@ -1,12 +1,13 @@
 ---
 title: Plan Templates by Type
-status: not_started
+status: in_progress
 description: >-
   Template system for different plan types (feature, bugfix, refactor,
   investigation) with tailored section scaffolds
 tags:
   - refinement
 not_started_at: '2026-02-21T01:48:52.973Z'
+started_at: '2026-02-21T03:07:55.004Z'
 ---
 
 ## Problem

@@ -33,12 +33,15 @@ export function createMcpServer(): McpServer {
       description: z.string().optional().describe('One-line description'),
       depends_on: z.array(z.string()).optional().describe('Plan IDs this depends on'),
       tags: z.array(z.string()).optional().describe('Freeform tags'),
+      type: z.string().optional().describe('Template type (feature, bugfix, refactor, investigation)'),
     },
-  }, async ({ id, title, description, depends_on, tags }) => {
+  }, async ({ id, title, description, depends_on, tags, type: planType }) => {
     try {
-      const ctx = createContext(process.cwd());
+      const projectDir = process.cwd();
+      const ctx = createContext(projectDir);
+      const resolvedType = planType ?? ctx.config.default_plan_type;
       const result = computeCreate(
-        { id, opts: { title, description, depends_on, tags }, plansDir: ctx.plansDir, graph: ctx.graph },
+        { id, opts: { title, description, depends_on, tags, type: resolvedType }, plansDir: ctx.plansDir, graph: ctx.graph, projectDir },
         { refresh: () => {} },
       );
       return {

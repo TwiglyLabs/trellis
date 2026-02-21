@@ -9,7 +9,7 @@ export interface SetResult {
   previousValue: string | string[] | undefined;
 }
 
-const EDITABLE_FIELDS = ['title', 'description', 'depends_on', 'tags', 'repo', 'assignee', 'sessions', 'deviation'] as const;
+const EDITABLE_FIELDS = ['title', 'description', 'depends_on', 'tags', 'repo', 'assignee', 'sessions', 'deviation', 'type'] as const;
 const LIST_FIELDS = ['depends_on', 'tags'] as const;
 
 export interface ComputeSetOptions {

@@ -16,6 +16,7 @@ export interface ShowResult {
   blocked: boolean;
   ready: boolean;
   tags: string[];
+  type?: string;
   repo?: string;
   assignee?: string;
   description?: string;
@@ -54,6 +55,7 @@ export function computeShow(opts: ComputeShowOptions): ShowResult | null {
     blocked: graph.blocked.has(planId),
     ready: graph.ready.has(planId),
     tags: fm.tags ?? [],
+    type: fm.type,
     repo: fm.repo,
     assignee: fm.assignee,
     description: fm.description,

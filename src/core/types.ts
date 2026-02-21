@@ -15,6 +15,7 @@ export interface PlanFrontmatter {
   not_started_at?: string;
   sessions?: number;
   deviation?: Deviation;
+  type?: string;
 }
 
 export interface ContractSection {
@@ -50,6 +51,7 @@ export interface TrellisConfig {
   chunk_strategy?: 'directory' | 'topological';
   manifest?: string;
   completenessThresholds?: Record<string, number>;
+  default_plan_type?: string;
 }
 
 export interface RepoEntry {
@@ -181,6 +183,7 @@ export interface PlanSummary {
   repo?: string;
   assignee?: string;
   repoAlias?: string;
+  type?: string;
 }
 
 export interface BlockedPlanSummary extends PlanSummary {
@@ -192,6 +195,7 @@ export type CreateOptions = {
   description?: string;
   depends_on?: string[];
   tags?: string[];
+  type?: string;
 };
 
 /** Convert a Plan to a PlanSummary. */
@@ -205,5 +209,6 @@ export function toSummary(p: Plan): PlanSummary {
     repo: p.frontmatter.repo,
     assignee: p.frontmatter.assignee,
     repoAlias: p.repoAlias,
+    type: p.frontmatter.type,
   };
 }

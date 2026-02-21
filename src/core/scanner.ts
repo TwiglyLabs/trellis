@@ -91,6 +91,7 @@ export function parseConfigContent(content: string, cwd: string): TrellisConfig 
         config.chunk_strategy = value;
       }
       if (key === 'manifest') config.manifest = value;
+      if (key === 'default_plan_type') config.default_plan_type = value;
       if (key.startsWith('completeness_') && (key.endsWith('_low') || key.endsWith('_high'))) {
         const parsed = parseInt(value, 10);
         if (!isNaN(parsed) && parsed > 0) {
@@ -107,6 +108,7 @@ export function parseConfigContent(content: string, cwd: string): TrellisConfig 
     chunk_strategy: config.chunk_strategy,
     manifest: config.manifest,
     completenessThresholds: config.completenessThresholds,
+    default_plan_type: config.default_plan_type,
   };
 }
 
