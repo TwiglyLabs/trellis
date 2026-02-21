@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createContext, createFileLock } from './core/index.ts';
 import type { PlanStatus } from './core/types.ts';
 import { computeCreate } from './features/create/logic.ts';
-import { computeWriteSection, computeReadSection } from './features/sections/logic.ts';
+import { computeWriteSection, computeWriteSections, computeReadSection } from './features/sections/logic.ts';
 import { computeSet } from './features/set/logic.ts';
 import { computeUpdate } from './features/update/logic.ts';
 
@@ -72,6 +72,41 @@ export function createMcpServer(): McpServer {
           content: [{
             type: 'text' as const,
             text: JSON.stringify({ id: result.id, file: result.file, section: result.section }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
+          isError: true,
+        };
+      }
+    });
+  });
+
+  // --- trellis_write_sections ---
+  server.registerTool('trellis_write_sections', {
+    title: 'Write Sections (Batch)',
+    description: 'Write multiple sections to a plan in one atomic operation. Groups writes by file — each file gets a single read-modify-write. Preferred over multiple trellis_write_section calls.',
+    inputSchema: {
+      plan_id: z.string().describe('Plan ID'),
+      writes: z.array(z.object({
+        file: z.enum(['readme', 'implementation', 'inputs', 'outputs']).describe('Target file'),
+        section: z.string().describe('Section name (## heading)'),
+        content: z.string().describe('Markdown content for the section'),
+      })).min(1).describe('Section writes to apply'),
+    },
+  }, async ({ plan_id, writes }) => {
+    return withLock(plan_id, () => {
+      try {
+        const ctx = createContext(process.cwd());
+        const result = computeWriteSections(
+          { planId: plan_id, writes, graph: ctx.graph },
+          { refresh: () => {} },
+        );
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify(result, null, 2),
           }],
         };
       } catch (error) {

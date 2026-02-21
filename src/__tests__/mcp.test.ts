@@ -23,15 +23,16 @@ describe('MCP server', () => {
     process.cwd = originalCwd;
   });
 
-  it('creates a server with five tools', () => {
+  it('creates a server with six tools', () => {
     const server = createMcpServer();
     const tools = Object.keys((server as any)._registeredTools);
     expect(tools).toContain('trellis_create');
     expect(tools).toContain('trellis_write_section');
+    expect(tools).toContain('trellis_write_sections');
     expect(tools).toContain('trellis_read_section');
     expect(tools).toContain('trellis_set');
     expect(tools).toContain('trellis_update');
-    expect(tools).toHaveLength(5);
+    expect(tools).toHaveLength(6);
   });
 
   it('trellis_create creates a plan', async () => {
@@ -338,6 +339,76 @@ describe('MCP server', () => {
     const output = JSON.parse(result.content[0].text);
     expect(output.previous_status).toBe('in_progress');
     expect(output.status).toBe('draft');
+  });
+
+  describe('trellis_write_sections', () => {
+    it('writes multiple sections to a plan', async () => {
+      const { root } = createFixture([
+        { id: 'test', title: 'Test', status: 'draft',
+          body: '\n## Problem\n\n\n## Approach\n\n\n' },
+      ]);
+      process.cwd = () => root;
+      const server = createMcpServer();
+
+      const result = await callTool(server, 'trellis_write_sections', {
+        plan_id: 'test',
+        writes: [
+          { file: 'readme', section: 'Problem', content: 'Batch problem' },
+          { file: 'readme', section: 'Approach', content: 'Batch approach' },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(result.content[0].text);
+      expect(output.id).toBe('test');
+      expect(output.writes).toHaveLength(2);
+
+      const content = readFileSync(join(root, 'plans', 'test', 'README.md'), 'utf8');
+      expect(content).toContain('Batch problem');
+      expect(content).toContain('Batch approach');
+    });
+
+    it('writes to multiple files atomically', async () => {
+      const { root } = createFixture([
+        { id: 'test', title: 'Test', status: 'draft',
+          body: '\n## Problem\nOld\n',
+          implementationMd: '## Steps\nOld\n## Testing\nOld\n' },
+      ]);
+      process.cwd = () => root;
+      const server = createMcpServer();
+
+      const result = await callTool(server, 'trellis_write_sections', {
+        plan_id: 'test',
+        writes: [
+          { file: 'readme', section: 'Problem', content: 'New problem' },
+          { file: 'implementation', section: 'Steps', content: 'Step 1\nStep 2' },
+          { file: 'implementation', section: 'Testing', content: 'Test plan' },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+
+      const readme = readFileSync(join(root, 'plans', 'test', 'README.md'), 'utf8');
+      expect(readme).toContain('New problem');
+
+      const impl = readFileSync(join(root, 'plans', 'test', 'implementation.md'), 'utf8');
+      expect(impl).toContain('Step 1\nStep 2');
+      expect(impl).toContain('Test plan');
+    });
+
+    it('returns error for non-existent plan', async () => {
+      const { root } = createFixture([]);
+      process.cwd = () => root;
+      const server = createMcpServer();
+
+      const result = await callTool(server, 'trellis_write_sections', {
+        plan_id: 'nope',
+        writes: [{ file: 'readme', section: 'Problem', content: 'X' }],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('not found');
+    });
   });
 
   describe('concurrent write safety', () => {
