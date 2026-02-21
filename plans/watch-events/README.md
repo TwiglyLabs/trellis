@@ -1,6 +1,6 @@
 ---
 title: Watch Events with Typed Emissions
-status: not_started
+status: done
 description: >-
   Upgrade existing fs.watch watcher with granular typed events, content hashing
   to suppress phantom rebuilds, and debounced batch emission
@@ -10,6 +10,7 @@ tags:
   - canopy
   - performance
 not_started_at: '2026-02-21T01:48:53.620Z'
+completed_at: '2026-02-21T03:55:56.269Z'
 ---
 
 ## Problem

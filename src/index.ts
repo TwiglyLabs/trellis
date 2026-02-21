@@ -110,3 +110,7 @@ export { computeRecentActivity } from './recency.ts';
 
 export { computeBottlenecks } from './features/bottlenecks/logic.ts';
 export type { ComputeBottlenecksOptions } from './features/bottlenecks/logic.ts';
+
+// --- Watch ---
+export { watchPlans, unwatchPlans, watchMultiRepo } from './features/watch/logic.ts';
+export type { PlanFileKind, PlanChangeEvent, PlanChangeBatch, WatchHandle } from './features/watch/types.ts';
