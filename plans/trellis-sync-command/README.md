@@ -1,6 +1,6 @@
 ---
 title: 'trellis sync: explicit remote fetch command'
-status: not_started
+status: done
 description: >-
   New CLI command that fetches all remotes in parallel, updates the index cache.
   Decouples network I/O from reads.
@@ -9,6 +9,8 @@ tags:
   - 'epic:perf-cache'
 type: feature
 not_started_at: '2026-02-21T23:46:54.727Z'
+started_at: '2026-02-22T14:08:47.232Z'
+completed_at: '2026-02-22T14:47:30.861Z'
 ---
 
 ## Problem
