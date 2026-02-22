@@ -1,99 +1,19 @@
-import { execFile } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { parseManifest } from '../../core/manifest.ts';
-import { parseFrontmatter } from '../../core/frontmatter.ts';
+import {
+  parseManifest,
+  type AsyncGitExecutor,
+  defaultAsyncGit,
+  discoverManifestAsync,
+  fetchRepoPlansAsync,
+} from '../../core/manifest.ts';
 import { loadConfig, scanPlans } from '../../core/scanner.ts';
 import { writeCache } from '../../core/cache.ts';
-import type { Plan, ProjectManifest, RepoEntry, TrellisConfig } from '../../core/types.ts';
+import type { Plan, ProjectManifest, TrellisConfig } from '../../core/types.ts';
 
-// --- Async git executor ---
-
-export interface AsyncGitExecutor {
-  (args: string[], cwd: string): Promise<string | null>;
-}
-
-export const defaultAsyncGit: AsyncGitExecutor = (args: string[], cwd: string): Promise<string | null> => {
-  return new Promise((resolve) => {
-    execFile('git', args, { cwd, encoding: 'utf8', timeout: 30_000 }, (err, stdout) => {
-      if (err) {
-        resolve(null);
-      } else {
-        resolve(stdout);
-      }
-    });
-  });
-};
-
-// --- Async git helpers (mirror manifest.ts but async) ---
-
-async function ensureRemoteAsync(name: string, url: string, cwd: string, git: AsyncGitExecutor): Promise<void> {
-  const result = await git(['remote', 'get-url', name], cwd);
-  if (result === null) {
-    await git(['remote', 'add', name, url], cwd);
-  } else if (result.trim() !== url) {
-    await git(['remote', 'set-url', name, url], cwd);
-  }
-}
-
-async function fetchRemoteAsync(name: string, cwd: string, git: AsyncGitExecutor): Promise<{ ok: boolean; error?: string }> {
-  const result = await git(['fetch', name], cwd);
-  if (result === null) {
-    return { ok: false, error: `Failed to fetch remote "${name}"` };
-  }
-  return { ok: true };
-}
-
-async function gitShowAsync(ref: string, cwd: string, git: AsyncGitExecutor): Promise<string | null> {
-  return git(['show', ref], cwd);
-}
-
-async function gitListTreeAsync(ref: string, cwd: string, git: AsyncGitExecutor): Promise<string[]> {
-  const result = await git(['ls-tree', '-d', '--name-only', ref], cwd);
-  if (result === null) return [];
-  return result.split('\n').filter(Boolean);
-}
-
-async function fetchRepoPlansAsync(
-  alias: string,
-  entry: RepoEntry,
-  cwd: string,
-  git: AsyncGitExecutor,
-): Promise<{ plans: Plan[]; fetchFailed: boolean; error?: string }> {
-  const remoteName = `trellis/${alias}`;
-  await ensureRemoteAsync(remoteName, entry.url, cwd, git);
-  const fetchResult = await fetchRemoteAsync(remoteName, cwd, git);
-  if (!fetchResult.ok) {
-    return { plans: [], fetchFailed: true, error: fetchResult.error };
-  }
-
-  const ref = `${remoteName}/${entry.branch}`;
-  const dirs = await gitListTreeAsync(`${ref}:plans`, cwd, git);
-  const plans: Plan[] = [];
-
-  for (const dir of dirs) {
-    const readmeRef = `${ref}:plans/${dir}/README.md`;
-    const content = await gitShowAsync(readmeRef, cwd, git);
-    if (!content) continue;
-
-    const result = parseFrontmatter(content);
-    if (!result) continue;
-
-    plans.push({
-      id: dir,
-      filePath: `${ref}:plans/${dir}/README.md`,
-      frontmatter: result.frontmatter,
-      body: result.body,
-      lineCount: content.split('\n').length,
-      updatedAt: new Date(0),
-      fileHashes: {},
-      repoAlias: alias,
-      remote: true,
-    });
-  }
-
-  return { plans, fetchFailed: false };
-}
+// Re-export for backward compatibility
+export type { AsyncGitExecutor } from '../../core/manifest.ts';
+export { defaultAsyncGit } from '../../core/manifest.ts';
 
 // --- Concurrency pool ---
 
@@ -123,26 +43,6 @@ export function resolveLocalManifest(projectDir: string): ProjectManifest | null
   if (!existsSync(manifestPath)) return null;
   try {
     const content = readFileSync(manifestPath, 'utf8');
-    return parseManifest(content);
-  } catch {
-    return null;
-  }
-}
-
-async function discoverManifestAsync(
-  manifestUrl: string,
-  cwd: string,
-  git: AsyncGitExecutor,
-): Promise<ProjectManifest | null> {
-  const remoteName = 'trellis/__manifest';
-  await ensureRemoteAsync(remoteName, manifestUrl, cwd, git);
-  const fetchResult = await fetchRemoteAsync(remoteName, cwd, git);
-  if (!fetchResult.ok) return null;
-
-  const content = await gitShowAsync(`${remoteName}/main:.trellis-project`, cwd, git);
-  if (!content) return null;
-
-  try {
     return parseManifest(content);
   } catch {
     return null;

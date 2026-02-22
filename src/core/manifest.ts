@@ -1,6 +1,7 @@
 import yaml from 'js-yaml';
-import { execFileSync } from 'child_process';
+import { execFileSync, execFile } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
+import { readFile, access } from 'fs/promises';
 import { resolve, dirname, isAbsolute } from 'path';
 import { homedir } from 'os';
 import { parseFrontmatter } from './frontmatter.ts';
@@ -288,6 +289,161 @@ export function resolveProjectRepos(manifestPath: string): ResolvedRepo[] {
       visibility: entry.visibility,
       localPath,
       exists: existsSync(localPath),
+    });
+  }
+
+  return results;
+}
+
+// --- Async git executor ---
+
+export interface AsyncGitExecutor {
+  (args: string[], cwd: string): Promise<string | null>;
+}
+
+export const defaultAsyncGit: AsyncGitExecutor = (args: string[], cwd: string): Promise<string | null> => {
+  return new Promise((resolve) => {
+    execFile('git', args, { cwd, encoding: 'utf8', timeout: 30_000 }, (err, stdout) => {
+      if (err) {
+        resolve(null);
+      } else {
+        resolve(stdout);
+      }
+    });
+  });
+};
+
+// --- Async git helpers ---
+
+export async function ensureRemoteAsync(name: string, url: string, cwd: string, git: AsyncGitExecutor = defaultAsyncGit): Promise<void> {
+  const result = await git(['remote', 'get-url', name], cwd);
+  if (result === null) {
+    await git(['remote', 'add', name, url], cwd);
+  } else if (result.trim() !== url) {
+    await git(['remote', 'set-url', name, url], cwd);
+  }
+}
+
+export async function fetchRemoteAsync(name: string, cwd: string, git: AsyncGitExecutor = defaultAsyncGit): Promise<{ ok: boolean; error?: string }> {
+  const result = await git(['fetch', name], cwd);
+  if (result === null) {
+    return { ok: false, error: `Failed to fetch remote "${name}"` };
+  }
+  return { ok: true };
+}
+
+export async function gitShowAsync(ref: string, cwd: string, git: AsyncGitExecutor = defaultAsyncGit): Promise<string | null> {
+  return git(['show', ref], cwd);
+}
+
+export async function gitListTreeAsync(ref: string, cwd: string, git: AsyncGitExecutor = defaultAsyncGit): Promise<string[]> {
+  const result = await git(['ls-tree', '-d', '--name-only', ref], cwd);
+  if (result === null) return [];
+  return result.split('\n').filter(Boolean);
+}
+
+export async function discoverManifestAsync(
+  manifestUrl: string,
+  cwd: string,
+  git: AsyncGitExecutor = defaultAsyncGit,
+): Promise<ProjectManifest | null> {
+  const remoteName = 'trellis/__manifest';
+  await ensureRemoteAsync(remoteName, manifestUrl, cwd, git);
+  const fetchResult = await fetchRemoteAsync(remoteName, cwd, git);
+  if (!fetchResult.ok) return null;
+
+  const content = await gitShowAsync(`${remoteName}/main:.trellis-project`, cwd, git);
+  if (!content) return null;
+
+  try {
+    return parseManifest(content);
+  } catch {
+    return null;
+  }
+}
+
+export interface AsyncFetchRepoResult {
+  plans: Plan[];
+  fetchFailed: boolean;
+  error?: string;
+}
+
+export async function fetchRepoPlansAsync(
+  alias: string,
+  entry: RepoEntry,
+  cwd: string,
+  git: AsyncGitExecutor = defaultAsyncGit,
+): Promise<AsyncFetchRepoResult> {
+  const remoteName = `trellis/${alias}`;
+  await ensureRemoteAsync(remoteName, entry.url, cwd, git);
+  const fetchResult = await fetchRemoteAsync(remoteName, cwd, git);
+  if (!fetchResult.ok) {
+    return { plans: [], fetchFailed: true, error: fetchResult.error };
+  }
+
+  const ref = `${remoteName}/${entry.branch}`;
+  const dirs = await gitListTreeAsync(`${ref}:plans`, cwd, git);
+  const plans: Plan[] = [];
+
+  for (const dir of dirs) {
+    const readmeRef = `${ref}:plans/${dir}/README.md`;
+    const content = await gitShowAsync(readmeRef, cwd, git);
+    if (!content) continue;
+
+    const result = parseFrontmatter(content);
+    if (!result) continue;
+
+    plans.push({
+      id: dir,
+      filePath: `${ref}:plans/${dir}/README.md`,
+      frontmatter: result.frontmatter,
+      body: result.body,
+      lineCount: content.split('\n').length,
+      updatedAt: new Date(0),
+      fileHashes: {},
+      repoAlias: alias,
+      remote: true,
+    });
+  }
+
+  return { plans, fetchFailed: false };
+}
+
+export async function resolveProjectReposAsync(manifestPath: string): Promise<ResolvedRepo[]> {
+  const absManifestPath = isAbsolute(manifestPath) ? manifestPath : resolve(manifestPath);
+  const content = await readFile(absManifestPath, 'utf8');
+  const manifest = parseManifest(content);
+
+  const baseDir = manifest.base_dir
+    ? expandTilde(manifest.base_dir)
+    : dirname(absManifestPath);
+
+  const results: ResolvedRepo[] = [];
+  for (const [alias, entry] of Object.entries(manifest.repos)) {
+    if (!entry.path) continue;
+
+    const localPath = isAbsolute(entry.path)
+      ? entry.path
+      : resolve(baseDir, entry.path);
+
+    let exists = false;
+    try {
+      await access(localPath);
+      exists = true;
+    } catch {
+      // path doesn't exist
+    }
+
+    results.push({
+      alias,
+      name: entry.name ?? alias,
+      description: entry.description ?? '',
+      tags: entry.tags ?? [],
+      url: entry.url,
+      branch: entry.branch,
+      visibility: entry.visibility,
+      localPath,
+      exists,
     });
   }
 

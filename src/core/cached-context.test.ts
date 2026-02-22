@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, utimesSync, renameSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { createCachedContext } from './cached-context.ts';
+import { createCachedContext, createCachedContextAsync } from './cached-context.ts';
 import { createContext } from './context.ts';
 import { createFixture } from '../__tests__/helpers.ts';
 
@@ -585,5 +585,208 @@ describe('createCachedContext with project_root', () => {
 
     expect(ctx2.plans.length).toBe(ctx1.plans.length);
     expect(ctx2.plans.map(p => p.id).sort()).toEqual(ctx1.plans.map(p => p.id).sort());
+  });
+});
+
+// --- Async variant ---
+
+describe('createCachedContextAsync', () => {
+  it('matches sync createCachedContext output', async () => {
+    const { root } = createSingleRepoFixture(3);
+
+    const { ctx: syncCtx } = createCachedContext(root);
+    const { ctx: asyncCtx } = await createCachedContextAsync(root);
+
+    expect(asyncCtx.plans.map(p => p.id).sort()).toEqual(syncCtx.plans.map(p => p.id).sort());
+    expect(asyncCtx.graph.plans.size).toBe(syncCtx.graph.plans.size);
+    expect([...asyncCtx.graph.ready].sort()).toEqual([...syncCtx.graph.ready].sort());
+    expect([...asyncCtx.graph.blocked].sort()).toEqual([...syncCtx.graph.blocked].sort());
+    expect(asyncCtx.isProjectMode).toBe(false);
+  });
+
+  it('cold start output matches createContext', async () => {
+    const { root } = createSingleRepoFixture(3);
+
+    const { ctx: cached } = await createCachedContextAsync(root);
+    const direct = createContext(root, { offline: true });
+
+    expect(cached.plans.map(p => p.id).sort()).toEqual(direct.plans.map(p => p.id).sort());
+    expect(cached.graph.plans.size).toBe(direct.graph.plans.size);
+  });
+
+  it('--no-cache forces full rescan', async () => {
+    const { root } = createSingleRepoFixture(2);
+
+    const { persist } = await createCachedContextAsync(root);
+    await persist();
+
+    const scanSpy = vi.spyOn(await import('./scanner.ts'), 'scanPlansAsync');
+
+    await createCachedContextAsync(root, { noCache: true });
+
+    expect(scanSpy).toHaveBeenCalled();
+    scanSpy.mockRestore();
+  });
+
+  it('persist and warm cache round-trip', async () => {
+    const { root } = createSingleRepoFixture(3);
+
+    const { ctx: ctx1, persist } = await createCachedContextAsync(root);
+    await persist();
+
+    // Second call (sync) should use cache from async persist
+    const { ctx: ctx2 } = createCachedContext(root);
+
+    expect(ctx2.plans.map(p => p.id).sort()).toEqual(ctx1.plans.map(p => p.id).sort());
+  });
+
+  it('project mode via manifest', async () => {
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth\n\n## Approach\nJWT\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'ui', title: 'UI', status: 'not_started', body: '\n## Problem\nUI\n\n## Approach\nReact\n' },
+    ]);
+
+    writeFileSync(
+      join(alpha.root, '.trellis', 'config'),
+      `project: alpha\nplans_dir: plans\nmanifest: https://example.com/manifest.git\n`,
+    );
+    writeFileSync(
+      join(alpha.root, '.trellis-project'),
+      [
+        'name: test-project',
+        'repos:',
+        '  alpha:',
+        `    path: ${alpha.root}`,
+        '  beta:',
+        `    path: ${beta.root}`,
+      ].join('\n'),
+    );
+
+    const { ctx } = await createCachedContextAsync(alpha.root);
+
+    expect(ctx.plans.length).toBe(2);
+    expect(ctx.isProjectMode).toBe(true);
+    const ids = ctx.plans.map(p => p.id);
+    expect(ids).toContain('alpha:auth');
+    expect(ids).toContain('beta:ui');
+  });
+
+  function setupAsyncProjectRootFixture() {
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth\n\n## Approach\nJWT\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'ui', title: 'UI', status: 'not_started', body: '\n## Problem\nUI\n\n## Approach\nReact\n' },
+      { id: 'dashboard', title: 'Dashboard', status: 'not_started', depends_on: ['alpha:auth'], body: '\n## Problem\nDash\n\n## Approach\nBuild\n' },
+    ]);
+    const metaRoot = mkdtempSync(join(tmpdir(), 'trellis-meta-'));
+    const manifest = [
+      'name: test-project',
+      'repos:',
+      '  alpha:',
+      `    path: ${alpha.root}`,
+      '  beta:',
+      `    path: ${beta.root}`,
+    ].join('\n');
+    writeFileSync(join(metaRoot, '.trellis-project'), manifest);
+    writeFileSync(
+      join(alpha.root, '.trellis', 'config'),
+      `project: alpha\nplans_dir: plans\nproject_root: ${metaRoot}\n`,
+    );
+    return { alpha, beta, metaRoot };
+  }
+
+  it('enters project mode via project_root', async () => {
+    const { alpha } = setupAsyncProjectRootFixture();
+
+    const { ctx } = await createCachedContextAsync(alpha.root);
+
+    expect(ctx.plans.length).toBe(3);
+    expect(ctx.isProjectMode).toBe(true);
+    const ids = ctx.plans.map(p => p.id);
+    expect(ids).toContain('alpha:auth');
+    expect(ids).toContain('beta:ui');
+    expect(ids).toContain('beta:dashboard');
+  });
+
+  it('resolves cross-repo dependencies in project mode', async () => {
+    const { alpha } = setupAsyncProjectRootFixture();
+
+    const { ctx } = await createCachedContextAsync(alpha.root);
+
+    // beta:dashboard depends on alpha:auth (not done) → should be blocked
+    expect(ctx.graph.blocked.has('beta:dashboard')).toBe(true);
+    expect(ctx.graph.ready.has('alpha:auth')).toBe(true);
+  });
+
+  it('--no-cache does not persist', async () => {
+    const { root } = createSingleRepoFixture(2);
+
+    const { persist } = await createCachedContextAsync(root, { noCache: true });
+    await persist();
+
+    const cacheDir = join(root, '.trellis', 'cache');
+    const indexPath = join(cacheDir, 'context-store.json');
+    expect(existsSync(indexPath)).toBe(false);
+  });
+
+  it('continues with available repos when some are missing', async () => {
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth\n\n## Approach\nJWT\n' },
+    ]);
+
+    writeFileSync(
+      join(alpha.root, '.trellis', 'config'),
+      `project: alpha\nplans_dir: plans\nmanifest: https://example.com/manifest.git\n`,
+    );
+    writeFileSync(
+      join(alpha.root, '.trellis-project'),
+      [
+        'name: test-project',
+        'repos:',
+        '  alpha:',
+        `    path: ${alpha.root}`,
+        '  missing-repo:',
+        '    path: /nonexistent/path',
+      ].join('\n'),
+    );
+
+    const { ctx } = await createCachedContextAsync(alpha.root);
+
+    expect(ctx.plans.length).toBe(1);
+    expect(ctx.plans[0].id).toBe('alpha:auth');
+  });
+
+  it('persist writes index file', async () => {
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth\n\n## Approach\nJWT\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'ui', title: 'UI', status: 'not_started', body: '\n## Problem\nUI\n\n## Approach\nReact\n' },
+    ]);
+
+    writeFileSync(
+      join(alpha.root, '.trellis', 'config'),
+      `project: alpha\nplans_dir: plans\nmanifest: https://example.com/manifest.git\n`,
+    );
+    writeFileSync(
+      join(alpha.root, '.trellis-project'),
+      [
+        'name: test-project',
+        'repos:',
+        '  alpha:',
+        `    path: ${alpha.root}`,
+        '  beta:',
+        `    path: ${beta.root}`,
+      ].join('\n'),
+    );
+
+    const { persist } = await createCachedContextAsync(alpha.root);
+    await persist();
+
+    const indexPath = join(alpha.root, '.trellis', 'cache', 'context-store.json');
+    expect(existsSync(indexPath)).toBe(true);
   });
 });

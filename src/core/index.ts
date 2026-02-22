@@ -36,14 +36,14 @@ export { PlanFile, SECTION_REQUIREMENTS, STATUS_GATES, toSummary } from './types
 
 // --- Context ---
 export type { TrellisContext, CreateContextOptions, MultiContext } from './context.ts';
-export { createContext, refreshContext, mergeWithRemote, createMultiContext, attachCompleteness, applyBatch } from './context.ts';
+export { createContext, refreshContext, createContextAsync, refreshContextAsync, mergeWithRemote, createMultiContext, createMultiContextAsync, attachCompleteness, applyBatch } from './context.ts';
 
 // --- Cached Context ---
 export type { CachedContextOptions, CachedContextResult } from './cached-context.ts';
-export { createCachedContext } from './cached-context.ts';
+export { createCachedContext, createCachedContextAsync } from './cached-context.ts';
 
 // --- Scanner ---
-export { scanPlans, loadConfig, parseConfigContent, derivePlanId } from './scanner.ts';
+export { scanPlans, scanPlansAsync, loadConfig, loadConfigAsync, parseConfigContent, derivePlanId } from './scanner.ts';
 
 // --- Graph ---
 export type {
@@ -87,7 +87,7 @@ export { detectSections, readSection, writeSection, validateStatusGate } from '.
 export { computeCompleteness, DEFAULT_THRESHOLDS, PLACEHOLDER_PATTERNS } from './completeness.ts';
 
 // --- Manifest ---
-export type { GitExecutor, FetchRepoResult } from './manifest.ts';
+export type { GitExecutor, AsyncGitExecutor, FetchRepoResult, AsyncFetchRepoResult } from './manifest.ts';
 export {
   parseManifest,
   ensureRemote,
@@ -100,6 +100,14 @@ export {
   checkVisibility,
   resolveProjectRepos,
   expandTilde,
+  defaultAsyncGit,
+  ensureRemoteAsync,
+  fetchRemoteAsync,
+  gitShowAsync,
+  gitListTreeAsync,
+  discoverManifestAsync,
+  fetchRepoPlansAsync,
+  resolveProjectReposAsync,
 } from './manifest.ts';
 
 // --- Contracts ---
@@ -112,7 +120,7 @@ export { ensureCacheDir, readCache, writeCache, isCacheStale } from './cache.ts'
 export { createFileLock } from './mutex.ts';
 
 // --- Context Store ---
-export { ContextStore, computeMtimeHash } from './store.ts';
+export { ContextStore, computeMtimeHash, computeMtimeHashAsync } from './store.ts';
 export type { ContextStoreOptions } from './store.ts';
 
 // --- Utilities ---

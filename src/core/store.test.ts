@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, statSync, utimesSync, unlinkSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { ContextStore, computeMtimeHash } from './store.ts';
+import { ContextStore, computeMtimeHash, computeMtimeHashAsync } from './store.ts';
 import { createMultiContext } from './context.ts';
 import { scanPlans } from './scanner.ts';
 import { createTestFixture } from '../__tests__/fixtures/context-store.ts';
@@ -1031,5 +1031,190 @@ describe('ContextStore performance', () => {
 
     expect(elapsed).toBeLessThan(30);
     expect(store2.get().plans.length).toBe(100);
+  });
+});
+
+// --- Async variants ---
+
+describe('computeMtimeHashAsync', () => {
+  it('matches sync computeMtimeHash output', async () => {
+    const fixture = createTestFixture(1, 3);
+    const syncHash = computeMtimeHash(fixture.repos[0].plansDir);
+    const asyncHash = await computeMtimeHashAsync(fixture.repos[0].plansDir);
+    expect(asyncHash).toBe(syncHash);
+  });
+
+  it('returns null for missing directory', async () => {
+    const hash = await computeMtimeHashAsync('/nonexistent/path/that/does/not/exist');
+    expect(hash).toBeNull();
+  });
+
+  it('sorts entries before hashing (platform-independent)', async () => {
+    // Create plans in reverse alphabetical order to test that both sync and async sort
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-sort-'));
+    const plansDir = join(dir, 'plans');
+    mkdirSync(plansDir, { recursive: true });
+
+    // Create plans in reverse order: zzz, mmm, aaa
+    for (const name of ['zzz', 'mmm', 'aaa']) {
+      const planDir = join(plansDir, name);
+      mkdirSync(planDir, { recursive: true });
+      writeFileSync(join(planDir, 'README.md'), `---\ntitle: ${name}\nstatus: draft\n---\n`);
+    }
+
+    const syncHash = computeMtimeHash(plansDir);
+    const asyncHash = await computeMtimeHashAsync(plansDir);
+    expect(asyncHash).toBe(syncHash);
+    expect(asyncHash).toHaveLength(32);
+  });
+
+  it('returns stable hash for empty directory', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-empty-'));
+    const hash = await computeMtimeHashAsync(dir);
+    expect(hash).toBeTruthy();
+    expect(hash).toHaveLength(32);
+    // Stable across calls
+    expect(await computeMtimeHashAsync(dir)).toBe(hash);
+  });
+
+  it('returns different hash after touching a plan file', async () => {
+    const fixture = createTestFixture(1, 2);
+    const hash1 = await computeMtimeHashAsync(fixture.repos[0].plansDir);
+
+    const readmePath = join(fixture.repos[0].plansDir, 'plan-0', 'README.md');
+    const future = new Date(Date.now() + 1000);
+    utimesSync(readmePath, future, future);
+
+    const hash2 = await computeMtimeHashAsync(fixture.repos[0].plansDir);
+    expect(hash2).not.toBe(hash1);
+  });
+});
+
+describe('ContextStore.loadAsync', () => {
+  it('matches sync load() output', async () => {
+    const fixture = createTestFixture(2, 3);
+
+    const syncStore = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+    });
+    const syncCtx = syncStore.load();
+
+    const asyncCacheDir = mkdtempSync(join(tmpdir(), 'trellis-async-cache-'));
+    const asyncStore = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: asyncCacheDir,
+    });
+    const asyncCtx = await asyncStore.loadAsync();
+
+    expect(asyncCtx.plans.map(p => p.id).sort()).toEqual(syncCtx.plans.map(p => p.id).sort());
+    expect(asyncCtx.graph.plans.size).toBe(syncCtx.graph.plans.size);
+    expect([...asyncCtx.graph.ready].sort()).toEqual([...syncCtx.graph.ready].sort());
+    expect([...asyncCtx.graph.blocked].sort()).toEqual([...syncCtx.graph.blocked].sort());
+  });
+
+  it('cache round-trip works with loadAsync', async () => {
+    const fixture = createTestFixture(2, 3);
+    const store = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+    });
+
+    const ctx1 = await store.loadAsync();
+    await store.persist();
+
+    // Second load (sync) should use cache from async persist
+    const store2 = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+    });
+    const ctx2 = store2.load();
+
+    expect(ctx2.plans.map(p => p.id).sort()).toEqual(ctx1.plans.map(p => p.id).sort());
+  });
+
+  it('detects stale repos when plan files change', async () => {
+    const fixture = createTestFixture(1, 2);
+    const store = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+    });
+    await store.loadAsync();
+    await store.persist();
+
+    // Add a new plan
+    const newPlanDir = join(fixture.repos[0].plansDir, 'new-plan');
+    mkdirSync(newPlanDir, { recursive: true });
+    writeFileSync(
+      join(newPlanDir, 'README.md'),
+      '---\ntitle: New Plan\nstatus: draft\n---\n',
+    );
+
+    const store2 = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+    });
+    const ctx = await store2.loadAsync();
+
+    expect(ctx.plans.length).toBe(3);
+    expect(ctx.plans.some(p => p.id.includes('new-plan'))).toBe(true);
+  });
+
+  it('scanPlansAsync is NOT called on cache hit', async () => {
+    const fixture = createTestFixture(2, 3);
+    const store = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+    });
+    await store.loadAsync();
+    await store.persist();
+
+    const scanSpy = vi.spyOn(await import('./scanner.ts'), 'scanPlansAsync');
+
+    const store2 = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+    });
+    await store2.loadAsync();
+
+    expect(scanSpy).not.toHaveBeenCalled();
+    scanSpy.mockRestore();
+  });
+
+  it('corrupted index triggers full rescan via loadAsync', async () => {
+    const fixture = createTestFixture(1, 2);
+    const store = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+    });
+    await store.loadAsync();
+    await store.persist();
+
+    // Corrupt the index file
+    const indexPath = join(fixture.cacheDir, 'context-store.json');
+    writeFileSync(indexPath, '{invalid json!!!');
+
+    const store2 = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+    });
+    const ctx = await store2.loadAsync();
+
+    expect(ctx.plans.length).toBe(2);
+  });
+
+  it('handles missing repo path gracefully', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'trellis-nodir-'));
+    mkdirSync(join(root, '.trellis'), { recursive: true });
+    writeFileSync(join(root, '.trellis', 'config'), 'project: nodir\nplans_dir: plans\n');
+
+    const cacheDir = mkdtempSync(join(tmpdir(), 'trellis-cache-'));
+    const store = new ContextStore({
+      repos: [{ path: root, alias: 'nodir' }],
+      cacheDir,
+    });
+
+    const ctx = await store.loadAsync();
+    expect(ctx.plans).toEqual([]);
   });
 });

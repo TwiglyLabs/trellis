@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, utimesSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { derivePlanId, scanPlans, loadConfig } from './scanner.ts';
+import { derivePlanId, scanPlans, loadConfig, scanPlansAsync, loadConfigAsync } from './scanner.ts';
 
 function createFixtureDir(): string {
   return mkdtempSync(join(tmpdir(), 'trellis-test-'));
@@ -402,5 +402,127 @@ describe('loadConfig', () => {
         'Tip: run `trellis init` to upgrade to directory format.\n',
       );
     });
+  });
+});
+
+describe('scanPlansAsync', () => {
+  it('produces identical output to scanPlans', async () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    writePlan(dir, 'plans/a', { title: 'Plan A', status: 'draft' });
+    writePlan(dir, 'plans/b', { title: 'Plan B', status: 'not_started' });
+
+    const sync = scanPlans(plansDir);
+    const async_ = await scanPlansAsync(plansDir);
+
+    expect(async_.length).toBe(sync.length);
+    expect(async_.map(p => p.id).sort()).toEqual(sync.map(p => p.id).sort());
+    for (const sp of sync) {
+      const ap = async_.find(p => p.id === sp.id)!;
+      expect(ap).toBeDefined();
+      expect(ap.frontmatter).toEqual(sp.frontmatter);
+      expect(ap.body).toBe(sp.body);
+      expect(ap.lineCount).toBe(sp.lineCount);
+      expect(ap.fileHashes).toEqual(sp.fileHashes);
+    }
+  });
+
+  it('handles empty directory', async () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    mkdirSync(plansDir, { recursive: true });
+    expect(await scanPlansAsync(plansDir)).toEqual([]);
+  });
+
+  it('handles nested plans', async () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    writePlan(dir, 'plans/contracts/core', { title: 'Core', status: 'draft' });
+    writePlan(dir, 'plans/contracts/auth', { title: 'Auth', status: 'draft' });
+
+    const result = await scanPlansAsync(plansDir);
+    expect(result).toHaveLength(2);
+    expect(result.map(p => p.id).sort()).toEqual(['contracts/auth', 'contracts/core']);
+  });
+
+  it('loads implementation and contract files', async () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    const planDir = join(dir, 'plans/test');
+    writePlan(dir, 'plans/test', { title: 'Test', status: 'draft' });
+    writeFileSync(join(planDir, 'implementation.md'), '## Steps\n1. Do stuff\n');
+    writeFileSync(join(planDir, 'inputs.md'), '## From plans\n- plan-a\n');
+    writeFileSync(join(planDir, 'outputs.md'), '## Exports\n- some-export\n');
+
+    const sync = scanPlans(plansDir);
+    const async_ = await scanPlansAsync(plansDir);
+
+    expect(async_[0].fileHashes).toEqual(sync[0].fileHashes);
+    expect(async_[0].implementationContent).toBe(sync[0].implementationContent);
+    expect(async_[0].inputs).toEqual(sync[0].inputs);
+    expect(async_[0].outputs).toEqual(sync[0].outputs);
+  });
+
+  it('updatedAt is a Date matching sync output', async () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    writePlan(dir, 'plans/test', { title: 'Test', status: 'draft' });
+
+    const sync = scanPlans(plansDir);
+    const async_ = await scanPlansAsync(plansDir);
+
+    expect(async_[0].updatedAt).toBeInstanceOf(Date);
+    expect(async_[0].updatedAt.getTime()).toBe(sync[0].updatedAt.getTime());
+  });
+
+  it('ignores files without frontmatter', async () => {
+    const dir = createFixtureDir();
+    const plansDir = join(dir, 'plans');
+    mkdirSync(plansDir, { recursive: true });
+    writeFileSync(join(plansDir, 'notes.md'), '# Just notes\nNo frontmatter here.');
+    writePlan(dir, 'plans/real', { title: 'Real Plan', status: 'draft' });
+
+    const plans = await scanPlansAsync(plansDir);
+    expect(plans).toHaveLength(1);
+    expect(plans[0].id).toBe('real');
+  });
+});
+
+describe('loadConfigAsync', () => {
+  it('produces identical output to loadConfig for directory format', async () => {
+    const dir = createFixtureDir();
+    mkdirSync(join(dir, '.trellis'), { recursive: true });
+    writeFileSync(join(dir, '.trellis', 'config'), 'project: acorn\nplans_dir: docs/plans\n');
+
+    const sync = loadConfig(dir);
+    const async_ = await loadConfigAsync(dir);
+    expect(async_).toEqual(sync);
+  });
+
+  it('produces identical output for file format', async () => {
+    const dir = createFixtureDir();
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    writeFileSync(join(dir, '.trellis'), 'project: test\nplans_dir: plans\n');
+
+    const sync = loadConfig(dir);
+    const async_ = await loadConfigAsync(dir);
+    expect(async_).toEqual(sync);
+    stderrSpy.mockRestore();
+  });
+
+  it('falls back to defaults when no .trellis', async () => {
+    const dir = createFixtureDir();
+    const sync = loadConfig(dir);
+    const async_ = await loadConfigAsync(dir);
+    expect(async_).toEqual(sync);
+  });
+
+  it('reads .trellis directory with no config file', async () => {
+    const dir = createFixtureDir();
+    mkdirSync(join(dir, '.trellis'), { recursive: true });
+
+    const sync = loadConfig(dir);
+    const async_ = await loadConfigAsync(dir);
+    expect(async_).toEqual(sync);
   });
 });

@@ -29,7 +29,9 @@ export type {
   Chunk,
   ChunkResult,
   GitExecutor,
+  AsyncGitExecutor,
   FetchRepoResult,
+  AsyncFetchRepoResult,
   PlanSummary,
   BlockedPlanSummary,
   CreateOptions,
@@ -46,8 +48,9 @@ export type {
 
 export {
   PlanFile, SECTION_REQUIREMENTS, STATUS_GATES,
-  createContext, refreshContext, createMultiContext, attachCompleteness, applyBatch, toSummary,
-  scanPlans, loadConfig, parseConfigContent, derivePlanId,
+  createContext, refreshContext, createContextAsync, refreshContextAsync,
+  createMultiContext, createMultiContextAsync, attachCompleteness, applyBatch, toSummary,
+  scanPlans, scanPlansAsync, loadConfig, loadConfigAsync, parseConfigContent, derivePlanId,
   buildGraph, detectCycles, topologicalSort, transitiveDependents,
   computeCriticalPath, pickNext, computeChunks, groupByDirectory,
   groupByTopologicalDepth, chunkContractAggregation, newlyReady, patchGraph,
@@ -56,10 +59,13 @@ export {
   computeCompleteness, DEFAULT_THRESHOLDS, PLACEHOLDER_PATTERNS,
   parseManifest, ensureRemote, fetchRemote, gitShow, gitListTree,
   discoverManifest, fetchRepoPlans, fetchProjectPlans, checkVisibility, resolveProjectRepos,
+  defaultAsyncGit, ensureRemoteAsync, fetchRemoteAsync, gitShowAsync, gitListTreeAsync,
+  discoverManifestAsync, fetchRepoPlansAsync, resolveProjectReposAsync,
   parseInputs, parseOutputs,
   VALID_STATUSES, filterPlans,
   ensureCacheDir, readCache, writeCache, isCacheStale,
-  ContextStore, computeMtimeHash,
+  ContextStore, computeMtimeHash, computeMtimeHashAsync,
+  createCachedContextAsync,
 } from './core/index.ts';
 
 // --- Feature compute functions ---

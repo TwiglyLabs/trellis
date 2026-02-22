@@ -1,10 +1,11 @@
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { loadConfig, scanPlans } from './scanner.ts';
+import { loadConfig, scanPlans, loadConfigAsync, scanPlansAsync } from './scanner.ts';
 import { buildGraph, patchGraph } from './graph.ts';
 import { computeCompleteness } from './completeness.ts';
 import { readCache, writeCache, isCacheStale } from './cache.ts';
-import { discoverManifest, fetchRepoPlans } from './manifest.ts';
+import { discoverManifest, fetchRepoPlans, discoverManifestAsync, fetchRepoPlansAsync } from './manifest.ts';
+import { access } from 'fs/promises';
 import type { Plan, TrellisConfig, ProjectManifest, RepoSpec, MultiRepoEntry } from './types.ts';
 import type { GraphData } from './graph.ts';
 import type { PlanChangeBatch } from '../features/watch/types.ts';
@@ -255,6 +256,143 @@ export function createMultiContext(repos: RepoSpec[]): MultiContext {
       ...(config ? { config } : {}),
       ...(error ? { error } : {}),
     });
+  }
+
+  const graph = buildGraph(allPlans);
+
+  return { plans: allPlans, graph, repos: repoEntries };
+}
+
+// --- Async variants ---
+
+async function resolveRemotePlansAsync(
+  projectDir: string,
+  config: TrellisConfig,
+  options?: CreateContextOptions,
+): Promise<{ remotePlans: Plan[]; manifest?: ProjectManifest }> {
+  if (!config.manifest || options?.offline) {
+    if (config.manifest && options?.offline) {
+      return resolveFromCacheOnly(projectDir, config);
+    }
+    return { remotePlans: [] };
+  }
+
+  let manifest: ProjectManifest | null = null;
+  const cachedManifest = readCache<ProjectManifest>(projectDir, 'manifest');
+  if (cachedManifest && !isCacheStale(cachedManifest)) {
+    manifest = cachedManifest.data;
+  } else {
+    manifest = await discoverManifestAsync(config.manifest, projectDir);
+    if (manifest) {
+      writeCache(projectDir, 'manifest', manifest);
+    }
+  }
+
+  if (!manifest) return { remotePlans: [] };
+
+  const remotePlans: Plan[] = [];
+  for (const [alias, entry] of Object.entries(manifest.repos)) {
+    if (alias === config.project) continue;
+
+    const cacheKey = `plans/${alias}`;
+    const cached = readCache<Plan[]>(projectDir, cacheKey);
+    if (cached && !isCacheStale(cached)) {
+      remotePlans.push(...cached.data);
+    } else {
+      const result = await fetchRepoPlansAsync(alias, entry, projectDir);
+      if (result.plans.length > 0) {
+        writeCache(projectDir, cacheKey, result.plans);
+      }
+      remotePlans.push(...result.plans);
+    }
+  }
+
+  return { remotePlans, manifest };
+}
+
+export async function createContextAsync(projectDir: string, options?: CreateContextOptions): Promise<TrellisContext> {
+  const config = await loadConfigAsync(projectDir);
+  const plansDir = join(projectDir, config.plans_dir);
+  const localPlans = await scanPlansAsync(plansDir);
+
+  const { remotePlans, manifest } = await resolveRemotePlansAsync(projectDir, config, options);
+  const plans = remotePlans.length > 0 ? mergeWithRemote(localPlans, remotePlans, config.project) : localPlans;
+  attachCompleteness(plans, config);
+  const graph = buildGraph(plans);
+
+  return { projectDir, config, plansDir, plans, graph, manifest, isProjectMode: false };
+}
+
+export async function refreshContextAsync(ctx: TrellisContext, options?: CreateContextOptions): Promise<TrellisContext> {
+  const localPlans = await scanPlansAsync(ctx.plansDir);
+
+  const { remotePlans, manifest } = await resolveRemotePlansAsync(ctx.projectDir, ctx.config, options);
+  const plans = remotePlans.length > 0 ? mergeWithRemote(localPlans, remotePlans, ctx.config.project) : localPlans;
+  attachCompleteness(plans, ctx.config);
+  const graph = buildGraph(plans);
+
+  return { ...ctx, plans, graph, manifest: manifest ?? ctx.manifest };
+}
+
+export async function createMultiContextAsync(repos: RepoSpec[]): Promise<MultiContext> {
+  const aliases = repos.map(r => r.alias);
+  const seen = new Set<string>();
+  for (const alias of aliases) {
+    if (seen.has(alias)) {
+      throw new Error(`Duplicate alias "${alias}". Each repo must have a unique alias.`);
+    }
+    seen.add(alias);
+  }
+
+  const results = await Promise.allSettled(
+    repos.map(async (repo) => {
+      let configFound = false;
+      let plans: Plan[] = [];
+      let resolvedPlansDir: string | undefined;
+      let config: TrellisConfig | undefined;
+
+      try {
+        await access(join(repo.path, '.trellis'));
+        configFound = true;
+      } catch {
+        // no .trellis
+      }
+      config = await loadConfigAsync(repo.path);
+      resolvedPlansDir = join(repo.path, config.plans_dir);
+      plans = await scanPlansAsync(resolvedPlansDir);
+
+      return { plans, configFound, resolvedPlansDir, config, alias: repo.alias, path: repo.path };
+    }),
+  );
+
+  const allPlans: Plan[] = [];
+  const repoEntries: MultiRepoEntry[] = [];
+
+  for (const [i, result] of results.entries()) {
+    const repo = repos[i];
+    if (result.status === 'fulfilled') {
+      const { plans, configFound, resolvedPlansDir, config } = result.value;
+      if (config) attachCompleteness(plans, config);
+      const qualified = plans.map(p => qualifyPlan(p, repo.alias));
+      allPlans.push(...qualified);
+
+      repoEntries.push({
+        alias: repo.alias,
+        path: repo.path,
+        planCount: plans.length,
+        configFound,
+        ...(resolvedPlansDir ? { plansDir: resolvedPlansDir } : {}),
+        ...(config ? { config } : {}),
+      });
+    } else {
+      repoEntries.push({
+        alias: repo.alias,
+        path: repo.path,
+        planCount: 0,
+        configFound: false,
+        error: result.reason?.message ?? 'Unknown error',
+      });
+    }
   }
 
   const graph = buildGraph(allPlans);

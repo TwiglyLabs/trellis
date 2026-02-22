@@ -3,9 +3,10 @@ import {
   existsSync, statSync, readdirSync, readFileSync, writeFileSync,
   mkdirSync, renameSync, unlinkSync,
 } from 'fs';
+import { readdir, stat as statAsync, access } from 'fs/promises';
 import { createHash } from 'crypto';
 import { tmpdir } from 'os';
-import { scanPlans, loadConfig } from './scanner.ts';
+import { scanPlans, loadConfig, scanPlansAsync, loadConfigAsync } from './scanner.ts';
 import { buildGraph, patchGraph } from './graph.ts';
 import { attachCompleteness } from './context.ts';
 import { computeCompleteness } from './completeness.ts';
@@ -65,6 +66,50 @@ function collectPlanMtimes(baseDir: string, dir: string, entries: string[]): voi
       entries.push(`${relPath}:${stat.mtimeMs}`);
     }
   }
+}
+
+async function collectPlanMtimesAsync(baseDir: string, dir: string, entries: string[]): Promise<void> {
+  let items: string[];
+  try {
+    items = await readdir(dir);
+  } catch {
+    return;
+  }
+
+  for (const item of items) {
+    const fullPath = join(dir, item);
+    let fileStat;
+    try {
+      fileStat = await statAsync(fullPath);
+    } catch {
+      continue;
+    }
+
+    if (fileStat.isDirectory()) {
+      await collectPlanMtimesAsync(baseDir, fullPath, entries);
+    } else if (isPlanFile(item)) {
+      const relPath = relative(baseDir, fullPath);
+      entries.push(`${relPath}:${fileStat.mtimeMs}`);
+    }
+  }
+}
+
+export async function computeMtimeHashAsync(plansDir: string): Promise<string | null> {
+  try {
+    await access(plansDir);
+  } catch {
+    return null;
+  }
+
+  const entries: string[] = [];
+  await collectPlanMtimesAsync(plansDir, plansDir, entries);
+  entries.sort();
+
+  const hash = createHash('sha256');
+  for (const entry of entries) {
+    hash.update(entry);
+  }
+  return hash.digest('hex').slice(0, 32);
 }
 
 function isPlanFile(filename: string): boolean {
@@ -184,6 +229,66 @@ export class ContextStore {
         path: repo.path,
         configMtime: configMtime ?? '',
         mtimeHash: computeMtimeHash(plansDir) ?? '',
+        scannedAt: new Date().toISOString(),
+        plans: repoPlans,
+      };
+    }
+
+    return this.context;
+  }
+
+  /**
+   * Async variant of load(). Uses non-blocking I/O for scanning and mtime checks.
+   */
+  async loadAsync(): Promise<MultiContext> {
+    const savedIndex = this.readIndex();
+    let anyStale = false;
+
+    const allPlans: Plan[] = [];
+    const repoEntries: MultiRepoEntry[] = [];
+
+    for (const repo of this.repos) {
+      const { plans, entry, stale } = await this.loadRepoAsync(repo, savedIndex);
+      allPlans.push(...plans);
+      repoEntries.push(entry);
+      if (stale) anyStale = true;
+    }
+
+    const currentAliases = new Set(this.repos.map(r => r.alias));
+    if (savedIndex) {
+      for (const alias of Object.keys(savedIndex.repos)) {
+        if (!currentAliases.has(alias)) {
+          anyStale = true;
+        }
+      }
+    }
+
+    let graph: GraphData;
+    if (!anyStale && savedIndex?.graphSnapshot) {
+      graph = deserializeGraph(savedIndex.graphSnapshot, allPlans);
+    } else {
+      graph = buildGraph(allPlans);
+    }
+    this.context = { plans: allPlans, graph, repos: repoEntries };
+
+    this.index = {
+      version: INDEX_VERSION,
+      repos: {},
+      graphSnapshot: serializeGraph(graph),
+    };
+
+    for (const repo of this.repos) {
+      const entry = repoEntries.find(e => e.alias === repo.alias)!;
+      const repoPlans = this.qualifyIds
+        ? allPlans.filter(p => p.repoAlias === repo.alias)
+        : allPlans.filter(p => !p.repoAlias || p.repoAlias === repo.alias);
+      const plansDir = entry.plansDir ?? join(repo.path, 'plans');
+      const configMtime = await getConfigMtimeAsync(repo.path);
+
+      this.index.repos[repo.alias] = {
+        path: repo.path,
+        configMtime: configMtime ?? '',
+        mtimeHash: await computeMtimeHashAsync(plansDir) ?? '',
         scannedAt: new Date().toISOString(),
         plans: repoPlans,
       };
@@ -485,6 +590,79 @@ export class ContextStore {
 
     return { plans, entry, stale };
   }
+
+  private async loadRepoAsync(
+    repo: RepoSpec,
+    savedIndex: PlanIndex | null,
+  ): Promise<{ plans: Plan[]; entry: MultiRepoEntry; stale: boolean }> {
+    let configFound = false;
+    let plans: Plan[] = [];
+    let error: string | undefined;
+    let resolvedPlansDir: string | undefined;
+    let config: TrellisConfig | undefined;
+
+    try {
+      await access(join(repo.path, '.trellis'));
+      configFound = true;
+    } catch {
+      // no .trellis
+    }
+    try {
+      config = await loadConfigAsync(repo.path);
+      resolvedPlansDir = join(repo.path, config.plans_dir);
+    } catch (e: any) {
+      error = e.message;
+    }
+
+    const cached = savedIndex?.repos[repo.alias];
+    let stale = true;
+
+    if (cached && resolvedPlansDir && !error) {
+      const currentConfigMtime = await getConfigMtimeAsync(repo.path);
+      if (currentConfigMtime === cached.configMtime) {
+        const currentMtimeHash = await computeMtimeHashAsync(resolvedPlansDir);
+        if (currentMtimeHash === cached.mtimeHash) {
+          plans = cached.plans.map(p => revivePlan(p));
+          if (config) attachCompleteness(plans, config);
+          stale = false;
+        }
+      }
+    }
+
+    if (stale && resolvedPlansDir && !error) {
+      try {
+        const rawPlans = await scanPlansAsync(resolvedPlansDir);
+        if (config) attachCompleteness(rawPlans, config);
+        plans = this.qualifyIds
+          ? rawPlans.map(p => qualifyPlan(p, repo.alias))
+          : rawPlans;
+      } catch (e: any) {
+        error = e.message;
+        plans = [];
+      }
+    } else if (!stale) {
+      if (this.qualifyIds) {
+        plans = plans.map(p => {
+          if (!p.id.startsWith(`${repo.alias}:`)) {
+            return qualifyPlan(p, repo.alias);
+          }
+          return p;
+        });
+      }
+    }
+
+    const entry: MultiRepoEntry = {
+      alias: repo.alias,
+      path: repo.path,
+      planCount: plans.length,
+      configFound,
+      ...(resolvedPlansDir ? { plansDir: resolvedPlansDir } : {}),
+      ...(config ? { config } : {}),
+      ...(error ? { error } : {}),
+    };
+
+    return { plans, entry, stale };
+  }
 }
 
 // --- Diff helpers ---
@@ -607,6 +785,28 @@ function getConfigMtime(repoPath: string): string | null {
     } catch {
       return null;
     }
+  }
+
+  return null;
+}
+
+async function getConfigMtimeAsync(repoPath: string): Promise<string | null> {
+  const configDir = join(repoPath, '.trellis', 'config');
+  try {
+    const s = await statAsync(configDir);
+    return s.mtime.toISOString();
+  } catch {
+    // fall through
+  }
+
+  const configFile = join(repoPath, '.trellis');
+  try {
+    const s = await statAsync(configFile);
+    if (s.isFile()) {
+      return s.mtime.toISOString();
+    }
+  } catch {
+    // fall through
   }
 
   return null;

@@ -1,4 +1,5 @@
 import { readdirSync, statSync, readFileSync, existsSync } from 'fs';
+import { readdir, stat, readFile, access } from 'fs/promises';
 import { join, relative, dirname, basename } from 'path';
 import { createHash } from 'crypto';
 import { parseFrontmatter } from './frontmatter.ts';
@@ -142,6 +143,158 @@ export function parseConfigContent(content: string, cwd: string): TrellisConfig 
     default_plan_type: config.default_plan_type,
     stale_in_progress_days: config.stale_in_progress_days,
     stale_not_started_days: config.stale_not_started_days,
+  };
+}
+
+async function walkDirAsync(dir: string, plansDir: string, plans: Plan[]): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    const fullPath = join(dir, entry);
+    const fileStat = await stat(fullPath);
+
+    if (fileStat.isDirectory()) {
+      const readmePath = join(fullPath, 'README.md');
+      let readmeExists = false;
+      try {
+        await access(readmePath);
+        readmeExists = true;
+      } catch {
+        readmeExists = false;
+      }
+
+      if (readmeExists) {
+        const content = await readFile(readmePath, 'utf8');
+        const result = parseFrontmatter(content);
+        if (result) {
+          const fileHashes: Record<string, string> = {};
+          let maxMtime = (await stat(readmePath)).mtime;
+          fileHashes['README.md'] = createHash('sha256').update(content).digest('hex').slice(0, 16);
+
+          for (const fileName of PLAN_FILES) {
+            if (fileName === 'README.md') continue;
+            const filePath = join(fullPath, fileName);
+            let fileExists = false;
+            try {
+              await access(filePath);
+              fileExists = true;
+            } catch {
+              fileExists = false;
+            }
+            if (fileExists) {
+              const fStat = await stat(filePath);
+              if (fStat.mtime > maxMtime) maxMtime = fStat.mtime;
+              const fileContent = await readFile(filePath, 'utf8');
+              fileHashes[fileName] = createHash('sha256').update(fileContent).digest('hex').slice(0, 16);
+            }
+          }
+
+          const plan: Plan = {
+            id: derivePlanId(readmePath, plansDir),
+            filePath: readmePath,
+            frontmatter: result.frontmatter,
+            body: result.body,
+            lineCount: content.split('\n').length,
+            updatedAt: maxMtime,
+            fileHashes,
+          };
+
+          const inputsPath = join(fullPath, 'inputs.md');
+          const outputsPath = join(fullPath, 'outputs.md');
+          let inputsExists = false;
+          try {
+            await access(inputsPath);
+            inputsExists = true;
+          } catch {
+            inputsExists = false;
+          }
+          if (inputsExists) {
+            plan.inputs = parseInputs(await readFile(inputsPath, 'utf8'));
+          }
+
+          let outputsExists = false;
+          try {
+            await access(outputsPath);
+            outputsExists = true;
+          } catch {
+            outputsExists = false;
+          }
+          if (outputsExists) {
+            plan.outputs = parseOutputs(await readFile(outputsPath, 'utf8'));
+          }
+
+          const implPath = join(fullPath, 'implementation.md');
+          let implExists = false;
+          try {
+            await access(implPath);
+            implExists = true;
+          } catch {
+            implExists = false;
+          }
+          if (implExists) {
+            const implContent = await readFile(implPath, 'utf8');
+            plan.lineCount += implContent.split('\n').length;
+            plan.implementationContent = implContent;
+          }
+
+          plans.push(plan);
+        }
+      } else {
+        await walkDirAsync(fullPath, plansDir, plans);
+      }
+    }
+  }
+}
+
+export async function scanPlansAsync(plansDir: string): Promise<Plan[]> {
+  const plans: Plan[] = [];
+  await walkDirAsync(plansDir, plansDir, plans);
+  return plans;
+}
+
+export async function loadConfigAsync(cwd: string): Promise<TrellisConfig> {
+  const configPath = join(cwd, '.trellis');
+
+  let configExists = false;
+  try {
+    await access(configPath);
+    configExists = true;
+  } catch {
+    configExists = false;
+  }
+
+  if (configExists) {
+    const fileStat = await stat(configPath);
+
+    if (fileStat.isDirectory()) {
+      const dirConfigPath = join(configPath, 'config');
+      let dirConfigExists = false;
+      try {
+        await access(dirConfigPath);
+        dirConfigExists = true;
+      } catch {
+        dirConfigExists = false;
+      }
+      if (dirConfigExists) {
+        const content = await readFile(dirConfigPath, 'utf8');
+        return parseConfigContent(content, cwd);
+      }
+      return { project: basename(cwd), plans_dir: 'plans' };
+    }
+
+    const content = await readFile(configPath, 'utf8');
+    process.stderr.write('Tip: run `trellis init` to upgrade to directory format.\n');
+    return parseConfigContent(content, cwd);
+  }
+
+  return {
+    project: basename(cwd),
+    plans_dir: 'plans',
   };
 }
 

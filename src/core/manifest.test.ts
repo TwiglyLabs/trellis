@@ -13,6 +13,7 @@ import {
   fetchProjectPlans,
   checkVisibility,
   resolveProjectRepos,
+  resolveProjectReposAsync,
   type GitExecutor,
 } from './manifest.ts';
 import type { ProjectManifest, Plan, RepoEntry } from './types.ts';
@@ -808,5 +809,187 @@ repos:
     expect(results[0].visibility).toBe('private');
     expect(results[0].localPath).toBe(repoDir);
     expect(results[0].exists).toBe(true);
+  });
+});
+
+// --- resolveProjectReposAsync ---
+
+describe('resolveProjectReposAsync', () => {
+  it('produces identical output to resolveProjectRepos', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const repoDir = join(dir, 'subrepo');
+    mkdirSync(repoDir);
+    const manifestPath = join(dir, '.trellis-project');
+    writeFileSync(manifestPath, `
+name: test
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: subrepo
+`, 'utf8');
+
+    const sync = resolveProjectRepos(manifestPath);
+    const async_ = await resolveProjectReposAsync(manifestPath);
+    expect(async_).toEqual(sync);
+  });
+
+  it('handles missing paths', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const manifestPath = join(dir, '.trellis-project');
+    writeFileSync(manifestPath, `
+name: test
+base_dir: /nonexistent-base-dir-xyz
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: does-not-exist
+`, 'utf8');
+
+    const sync = resolveProjectRepos(manifestPath);
+    const async_ = await resolveProjectReposAsync(manifestPath);
+    expect(async_).toEqual(sync);
+  });
+
+  it('expands tilde in base_dir', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const manifestPath = join(dir, '.trellis-project');
+    writeFileSync(manifestPath, `
+name: test
+base_dir: ~/repos
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: org/repo
+`, 'utf8');
+    const sync = resolveProjectRepos(manifestPath);
+    const async_ = await resolveProjectReposAsync(manifestPath);
+    expect(async_).toEqual(sync);
+    expect(async_[0].localPath).toContain('repos/org/repo');
+  });
+
+  it('preserves display metadata', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const manifestPath = join(dir, '.trellis-project');
+    writeFileSync(manifestPath, `
+name: test
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: /tmp
+    name: My Repo
+    description: A great repo
+    tags: [frontend, tools]
+`, 'utf8');
+    const sync = resolveProjectRepos(manifestPath);
+    const async_ = await resolveProjectReposAsync(manifestPath);
+    expect(async_).toEqual(sync);
+    expect(async_[0].name).toBe('My Repo');
+    expect(async_[0].description).toBe('A great repo');
+    expect(async_[0].tags).toEqual(['frontend', 'tools']);
+  });
+
+  it('skips repos without a path field', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const manifestPath = join(dir, '.trellis-project');
+    writeFileSync(manifestPath, `
+name: test
+repos:
+  with-path:
+    url: git@example.com:org/a.git
+    branch: main
+    visibility: public
+    path: /tmp
+  without-path:
+    url: git@example.com:org/b.git
+    branch: main
+    visibility: public
+`, 'utf8');
+    const sync = resolveProjectRepos(manifestPath);
+    const async_ = await resolveProjectReposAsync(manifestPath);
+    expect(async_).toEqual(sync);
+    expect(async_).toHaveLength(1);
+    expect(async_[0].alias).toBe('with-path');
+  });
+
+  it('resolves multiple repos and preserves order', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const aDir = join(dir, 'a');
+    const bDir = join(dir, 'b');
+    mkdirSync(aDir);
+    mkdirSync(bDir);
+    const manifestPath = join(dir, '.trellis-project');
+    writeFileSync(manifestPath, `
+name: test
+repos:
+  alpha:
+    url: git@example.com:org/alpha.git
+    branch: main
+    visibility: public
+    path: a
+    name: Alpha Repo
+    tags: [frontend]
+  beta:
+    url: git@example.com:org/beta.git
+    branch: develop
+    visibility: private
+    path: b
+    description: The beta service
+  gamma:
+    url: git@example.com:org/gamma.git
+    branch: main
+    visibility: public
+`, 'utf8');
+    const sync = resolveProjectRepos(manifestPath);
+    const async_ = await resolveProjectReposAsync(manifestPath);
+    expect(async_).toEqual(sync);
+    expect(async_).toHaveLength(2);
+    expect(async_[0].alias).toBe('alpha');
+    expect(async_[1].alias).toBe('beta');
+  });
+
+  it('resolves path-only entries (no URL)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const repoDir = join(dir, 'local-repo');
+    mkdirSync(repoDir);
+    const manifestPath = join(dir, '.trellis-project');
+    writeFileSync(manifestPath, `
+name: test
+repos:
+  local:
+    path: local-repo
+`, 'utf8');
+    const sync = resolveProjectRepos(manifestPath);
+    const async_ = await resolveProjectReposAsync(manifestPath);
+    expect(async_).toEqual(sync);
+    expect(async_[0].url).toBe('');
+    expect(async_[0].branch).toBe('');
+    expect(async_[0].visibility).toBe('private');
+  });
+
+  it('uses absolute path as-is, ignoring base_dir', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const manifestPath = join(dir, '.trellis-project');
+    writeFileSync(manifestPath, `
+name: test
+base_dir: /should/be/ignored
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: /tmp
+`, 'utf8');
+    const sync = resolveProjectRepos(manifestPath);
+    const async_ = await resolveProjectReposAsync(manifestPath);
+    expect(async_).toEqual(sync);
+    expect(async_[0].localPath).toBe('/tmp');
   });
 });
