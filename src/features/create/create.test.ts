@@ -102,7 +102,7 @@ describe('computeCreate', () => {
   it('creates a plan directory with README.md', () => {
     const { root } = createFixture([]);
     const ctx = createContext(root);
-    const result = computeCreate({ id: 'new-plan', opts: { title: 'New Plan' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} });
+    const result = computeCreate({ id: 'new-plan', opts: { title: 'New Plan' }, plansDir: ctx.plansDir, graph: ctx.graph });
 
     expect(result.id).toBe('new-plan');
     expect(existsSync(join(root, 'plans', 'new-plan', 'README.md'))).toBe(true);
@@ -122,7 +122,7 @@ describe('computeCreate', () => {
       description: 'A test plan',
       depends_on: [],
       tags: ['test', 'foundation'],
-    }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} });
+    }, plansDir: ctx.plansDir, graph: ctx.graph });
 
     const content = readFileSync(join(root, 'plans', 'my-plan', 'README.md'), 'utf8');
     expect(content).toContain('description: A test plan');
@@ -136,25 +136,25 @@ describe('computeCreate', () => {
       { id: 'existing', title: 'Existing', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    expect(() => computeCreate({ id: 'existing', opts: { title: 'Dup' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('already exists');
+    expect(() => computeCreate({ id: 'existing', opts: { title: 'Dup' }, plansDir: ctx.plansDir, graph: ctx.graph })).toThrow('already exists');
   });
 
   it('requires title', () => {
     const { root } = createFixture([]);
     const ctx = createContext(root);
-    expect(() => computeCreate({ id: 'test', opts: { title: '' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('title');
+    expect(() => computeCreate({ id: 'test', opts: { title: '' }, plansDir: ctx.plansDir, graph: ctx.graph })).toThrow('title');
   });
 
   it('validates depends_on references exist', () => {
     const { root } = createFixture([]);
     const ctx = createContext(root);
-    expect(() => computeCreate({ id: 'test', opts: { title: 'Test', depends_on: ['nonexistent'] }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('nonexistent');
+    expect(() => computeCreate({ id: 'test', opts: { title: 'Test', depends_on: ['nonexistent'] }, plansDir: ctx.plansDir, graph: ctx.graph })).toThrow('nonexistent');
   });
 
   it('create() with YAML-special characters in title', () => {
     const { root } = createFixture([]);
     const ctx = createContext(root);
-    const result = computeCreate({ id: 'special-title', opts: { title: 'My Plan: Part "1"' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} });
+    const result = computeCreate({ id: 'special-title', opts: { title: 'My Plan: Part "1"' }, plansDir: ctx.plansDir, graph: ctx.graph });
 
     expect(result.id).toBe('special-title');
     const content = readFileSync(join(root, 'plans', 'special-title', 'README.md'), 'utf8');
@@ -166,14 +166,14 @@ describe('computeCreate', () => {
   it('create() with path traversal in ID rejects', () => {
     const { root } = createFixture([]);
     const ctx = createContext(root);
-    expect(() => computeCreate({ id: '../evil', opts: { title: 'Evil' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('Invalid plan ID');
-    expect(() => computeCreate({ id: './test', opts: { title: 'Test' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('Invalid plan ID');
-    expect(() => computeCreate({ id: 'foo/bar', opts: { title: 'FooBar' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('Invalid plan ID');
+    expect(() => computeCreate({ id: '../evil', opts: { title: 'Evil' }, plansDir: ctx.plansDir, graph: ctx.graph })).toThrow('Invalid plan ID');
+    expect(() => computeCreate({ id: './test', opts: { title: 'Test' }, plansDir: ctx.plansDir, graph: ctx.graph })).toThrow('Invalid plan ID');
+    expect(() => computeCreate({ id: 'foo/bar', opts: { title: 'FooBar' }, plansDir: ctx.plansDir, graph: ctx.graph })).toThrow('Invalid plan ID');
   });
 
   it('create() with leading dot in ID rejects', () => {
     const { root } = createFixture([]);
     const ctx = createContext(root);
-    expect(() => computeCreate({ id: '.hidden-plan', opts: { title: 'Hidden' }, plansDir: ctx.plansDir, graph: ctx.graph }, { refresh: () => {} })).toThrow('Invalid plan ID');
+    expect(() => computeCreate({ id: '.hidden-plan', opts: { title: 'Hidden' }, plansDir: ctx.plansDir, graph: ctx.graph })).toThrow('Invalid plan ID');
   });
 });

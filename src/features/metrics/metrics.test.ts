@@ -217,7 +217,7 @@ describe('not_started_at timestamp', () => {
   it('auto-sets not_started_at when transitioning to not_started', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'draft' });
     const ctx = realCore.createContext(tmpDir);
-    realUpdate.computeUpdate({ planId: 'a', status: 'not_started' as PlanStatus, graph: ctx.graph, force: true }, { refresh: () => {} });
+    realUpdate.computeUpdate({ planId: 'a', status: 'not_started' as PlanStatus, graph: ctx.graph, force: true });
 
     const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
     expect(content).toContain('not_started_at');
@@ -227,7 +227,7 @@ describe('not_started_at timestamp', () => {
     const ts = '2026-01-01T00:00:00.000Z';
     writePlan(plansDir, 'a', { title: 'A', status: 'draft', not_started_at: `'${ts}'` });
     const ctx = realCore.createContext(tmpDir);
-    realUpdate.computeUpdate({ planId: 'a', status: 'not_started' as PlanStatus, graph: ctx.graph, force: true }, { refresh: () => {} });
+    realUpdate.computeUpdate({ planId: 'a', status: 'not_started' as PlanStatus, graph: ctx.graph, force: true });
 
     const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
     expect(content).toContain(ts);
@@ -236,7 +236,7 @@ describe('not_started_at timestamp', () => {
   it('clears not_started_at on backward transition to draft', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'not_started', not_started_at: "'2026-02-01T00:00:00.000Z'" });
     const ctx = realCore.createContext(tmpDir);
-    realUpdate.computeUpdate({ planId: 'a', status: 'draft' as PlanStatus, graph: ctx.graph, force: true }, { refresh: () => {} });
+    realUpdate.computeUpdate({ planId: 'a', status: 'draft' as PlanStatus, graph: ctx.graph, force: true });
 
     const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
     expect(content).not.toContain('not_started_at');
@@ -245,7 +245,7 @@ describe('not_started_at timestamp', () => {
   it('preserves not_started_at on forward transition to in_progress', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'not_started', not_started_at: "'2026-02-01T00:00:00.000Z'" });
     const ctx = realCore.createContext(tmpDir);
-    realUpdate.computeUpdate({ planId: 'a', status: 'in_progress' as PlanStatus, graph: ctx.graph, force: true }, { refresh: () => {} });
+    realUpdate.computeUpdate({ planId: 'a', status: 'in_progress' as PlanStatus, graph: ctx.graph, force: true });
 
     const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
     expect(content).toContain('not_started_at');
@@ -272,7 +272,7 @@ describe('sessions and deviation fields (API)', () => {
   it('sets sessions as a number via set()', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'done' });
     const ctx = realCore.createContext(tmpDir);
-    const result = realSet.computeSet({ planId: 'a', field: 'sessions', value: '3', mode: 'replace', graph: ctx.graph }, { refresh: () => {} });
+    const result = realSet.computeSet({ planId: 'a', field: 'sessions', value: '3', mode: 'replace', graph: ctx.graph });
     expect(result.value).toBe(3);
 
     const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
@@ -282,25 +282,25 @@ describe('sessions and deviation fields (API)', () => {
   it('rejects non-integer sessions', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'done' });
     const ctx = realCore.createContext(tmpDir);
-    expect(() => realSet.computeSet({ planId: 'a', field: 'sessions', value: '1.5', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow('positive integer');
+    expect(() => realSet.computeSet({ planId: 'a', field: 'sessions', value: '1.5', mode: 'replace', graph: ctx.graph })).toThrow('positive integer');
   });
 
   it('rejects zero sessions', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'done' });
     const ctx = realCore.createContext(tmpDir);
-    expect(() => realSet.computeSet({ planId: 'a', field: 'sessions', value: '0', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow('positive integer');
+    expect(() => realSet.computeSet({ planId: 'a', field: 'sessions', value: '0', mode: 'replace', graph: ctx.graph })).toThrow('positive integer');
   });
 
   it('rejects negative sessions', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'done' });
     const ctx = realCore.createContext(tmpDir);
-    expect(() => realSet.computeSet({ planId: 'a', field: 'sessions', value: '-1', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow('positive integer');
+    expect(() => realSet.computeSet({ planId: 'a', field: 'sessions', value: '-1', mode: 'replace', graph: ctx.graph })).toThrow('positive integer');
   });
 
   it('sets deviation via set()', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'done' });
     const ctx = realCore.createContext(tmpDir);
-    const result = realSet.computeSet({ planId: 'a', field: 'deviation', value: 'minor', mode: 'replace', graph: ctx.graph }, { refresh: () => {} });
+    const result = realSet.computeSet({ planId: 'a', field: 'deviation', value: 'minor', mode: 'replace', graph: ctx.graph });
     expect(result.value).toBe('minor');
 
     const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
@@ -311,7 +311,7 @@ describe('sessions and deviation fields (API)', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'done' });
     let ctx = realCore.createContext(tmpDir);
     for (const val of ['none', 'minor', 'major']) {
-      realSet.computeSet({ planId: 'a', field: 'deviation', value: val, mode: 'replace', graph: ctx.graph }, { refresh: () => {} });
+      realSet.computeSet({ planId: 'a', field: 'deviation', value: val, mode: 'replace', graph: ctx.graph });
       const content = readFileSync(join(plansDir, 'a', 'README.md'), 'utf8');
       expect(content).toContain(`deviation: ${val}`);
     }
@@ -320,7 +320,7 @@ describe('sessions and deviation fields (API)', () => {
   it('rejects invalid deviation', () => {
     writePlan(plansDir, 'a', { title: 'A', status: 'done' });
     const ctx = realCore.createContext(tmpDir);
-    expect(() => realSet.computeSet({ planId: 'a', field: 'deviation', value: 'huge', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow('"none", "minor", or "major"');
+    expect(() => realSet.computeSet({ planId: 'a', field: 'deviation', value: 'huge', mode: 'replace', graph: ctx.graph })).toThrow('"none", "minor", or "major"');
   });
 });
 

@@ -41,7 +41,6 @@ export async function updateCommand(planId: string, status: string, options?: Up
   try {
     const result = computeUpdate(
       { planId, status: status as PlanStatus, graph: ctx.graph, force: options?.force },
-      { refresh: () => {} },
     );
 
     if (options?.json) {
@@ -86,7 +85,6 @@ export async function updateCommand(planId: string, status: string, options?: Up
         if (Number.isInteger(num) && num >= 1) {
           computeSet(
             { planId, field: 'sessions', value: String(num), mode: 'replace', graph: ctx.graph },
-            { refresh: () => {} },
           );
         }
       }
@@ -94,7 +92,6 @@ export async function updateCommand(planId: string, status: string, options?: Up
         ctx = createContext(process.cwd());
         computeSet(
           { planId, field: 'deviation', value: deviationRaw, mode: 'replace', graph: ctx.graph },
-          { refresh: () => {} },
         );
       }
     }

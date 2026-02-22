@@ -44,11 +44,7 @@ export interface ComputeReadSectionOptions {
   graph: GraphData;
 }
 
-export interface SectionCallbacks {
-  refresh: () => void;
-}
-
-export function computeWriteSection(options: ComputeWriteSectionOptions, callbacks: SectionCallbacks): WriteSectionResult {
+export function computeWriteSection(options: ComputeWriteSectionOptions): WriteSectionResult {
   const { planId, file, section, content, graph } = options;
 
   const plan = graph.plans.get(planId);
@@ -83,7 +79,6 @@ export function computeWriteSection(options: ComputeWriteSectionOptions, callbac
     writeFileSync(filePath, updated);
   }
 
-  callbacks.refresh();
   return { id: planId, file, section, content };
 }
 
@@ -98,7 +93,7 @@ export interface WriteSectionsResult {
   writes: Array<{ file: string; section: string }>;
 }
 
-export function computeWriteSections(options: ComputeWriteSectionsOptions, callbacks: SectionCallbacks): WriteSectionsResult {
+export function computeWriteSections(options: ComputeWriteSectionsOptions): WriteSectionsResult {
   const { planId, writes, graph } = options;
 
   const plan = graph.plans.get(planId);
@@ -152,7 +147,6 @@ export function computeWriteSections(options: ComputeWriteSectionsOptions, callb
     }
   }
 
-  callbacks.refresh();
   return {
     id: planId,
     writes: writes.map(w => ({ file: w.file, section: w.section })),

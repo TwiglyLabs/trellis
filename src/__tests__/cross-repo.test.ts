@@ -300,7 +300,6 @@ describe('write operation guards', () => {
     expect(() =>
       computeUpdate(
         { planId: 'canopy:ui-lib', status: 'in_progress', graph, force: true },
-        { refresh: () => {} },
       )
     ).toThrow("Cannot modify remote plan 'canopy:ui-lib'. Write operations are local only.");
   });
@@ -313,7 +312,6 @@ describe('write operation guards', () => {
     expect(() =>
       computeSet(
         { planId: 'canopy:ui-lib', field: 'title', value: 'New', mode: 'replace', graph },
-        { refresh: () => {} },
       )
     ).toThrow("Cannot modify remote plan 'canopy:ui-lib'. Write operations are local only.");
   });
@@ -326,7 +324,6 @@ describe('write operation guards', () => {
     expect(() =>
       computeWriteSection(
         { planId: 'canopy:ui-lib', file: 'readme', section: 'Problem', content: 'test', graph },
-        { refresh: () => {} },
       )
     ).toThrow("Cannot modify remote plan 'canopy:ui-lib'. Write operations are local only.");
   });
@@ -339,7 +336,6 @@ describe('write operation guards', () => {
     expect(() =>
       computeWriteSections(
         { planId: 'canopy:ui-lib', writes: [{ file: 'readme', section: 'Problem', content: 'test' }], graph },
-        { refresh: () => {} },
       )
     ).toThrow("Cannot modify remote plan 'canopy:ui-lib'. Write operations are local only.");
   });

@@ -201,10 +201,10 @@ describe('gate enforcement in update', () => {
     ]);
 
     let ctx = createContext(root);
-    expect(() => computeUpdate({ planId: 'test', status: 'not_started', graph: ctx.graph }, { refresh: () => {} })).toThrow('Cannot transition');
+    expect(() => computeUpdate({ planId: 'test', status: 'not_started', graph: ctx.graph })).toThrow('Cannot transition');
 
     ctx = createContext(root);
-    const result = computeUpdate({ planId: 'test', status: 'not_started', graph: ctx.graph, force: true }, { refresh: () => {} });
+    const result = computeUpdate({ planId: 'test', status: 'not_started', graph: ctx.graph, force: true });
     expect(result.newStatus).toBe('not_started');
   });
 

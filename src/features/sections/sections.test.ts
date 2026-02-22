@@ -176,7 +176,7 @@ describe('computeWriteSection', () => {
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nOld text\n## Approach\nOld approach\n' },
     ]);
     const ctx = createContext(root);
-    const result = computeWriteSection({ planId: 'test', file: 'readme', section: 'Problem', content: 'New problem text\n', graph: ctx.graph }, { refresh: () => {} });
+    const result = computeWriteSection({ planId: 'test', file: 'readme', section: 'Problem', content: 'New problem text\n', graph: ctx.graph });
 
     expect(result.content).toContain('New problem text');
 
@@ -190,7 +190,7 @@ describe('computeWriteSection', () => {
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    computeWriteSection({ planId: 'test', file: 'outputs', section: 'Deliverables', content: '- API endpoint\n', graph: ctx.graph }, { refresh: () => {} });
+    computeWriteSection({ planId: 'test', file: 'outputs', section: 'Deliverables', content: '- API endpoint\n', graph: ctx.graph });
 
     expect(existsSync(join(root, 'plans', 'test', 'outputs.md'))).toBe(true);
     const content = readFileSync(join(root, 'plans', 'test', 'outputs.md'), 'utf8');
@@ -203,7 +203,7 @@ describe('computeWriteSection', () => {
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    computeWriteSection({ planId: 'test', file: 'readme', section: 'Approach', content: 'New approach\n', graph: ctx.graph }, { refresh: () => {} });
+    computeWriteSection({ planId: 'test', file: 'readme', section: 'Approach', content: 'New approach\n', graph: ctx.graph });
 
     const content = readFileSync(join(root, 'plans', 'test', 'README.md'), 'utf8');
     expect(content).toContain('## Problem');
@@ -214,7 +214,7 @@ describe('computeWriteSection', () => {
   it('rejects unknown plan', () => {
     const { root } = createFixture([]);
     const ctx = createContext(root);
-    expect(() => computeWriteSection({ planId: 'nonexistent', file: 'readme', section: 'Problem', content: 'text', graph: ctx.graph }, { refresh: () => {} })).toThrow('not found');
+    expect(() => computeWriteSection({ planId: 'nonexistent', file: 'readme', section: 'Problem', content: 'text', graph: ctx.graph })).toThrow('not found');
   });
 
   it('rejects invalid file name', () => {
@@ -222,7 +222,7 @@ describe('computeWriteSection', () => {
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    expect(() => computeWriteSection({ planId: 'test', file: 'invalid' as any, section: 'Problem', content: 'text', graph: ctx.graph }, { refresh: () => {} })).toThrow('invalid');
+    expect(() => computeWriteSection({ planId: 'test', file: 'invalid' as any, section: 'Problem', content: 'text', graph: ctx.graph })).toThrow('invalid');
   });
 
   it('writes to implementation file that already exists', () => {
@@ -234,7 +234,7 @@ describe('computeWriteSection', () => {
       },
     ]);
     const ctx = createContext(root);
-    computeWriteSection({ planId: 'test', file: 'implementation', section: 'Steps', content: '1. Updated step\n', graph: ctx.graph }, { refresh: () => {} });
+    computeWriteSection({ planId: 'test', file: 'implementation', section: 'Steps', content: '1. Updated step\n', graph: ctx.graph });
 
     const content = readFileSync(join(root, 'plans', 'test', 'implementation.md'), 'utf8');
     expect(content).toContain('1. Updated step');
@@ -247,7 +247,7 @@ describe('computeWriteSection', () => {
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    const result = computeWriteSection({ planId: 'test', file: 'implementation', section: 'Steps', content: '1. Step\n', graph: ctx.graph }, { refresh: () => {} });
+    const result = computeWriteSection({ planId: 'test', file: 'implementation', section: 'Steps', content: '1. Step\n', graph: ctx.graph });
     expect(result.section).toBe('Steps');
     const content = readFileSync(join(root, 'plans', 'test', 'implementation.md'), 'utf8');
     expect(content).toContain('1. Step');
@@ -352,7 +352,7 @@ describe('computeReadSection', () => {
       { id: 'test', title: 'Original Title', status: 'draft', tags: ['foo'], body: '\n## Problem\nOld\n' },
     ]);
     const ctx = createContext(root);
-    computeWriteSection({ planId: 'test', file: 'readme', section: 'Problem', content: 'New content\n', graph: ctx.graph }, { refresh: () => {} });
+    computeWriteSection({ planId: 'test', file: 'readme', section: 'Problem', content: 'New content\n', graph: ctx.graph });
 
     const content = readFileSync(join(root, 'plans', 'test', 'README.md'), 'utf8');
     const parsed = matter(content);
@@ -382,7 +382,6 @@ describe('computeWriteSections', () => {
         ],
         graph: ctx.graph,
       },
-      { refresh: () => {} },
     );
 
     expect(result.id).toBe('test');
@@ -410,7 +409,6 @@ describe('computeWriteSections', () => {
         ],
         graph: ctx.graph,
       },
-      { refresh: () => {} },
     );
 
     expect(result.writes).toHaveLength(2);
@@ -437,7 +435,6 @@ describe('computeWriteSections', () => {
         ],
         graph: ctx.graph,
       },
-      { refresh: () => {} },
     );
 
     const inputs = readFileSync(join(root, 'plans', 'test', 'inputs.md'), 'utf8');
@@ -459,7 +456,6 @@ describe('computeWriteSections', () => {
         writes: [{ file: 'implementation', section: 'Steps', content: 'stuff' }],
         graph: ctx.graph,
       },
-      { refresh: () => {} },
     );
     expect(result.writes).toHaveLength(1);
     const content = readFileSync(join(root, 'plans', 'test', 'implementation.md'), 'utf8');
@@ -479,7 +475,6 @@ describe('computeWriteSections', () => {
           writes: [{ file: 'bogus', section: 'X', content: 'Y' }],
           graph: ctx.graph,
         },
-        { refresh: () => {} },
       ),
     ).toThrow(/Invalid file/);
   });
@@ -495,7 +490,6 @@ describe('computeWriteSections', () => {
           writes: [{ file: 'readme', section: 'Problem', content: 'X' }],
           graph: ctx.graph,
         },
-        { refresh: () => {} },
       ),
     ).toThrow(/not found/);
   });

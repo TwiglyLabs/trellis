@@ -103,7 +103,8 @@ describe('built artifact integration', () => {
     const showB = lib.computeShow({ planId: 'feature-b', graph: ctx.graph });
     expect(showB?.blocked).toBe(true);
 
-    const updateResult = lib.computeUpdate({ planId: 'feature-a', status: 'done', graph: ctx.graph, force: true }, { refresh: () => { ctx = lib.refreshContext(ctx); } });
+    const updateResult = lib.computeUpdate({ planId: 'feature-a', status: 'done', graph: ctx.graph, force: true });
+    ctx = lib.refreshContext(ctx);
     expect(updateResult.previousStatus).toBe('not_started');
     expect(updateResult.newlyReady).toContain('feature-b');
 

@@ -1,9 +1,10 @@
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, mkdtempSync } from 'fs';
 import { resolve, isAbsolute, join } from 'path';
+import { tmpdir } from 'os';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { createContext, createMultiContext, createFileLock, resolvePlanId, parseQualifiedId, parseManifest } from './core/index.ts';
+import { ContextStore, ensureCacheDir, loadConfig, createFileLock, resolvePlanId, parseQualifiedId, parseManifest } from './core/index.ts';
 import type { PlanStatus, RepoSpec, MultiRepoEntry, TrellisConfig } from './core/types.ts';
 import type { GraphData } from './core/graph.ts';
 import { computeCreate } from './features/create/logic.ts';
@@ -110,6 +111,45 @@ interface ToolContext {
 
 export interface McpServerOptions {
   repos?: RepoSpec[];
+  /** Override cache directory (defaults to .trellis/cache/ for single-repo, tmpdir for multi-repo). */
+  cacheDir?: string;
+  /** Internal: pre-built store (used by startMcpServer to share store with watch lifecycle). */
+  _storeBundle?: { store: ContextStore; isMultiRepo: boolean; singleRepoProjectDir?: string };
+}
+
+/**
+ * Build a ContextStore and cacheDir from the given options.
+ * Separated for testability — tests can create their own stores and pass them in.
+ */
+function buildStore(options?: McpServerOptions): { store: ContextStore; isMultiRepo: boolean; singleRepoProjectDir?: string } {
+  const repos = options?.repos;
+
+  if (repos && repos.length > 0) {
+    // Multi-repo mode
+    const cacheDir = options?.cacheDir ?? mkdtempSync(join(tmpdir(), 'trellis-mcp-'));
+    const store = new ContextStore({ repos, cacheDir });
+    return { store, isMultiRepo: true };
+  }
+
+  // Single-repo mode
+  const projectDir = process.cwd();
+  let cacheDir: string;
+  let config: TrellisConfig;
+  try {
+    config = loadConfig(projectDir);
+    cacheDir = options?.cacheDir ?? ensureCacheDir(projectDir);
+  } catch {
+    // No config or can't create cache — use tmpdir
+    config = { project: 'default', plans_dir: 'plans' } as TrellisConfig;
+    cacheDir = options?.cacheDir ?? mkdtempSync(join(tmpdir(), 'trellis-mcp-'));
+  }
+
+  const store = new ContextStore({
+    repos: [{ path: projectDir, alias: config.project }],
+    cacheDir,
+    qualifyIds: false,
+  });
+  return { store, isMultiRepo: false, singleRepoProjectDir: projectDir };
 }
 
 export function createMcpServer(options?: McpServerOptions): McpServer {
@@ -119,13 +159,19 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   });
 
   const withLock = createFileLock();
-  const repos = options?.repos;
+  const { store, isMultiRepo, singleRepoProjectDir } = options?._storeBundle ?? buildStore(options);
 
-  /** Build a fresh ToolContext for the current call. */
+  // Load initial context (synchronous — populates cache).
+  // Skip if an injected store bundle was provided (already loaded by caller).
+  if (!options?._storeBundle) {
+    store.load();
+  }
+
+  /** Build a ToolContext from the cached store. */
   function getToolContext(): ToolContext {
-    if (repos) {
-      // Multi-repo mode
-      const multi = createMultiContext(repos);
+    const multi = store.get();
+
+    if (isMultiRepo) {
       return {
         plans: multi.plans,
         graph: multi.graph,
@@ -148,15 +194,19 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       };
     }
 
-    // Single-repo mode (current behavior)
-    const ctx = createContext(process.cwd());
+    // Single-repo mode
+    const entry = multi.repos[0];
     return {
-      plans: ctx.plans,
-      graph: ctx.graph,
+      plans: multi.plans,
+      graph: multi.graph,
       isMultiRepo: false,
-      projectDir: ctx.projectDir,
-      getPlansDir(): string { return ctx.plansDir; },
-      getConfig(): TrellisConfig { return ctx.config; },
+      projectDir: singleRepoProjectDir,
+      getPlansDir(): string {
+        return entry?.plansDir ?? join(singleRepoProjectDir!, 'plans');
+      },
+      getConfig(): TrellisConfig {
+        return entry?.config ?? { project: 'default', plans_dir: 'plans' } as TrellisConfig;
+      },
     };
   }
 
@@ -165,11 +215,26 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
    * In multi-repo mode, uses resolvePlanId for qualified/unqualified resolution.
    * In single-repo mode, returns the ID as-is.
    */
-  function resolveId(graph: GraphData, rawId: string, isMultiRepo: boolean): { qualifiedId: string; alias?: string; localId: string } {
-    if (isMultiRepo) {
+  function resolveId(graph: GraphData, rawId: string, isMulti: boolean): { qualifiedId: string; alias?: string; localId: string } {
+    if (isMulti) {
       return resolvePlanId(graph, rawId);
     }
     return { qualifiedId: rawId, localId: rawId };
+  }
+
+  /**
+   * After a write mutation: invalidate the affected repo and persist the index.
+   * In single-repo mode, invalidates the only repo.
+   */
+  function afterWrite(alias?: string): void {
+    if (alias) {
+      store.invalidate(alias);
+    } else if (!isMultiRepo) {
+      const entry = store.get().repos[0];
+      if (entry) store.invalidate(entry.alias);
+    }
+    // Fire-and-forget persist — non-fatal if it fails
+    store.persist().catch(() => {});
   }
 
   // --- trellis_create ---
@@ -190,6 +255,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       let plansDir: string;
       let projectDir: string | undefined;
       let localId: string;
+      let writeAlias: string | undefined;
 
       if (ctx.isMultiRepo) {
         const parsed = parseQualifiedId(id);
@@ -199,6 +265,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         plansDir = ctx.getPlansDir(parsed.repo);
         projectDir = ctx.repoEntries?.find(r => r.alias === parsed.repo)?.path;
         localId = parsed.planId;
+        writeAlias = parsed.repo;
       } else {
         plansDir = ctx.getPlansDir();
         projectDir = ctx.projectDir;
@@ -211,8 +278,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       const resolvedType = planType ?? config.default_plan_type;
       const result = computeCreate(
         { id: localId, opts: { title, description, depends_on, tags, type: resolvedType }, plansDir, graph: ctx.graph, projectDir },
-        { refresh: () => {} },
       );
+      afterWrite(writeAlias);
       return {
         content: [{
           type: 'text' as const,
@@ -244,8 +311,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         const resolved = resolveId(ctx.graph, plan_id, ctx.isMultiRepo);
         const result = computeWriteSection(
           { planId: resolved.qualifiedId, file, section, content, graph: ctx.graph },
-          { refresh: () => {} },
         );
+        afterWrite(resolved.alias);
         return {
           content: [{
             type: 'text' as const,
@@ -280,8 +347,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         const resolved = resolveId(ctx.graph, plan_id, ctx.isMultiRepo);
         const result = computeWriteSections(
           { planId: resolved.qualifiedId, writes, graph: ctx.graph },
-          { refresh: () => {} },
         );
+        afterWrite(resolved.alias);
         return {
           content: [{
             type: 'text' as const,
@@ -345,8 +412,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         const resolved = resolveId(ctx.graph, plan_id, ctx.isMultiRepo);
         const result = computeSet(
           { planId: resolved.qualifiedId, field, value, mode: mode ?? 'replace', graph: ctx.graph },
-          { refresh: () => {} },
         );
+        afterWrite(resolved.alias);
         return {
           content: [{
             type: 'text' as const,
@@ -383,8 +450,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         const resolved = resolveId(ctx.graph, plan_id, ctx.isMultiRepo);
         const result = computeUpdate(
           { planId: resolved.qualifiedId, status: status as PlanStatus, graph: ctx.graph, force },
-          { refresh: () => {} },
         );
+        afterWrite(resolved.alias);
         return {
           content: [{
             type: 'text' as const,
@@ -527,7 +594,6 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     try {
       const ctx = getToolContext();
       if (ctx.isMultiRepo) {
-        // In multi-repo mode, lint across the unified graph
         const result = computeLint({
           plans: ctx.plans,
           graph: ctx.graph,
@@ -540,14 +606,14 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         };
       }
 
-      const singleCtx = createContext(process.cwd());
+      // Single-repo: use cached context from store
+      const entry = store.get().repos[0];
       const result = computeLint({
-        plans: singleCtx.plans,
-        graph: singleCtx.graph,
-        projectDir: singleCtx.projectDir,
-        plansDir: singleCtx.plansDir,
-        manifest: singleCtx.manifest,
-        projectName: singleCtx.config.project,
+        plans: ctx.plans,
+        graph: ctx.graph,
+        projectDir: entry?.path ?? singleRepoProjectDir ?? '',
+        plansDir: entry?.plansDir ?? join(singleRepoProjectDir ?? '', 'plans'),
+        projectName: entry?.config?.project,
         options: { strict },
       });
       return {
@@ -592,7 +658,25 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
 }
 
 export async function startMcpServer(options?: McpServerOptions): Promise<void> {
-  const server = createMcpServer(options);
+  const bundle = buildStore(options);
+  bundle.store.load();
+
+  // Start watching for filesystem changes (live invalidation)
+  const watchHandle = bundle.store.watch();
+
+  // Pass the pre-built store to createMcpServer so tool handlers share the same instance
+  const server = createMcpServer({ ...options, _storeBundle: bundle });
+
   const transport = new StdioServerTransport();
+
+  // Clean shutdown: close watchers and persist index
+  async function shutdown(): Promise<void> {
+    watchHandle.close();
+    await bundle.store.persist();
+  }
+
+  process.on('SIGINT', () => { shutdown().finally(() => process.exit(0)); });
+  process.on('SIGTERM', () => { shutdown().finally(() => process.exit(0)); });
+
   await server.connect(transport);
 }

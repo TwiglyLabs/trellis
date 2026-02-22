@@ -27,11 +27,7 @@ export interface ComputeUpdateOptions {
   force?: boolean;
 }
 
-export interface ComputeUpdateCallbacks {
-  refresh: () => void;
-}
-
-export function computeUpdate(opts: ComputeUpdateOptions, callbacks: ComputeUpdateCallbacks): UpdateResult {
+export function computeUpdate(opts: ComputeUpdateOptions): UpdateResult {
   const { planId, status, graph, force } = opts;
 
   if (!VALID_STATUSES.includes(status)) {
@@ -88,9 +84,6 @@ export function computeUpdate(opts: ComputeUpdateOptions, callbacks: ComputeUpda
   updatePlanFile(plan.filePath, updates, deleteFields.length > 0 ? deleteFields : undefined);
 
   const ready = newlyReady(planId, status, graph);
-
-  // Invalidate cache since we modified a file
-  callbacks.refresh();
 
   return {
     id: planId,

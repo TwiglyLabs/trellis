@@ -122,7 +122,7 @@ describe('Consumer workflow: work on a plan', () => {
     expect(computeReady({ plans: ctx.plans, graph: ctx.graph, filters: {} }).plans.map(p => p.id)).toContain('feature-a');
     expect(computeShow({ planId: 'feature-b', graph: ctx.graph })!.blocked).toBe(true);
 
-    const startResult: UpdateResult = computeUpdate({ planId: 'feature-a', status: 'in_progress', graph: ctx.graph, force: true }, { refresh: () => {} });
+    const startResult: UpdateResult = computeUpdate({ planId: 'feature-a', status: 'in_progress', graph: ctx.graph, force: true });
     expect(startResult.previousStatus).toBe('not_started');
     expect(startResult.newStatus).toBe('in_progress');
     expect(startResult.backward).toBe(false);
@@ -131,7 +131,7 @@ describe('Consumer workflow: work on a plan', () => {
     const afterStart = computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: { showDone: true } });
     expect(afterStart.byStatus.inProgress.map(p => p.id)).toContain('feature-a');
 
-    const doneResult: UpdateResult = computeUpdate({ planId: 'feature-a', status: 'done', graph: ctx.graph, force: true }, { refresh: () => {} });
+    const doneResult: UpdateResult = computeUpdate({ planId: 'feature-a', status: 'done', graph: ctx.graph, force: true });
     expect(doneResult.newlyReady).toContain('feature-b');
 
     ctx = createContext(tmpDir);
@@ -143,17 +143,17 @@ describe('Consumer workflow: work on a plan', () => {
   it('backward status transition clears timestamps', () => {
     let ctx = createContext(tmpDir);
 
-    computeUpdate({ planId: 'feature-a', status: 'in_progress', graph: ctx.graph, force: true }, { refresh: () => {} });
+    computeUpdate({ planId: 'feature-a', status: 'in_progress', graph: ctx.graph, force: true });
     ctx = createContext(tmpDir);
     const afterStart = computeShow({ planId: 'feature-a', graph: ctx.graph })!;
     expect(afterStart.startedAt).toBeTruthy();
 
-    computeUpdate({ planId: 'feature-a', status: 'done', graph: ctx.graph, force: true }, { refresh: () => {} });
+    computeUpdate({ planId: 'feature-a', status: 'done', graph: ctx.graph, force: true });
     ctx = createContext(tmpDir);
     const afterDone = computeShow({ planId: 'feature-a', graph: ctx.graph })!;
     expect(afterDone.completedAt).toBeTruthy();
 
-    const revertResult = computeUpdate({ planId: 'feature-a', status: 'not_started', graph: ctx.graph, force: true }, { refresh: () => {} });
+    const revertResult = computeUpdate({ planId: 'feature-a', status: 'not_started', graph: ctx.graph, force: true });
     expect(revertResult.backward).toBe(true);
 
     ctx = createContext(tmpDir);
@@ -277,7 +277,7 @@ describe('Consumer workflow: error paths', () => {
     });
     try {
       const ctx = createContext(tmpDir);
-      expect(() => computeUpdate({ planId: 'nonexistent', status: 'done', graph: ctx.graph }, { refresh: () => {} })).toThrow('not found');
+      expect(() => computeUpdate({ planId: 'nonexistent', status: 'done', graph: ctx.graph })).toThrow('not found');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -289,7 +289,7 @@ describe('Consumer workflow: error paths', () => {
     });
     try {
       const ctx = createContext(tmpDir);
-      expect(() => computeUpdate({ planId: 'a', status: 'invalid' as any, graph: ctx.graph }, { refresh: () => {} })).toThrow('Invalid status');
+      expect(() => computeUpdate({ planId: 'a', status: 'invalid' as any, graph: ctx.graph })).toThrow('Invalid status');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -452,7 +452,7 @@ describe('Consumer workflow: concurrent contexts', () => {
       expect(computeStatus({ plans: ctx1.plans, config: ctx1.config, graph: ctx1.graph, filters: {} }).total).toBe(2);
       expect(computeStatus({ plans: ctx2.plans, config: ctx2.config, graph: ctx2.graph, filters: {} }).total).toBe(2);
 
-      computeUpdate({ planId: 'a', status: 'done', graph: ctx1.graph, force: true }, { refresh: () => {} });
+      computeUpdate({ planId: 'a', status: 'done', graph: ctx1.graph, force: true });
 
       // ctx2 still sees stale state until refresh
       const stale = computeShow({ planId: 'a', graph: ctx2.graph })!;

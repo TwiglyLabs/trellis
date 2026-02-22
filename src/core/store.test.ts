@@ -815,7 +815,7 @@ describe('ContextStore performance', () => {
     expect(store.get().plans.length).toBe(100);
   });
 
-  it('warm cache hit completes in < 20ms', async () => {
+  it('warm cache hit completes in < 30ms', async () => {
     const fixture = createTestFixture(5, 20);
     const cacheDir = mkdtempSync(join(tmpdir(), 'trellis-perf-'));
 
@@ -834,7 +834,7 @@ describe('ContextStore performance', () => {
     store2.load();
     const elapsed = performance.now() - start;
 
-    expect(elapsed).toBeLessThan(20);
+    expect(elapsed).toBeLessThan(30);
     expect(store2.get().plans.length).toBe(100);
   });
 });

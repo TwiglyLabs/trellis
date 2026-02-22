@@ -19,11 +19,7 @@ export interface ComputeCreateOptions {
   projectDir?: string;
 }
 
-export interface ComputeCreateCallbacks {
-  refresh: () => void;
-}
-
-export function computeCreate(options: ComputeCreateOptions, callbacks: ComputeCreateCallbacks): CreateResult {
+export function computeCreate(options: ComputeCreateOptions): CreateResult {
   const { id, opts, plansDir, graph, projectDir } = options;
 
   if (!opts.title) {
@@ -87,7 +83,6 @@ export function computeCreate(options: ComputeCreateOptions, callbacks: ComputeC
       writeFileSync(join(planDir, filename), stripHints(fileContent));
     }
 
-    callbacks.refresh();
     return { id, filePath };
   }
 
@@ -96,8 +91,6 @@ export function computeCreate(options: ComputeCreateOptions, callbacks: ComputeC
   const content = matter.stringify(body, data);
   const filePath = join(planDir, 'README.md');
   writeFileSync(filePath, content);
-
-  callbacks.refresh();
 
   return { id, filePath };
 }

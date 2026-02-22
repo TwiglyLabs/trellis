@@ -136,7 +136,8 @@ describe('computeSet', () => {
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     let ctx = createContext(root);
-    const result = computeSet({ planId: 'test', field: 'description', value: 'Updated desc', mode: 'replace', graph: ctx.graph }, { refresh: () => { ctx = createContext(root); } });
+    const result = computeSet({ planId: 'test', field: 'description', value: 'Updated desc', mode: 'replace', graph: ctx.graph });
+    ctx = createContext(root);
 
     expect(result.field).toBe('description');
     expect(result.value).toBe('Updated desc');
@@ -150,7 +151,7 @@ describe('computeSet', () => {
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    expect(() => computeSet({ planId: 'test', field: 'status', value: 'done', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow('status');
+    expect(() => computeSet({ planId: 'test', field: 'status', value: 'done', mode: 'replace', graph: ctx.graph })).toThrow('status');
   });
 
   it('rejects unknown fields', () => {
@@ -158,7 +159,7 @@ describe('computeSet', () => {
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    expect(() => computeSet({ planId: 'test', field: 'unknown_field', value: 'value', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow('unknown_field');
+    expect(() => computeSet({ planId: 'test', field: 'unknown_field', value: 'value', mode: 'replace', graph: ctx.graph })).toThrow('unknown_field');
   });
 
   it('add mode appends to list fields', () => {
@@ -166,7 +167,8 @@ describe('computeSet', () => {
       { id: 'test', title: 'Test', status: 'draft', tags: ['a'], body: '\n## Problem\nText\n' },
     ]);
     let ctx = createContext(root);
-    computeSet({ planId: 'test', field: 'tags', value: 'b', mode: 'add', graph: ctx.graph }, { refresh: () => { ctx = createContext(root); } });
+    computeSet({ planId: 'test', field: 'tags', value: 'b', mode: 'add', graph: ctx.graph });
+    ctx = createContext(root);
 
     const plan = computeShow({ planId: 'test', graph: ctx.graph });
     expect(plan?.tags).toContain('a');
@@ -178,7 +180,8 @@ describe('computeSet', () => {
       { id: 'test', title: 'Test', status: 'draft', tags: ['a', 'b', 'c'], body: '\n## Problem\nText\n' },
     ]);
     let ctx = createContext(root);
-    computeSet({ planId: 'test', field: 'tags', value: 'b', mode: 'remove', graph: ctx.graph }, { refresh: () => { ctx = createContext(root); } });
+    computeSet({ planId: 'test', field: 'tags', value: 'b', mode: 'remove', graph: ctx.graph });
+    ctx = createContext(root);
 
     const plan = computeShow({ planId: 'test', graph: ctx.graph });
     expect(plan?.tags).toEqual(['a', 'c']);
@@ -189,7 +192,7 @@ describe('computeSet', () => {
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    expect(() => computeSet({ planId: 'test', field: 'title', value: 'x', mode: 'add', graph: ctx.graph }, { refresh: () => {} })).toThrow('not a list');
+    expect(() => computeSet({ planId: 'test', field: 'title', value: 'x', mode: 'add', graph: ctx.graph })).toThrow('not a list');
   });
 
   it('validates depends_on references exist', () => {
@@ -197,13 +200,13 @@ describe('computeSet', () => {
       { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    expect(() => computeSet({ planId: 'test', field: 'depends_on', value: 'nonexistent', mode: 'add', graph: ctx.graph }, { refresh: () => {} })).toThrow('nonexistent');
+    expect(() => computeSet({ planId: 'test', field: 'depends_on', value: 'nonexistent', mode: 'add', graph: ctx.graph })).toThrow('nonexistent');
   });
 
   it('rejects plan not found', () => {
     const { root } = createFixture([]);
     const ctx = createContext(root);
-    expect(() => computeSet({ planId: 'nonexistent', field: 'title', value: 'x', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow('not found');
+    expect(() => computeSet({ planId: 'nonexistent', field: 'title', value: 'x', mode: 'replace', graph: ctx.graph })).toThrow('not found');
   });
 
   it('replace mode for list field replaces entire value', () => {
@@ -211,7 +214,8 @@ describe('computeSet', () => {
       { id: 'test', title: 'Test', status: 'draft', tags: ['old1', 'old2'], body: '\n## Problem\nText\n' },
     ]);
     let ctx = createContext(root);
-    computeSet({ planId: 'test', field: 'tags', value: ['x', 'y'], mode: 'replace', graph: ctx.graph }, { refresh: () => { ctx = createContext(root); } });
+    computeSet({ planId: 'test', field: 'tags', value: ['x', 'y'], mode: 'replace', graph: ctx.graph });
+    ctx = createContext(root);
 
     const plan = computeShow({ planId: 'test', graph: ctx.graph });
     expect(plan?.tags).toEqual(['x', 'y']);
@@ -224,7 +228,8 @@ describe('computeSet', () => {
       { id: 'test', title: 'Test', status: 'draft', tags: ['a', 'b'], body: '\n## Problem\nText\n' },
     ]);
     let ctx = createContext(root);
-    computeSet({ planId: 'test', field: 'tags', value: [], mode: 'replace', graph: ctx.graph }, { refresh: () => { ctx = createContext(root); } });
+    computeSet({ planId: 'test', field: 'tags', value: [], mode: 'replace', graph: ctx.graph });
+    ctx = createContext(root);
 
     const plan = computeShow({ planId: 'test', graph: ctx.graph });
     expect(plan?.tags).toEqual([]);
@@ -235,7 +240,8 @@ describe('computeSet', () => {
       { id: 'test', title: 'Test', status: 'draft', tags: ['a'], body: '\n## Problem\nText\n' },
     ]);
     let ctx = createContext(root);
-    computeSet({ planId: 'test', field: 'tags', value: 'a', mode: 'add', graph: ctx.graph }, { refresh: () => { ctx = createContext(root); } });
+    computeSet({ planId: 'test', field: 'tags', value: 'a', mode: 'add', graph: ctx.graph });
+    ctx = createContext(root);
 
     const plan = computeShow({ planId: 'test', graph: ctx.graph });
     // Current behavior: duplicates are allowed
@@ -246,7 +252,7 @@ describe('computeSet', () => {
   it('set() plan not found error wording', () => {
     const { root } = createFixture([]);
     const ctx = createContext(root);
-    expect(() => computeSet({ planId: 'missing-plan', field: 'title', value: 'x', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow(/not found/i);
+    expect(() => computeSet({ planId: 'missing-plan', field: 'title', value: 'x', mode: 'replace', graph: ctx.graph })).toThrow(/not found/i);
   });
 });
 
@@ -256,7 +262,7 @@ describe('sessions and deviation fields', () => {
       { id: 'a', title: 'A', status: 'done', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    const result = computeSet({ planId: 'a', field: 'sessions', value: '3', mode: 'replace', graph: ctx.graph }, { refresh: () => {} });
+    const result = computeSet({ planId: 'a', field: 'sessions', value: '3', mode: 'replace', graph: ctx.graph });
     expect(result.value).toBe(3);
 
     const content = readFileSync(join(root, 'plans', 'a', 'README.md'), 'utf8');
@@ -268,7 +274,7 @@ describe('sessions and deviation fields', () => {
       { id: 'a', title: 'A', status: 'done', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    expect(() => computeSet({ planId: 'a', field: 'sessions', value: '1.5', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow('positive integer');
+    expect(() => computeSet({ planId: 'a', field: 'sessions', value: '1.5', mode: 'replace', graph: ctx.graph })).toThrow('positive integer');
   });
 
   it('rejects zero sessions', () => {
@@ -276,7 +282,7 @@ describe('sessions and deviation fields', () => {
       { id: 'a', title: 'A', status: 'done', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    expect(() => computeSet({ planId: 'a', field: 'sessions', value: '0', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow('positive integer');
+    expect(() => computeSet({ planId: 'a', field: 'sessions', value: '0', mode: 'replace', graph: ctx.graph })).toThrow('positive integer');
   });
 
   it('rejects negative sessions', () => {
@@ -284,7 +290,7 @@ describe('sessions and deviation fields', () => {
       { id: 'a', title: 'A', status: 'done', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    expect(() => computeSet({ planId: 'a', field: 'sessions', value: '-1', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow('positive integer');
+    expect(() => computeSet({ planId: 'a', field: 'sessions', value: '-1', mode: 'replace', graph: ctx.graph })).toThrow('positive integer');
   });
 
   it('sets deviation via set()', () => {
@@ -292,7 +298,7 @@ describe('sessions and deviation fields', () => {
       { id: 'a', title: 'A', status: 'done', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    const result = computeSet({ planId: 'a', field: 'deviation', value: 'minor', mode: 'replace', graph: ctx.graph }, { refresh: () => {} });
+    const result = computeSet({ planId: 'a', field: 'deviation', value: 'minor', mode: 'replace', graph: ctx.graph });
     expect(result.value).toBe('minor');
 
     const content = readFileSync(join(root, 'plans', 'a', 'README.md'), 'utf8');
@@ -305,7 +311,7 @@ describe('sessions and deviation fields', () => {
     ]);
     const ctx = createContext(root);
     for (const val of ['none', 'minor', 'major']) {
-      computeSet({ planId: 'a', field: 'deviation', value: val, mode: 'replace', graph: ctx.graph }, { refresh: () => {} });
+      computeSet({ planId: 'a', field: 'deviation', value: val, mode: 'replace', graph: ctx.graph });
       const content = readFileSync(join(root, 'plans', 'a', 'README.md'), 'utf8');
       expect(content).toContain(`deviation: ${val}`);
     }
@@ -316,6 +322,6 @@ describe('sessions and deviation fields', () => {
       { id: 'a', title: 'A', status: 'done', body: '\n## Problem\nText\n' },
     ]);
     const ctx = createContext(root);
-    expect(() => computeSet({ planId: 'a', field: 'deviation', value: 'huge', mode: 'replace', graph: ctx.graph }, { refresh: () => {} })).toThrow('"none", "minor", or "major"');
+    expect(() => computeSet({ planId: 'a', field: 'deviation', value: 'huge', mode: 'replace', graph: ctx.graph })).toThrow('"none", "minor", or "major"');
   });
 });

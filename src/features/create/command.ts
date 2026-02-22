@@ -48,7 +48,6 @@ export function createCommand(id: string, options: CreateOptions): void {
         graph: ctx.graph,
         projectDir,
       },
-      { refresh: () => {} },
     );
 
     if (options.json) {

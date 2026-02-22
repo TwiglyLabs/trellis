@@ -20,11 +20,7 @@ export interface ComputeSetOptions {
   graph: GraphData;
 }
 
-export interface ComputeSetCallbacks {
-  refresh: () => void;
-}
-
-export function computeSet(options: ComputeSetOptions, callbacks: ComputeSetCallbacks): SetResult {
+export function computeSet(options: ComputeSetOptions): SetResult {
   const { planId, field, value, mode, graph } = options;
 
   const plan = graph.plans.get(planId);
@@ -97,7 +93,6 @@ export function computeSet(options: ComputeSetOptions, callbacks: ComputeSetCall
   }
 
   updatePlanFile(plan.filePath, { [field]: newValue } as Partial<PlanFrontmatter>);
-  callbacks.refresh();
 
   return { id: planId, field, value: newValue, previousValue };
 }

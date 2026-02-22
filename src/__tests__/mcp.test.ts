@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFileSync } from 'fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { createMcpServer } from '../mcp.ts';
+import { ContextStore } from '../core/store.ts';
 import { createFixture } from './helpers.ts';
 
 // Helper to call a tool handler directly on the McpServer
@@ -666,9 +668,9 @@ describe('MCP server', () => {
     });
   });
 
-  describe('read tool context freshness', () => {
-    it('each call gets fresh context reflecting filesystem changes', async () => {
-      const { root, plansDir } = createFixture([
+  describe('write-then-read consistency', () => {
+    it('write tool creates plan → immediate read reflects the change', async () => {
+      const { root } = createFixture([
         { id: 'a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nText\n' },
       ]);
       process.cwd = () => root;
@@ -680,16 +682,41 @@ describe('MCP server', () => {
       const out1 = JSON.parse(r1.content[0].text);
       expect(out1.plans).toHaveLength(1);
 
-      // Add another plan to filesystem
-      const newPlanDir = join(plansDir, 'b');
-      const { mkdirSync, writeFileSync } = await import('fs');
-      mkdirSync(newPlanDir, { recursive: true });
-      writeFileSync(join(newPlanDir, 'README.md'), '---\ntitle: Plan B\nstatus: not_started\n---\n\n## Problem\nText\n');
+      // Create a new plan via write tool (triggers invalidation)
+      const createResult = await callTool(server, 'trellis_create', { id: 'b', title: 'Plan B' });
+      expect(createResult.isError).toBeFalsy();
 
-      // Second call: two ready plans
+      // Update the new plan's status to not_started so it shows up as ready
+      const updateResult = await callTool(server, 'trellis_update', {
+        plan_id: 'b', status: 'not_started', force: true,
+      });
+      expect(updateResult.isError).toBeFalsy();
+
+      // Immediate read: should see both plans as ready (no stale data)
       const r2 = await callTool(server, 'trellis_ready', {});
       const out2 = JSON.parse(r2.content[0].text);
       expect(out2.plans).toHaveLength(2);
+    });
+
+    it('write tool modifies plan → immediate show reflects the change', async () => {
+      const { root } = createFixture([
+        { id: 'test', title: 'Original Title', status: 'draft', body: '\n## Problem\nOriginal\n## Approach\nOriginal\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+
+      // Write a section
+      const writeResult = await callTool(server, 'trellis_write_section', {
+        plan_id: 'test', file: 'readme', section: 'Problem', content: 'Updated problem\n',
+      });
+      expect(writeResult.isError).toBeFalsy();
+
+      // Immediate read should reflect the write
+      const readResult = await callTool(server, 'trellis_read_section', {
+        plan_id: 'test', file: 'readme', section: 'Problem',
+      });
+      expect(readResult.content[0].text).toContain('Updated problem');
     });
   });
 
@@ -750,6 +777,341 @@ describe('MCP server', () => {
 
       const impl = readFileSync(join(root, 'plans', 'test', 'implementation.md'), 'utf8');
       expect(impl).toContain('New steps');
+    });
+  });
+
+  describe('context caching behavior', () => {
+    it('store.get() returns in < 1ms after initial load (read tools are fast)', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nText\n' },
+        { id: 'b', title: 'Plan B', status: 'draft', body: '\n## Problem\nText\n' },
+        { id: 'c', title: 'Plan C', status: 'done', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+
+      // Warm up with first call (triggers store.load if not already done)
+      await callTool(server, 'trellis_status', {});
+
+      // Subsequent reads should be fast (cached)
+      const start = performance.now();
+      await callTool(server, 'trellis_status', {});
+      await callTool(server, 'trellis_ready', {});
+      await callTool(server, 'trellis_show', { plan_id: 'a' });
+      const elapsed = performance.now() - start;
+
+      // 3 read calls should complete well under 50ms total with caching
+      expect(elapsed).toBeLessThan(50);
+    });
+
+    it('write tool triggers invalidation → subsequent read reflects change', async () => {
+      const { root } = createFixture([
+        { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nOld problem\n## Approach\nOld approach\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+
+      // Verify initial state
+      const r1 = await callTool(server, 'trellis_show', { plan_id: 'test' });
+      const show1 = JSON.parse(r1.content[0].text);
+      expect(show1.title).toBe('Test');
+
+      // Update title via set tool
+      const setResult = await callTool(server, 'trellis_set', {
+        plan_id: 'test', field: 'description', value: 'Updated description',
+      });
+      expect(setResult.isError).toBeFalsy();
+
+      // Immediate read should reflect the change
+      const r2 = await callTool(server, 'trellis_show', { plan_id: 'test' });
+      const show2 = JSON.parse(r2.content[0].text);
+      expect(show2.description).toBe('Updated description');
+    });
+
+    it('status transition via write tool is immediately visible in status view', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+
+      // Initially: one ready plan
+      const r1 = await callTool(server, 'trellis_status', {});
+      const out1 = JSON.parse(r1.content[0].text);
+      expect(out1.byStatus.ready).toHaveLength(1);
+      expect(out1.byStatus.inProgress).toHaveLength(0);
+
+      // Transition to in_progress (force=true to bypass gate checks)
+      const updateResult = await callTool(server, 'trellis_update', {
+        plan_id: 'a', status: 'in_progress', force: true,
+      });
+      expect(updateResult.isError).toBeFalsy();
+
+      // Immediately: should show in_progress, not ready
+      const r2 = await callTool(server, 'trellis_status', {});
+      const out2 = JSON.parse(r2.content[0].text);
+      expect(out2.byStatus.ready).toHaveLength(0);
+      expect(out2.byStatus.inProgress).toHaveLength(1);
+    });
+
+    it('multiple sequential writes all reflect in subsequent read', async () => {
+      const { root } = createFixture([]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+
+      // Create 3 plans sequentially
+      for (let i = 0; i < 3; i++) {
+        const result = await callTool(server, 'trellis_create', {
+          id: `plan-${i}`, title: `Plan ${i}`,
+        });
+        expect(result.isError).toBeFalsy();
+      }
+
+      // All 3 should be visible
+      const r = await callTool(server, 'trellis_status', {});
+      const out = JSON.parse(r.content[0].text);
+      expect(out.total).toBe(3);
+    });
+
+    it('read tools use cached context (no rescan between reads)', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+
+      // Spy on scanPlans to verify no rescans happen on pure reads
+      const scanSpy = vi.spyOn(await import('../core/scanner.ts'), 'scanPlans');
+
+      // Multiple read calls — none should trigger a rescan
+      await callTool(server, 'trellis_status', {});
+      await callTool(server, 'trellis_ready', {});
+      await callTool(server, 'trellis_show', { plan_id: 'a' });
+      await callTool(server, 'trellis_graph', {});
+      await callTool(server, 'trellis_lint', {});
+      await callTool(server, 'trellis_bottlenecks', {});
+
+      expect(scanSpy).not.toHaveBeenCalled();
+      scanSpy.mockRestore();
+    });
+  });
+
+  describe('persist-after-write', () => {
+    it('write tool calls store.persist() after mutation', async () => {
+      const { root } = createFixture([
+        { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n## Approach\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const cacheDir = mkdtempSync(join(tmpdir(), 'trellis-persist-test-'));
+      const store = new ContextStore({
+        repos: [{ path: root, alias: 'test-project' }],
+        cacheDir,
+        qualifyIds: false,
+      });
+      store.load();
+
+      const persistSpy = vi.spyOn(store, 'persist');
+
+      const server = createMcpServer({
+        _storeBundle: { store, isMultiRepo: false, singleRepoProjectDir: root },
+      });
+
+      // Write a section
+      await callTool(server, 'trellis_write_section', {
+        plan_id: 'test', file: 'readme', section: 'Problem', content: 'Updated\n',
+      });
+
+      expect(persistSpy).toHaveBeenCalledTimes(1);
+      persistSpy.mockRestore();
+    });
+
+    it('each write tool invocation calls persist()', async () => {
+      const { root } = createFixture([
+        { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n## Approach\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const cacheDir = mkdtempSync(join(tmpdir(), 'trellis-persist-test-'));
+      const store = new ContextStore({
+        repos: [{ path: root, alias: 'test-project' }],
+        cacheDir,
+        qualifyIds: false,
+      });
+      store.load();
+
+      const persistSpy = vi.spyOn(store, 'persist');
+
+      const server = createMcpServer({
+        _storeBundle: { store, isMultiRepo: false, singleRepoProjectDir: root },
+      });
+
+      // Multiple write operations
+      await callTool(server, 'trellis_set', {
+        plan_id: 'test', field: 'description', value: 'desc',
+      });
+      await callTool(server, 'trellis_update', {
+        plan_id: 'test', status: 'not_started', force: true,
+      });
+      await callTool(server, 'trellis_create', {
+        id: 'new-plan', title: 'New Plan',
+      });
+
+      expect(persistSpy).toHaveBeenCalledTimes(3);
+      persistSpy.mockRestore();
+    });
+
+    it('invalidate() is called before persist() on write', async () => {
+      const { root } = createFixture([
+        { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n## Approach\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const cacheDir = mkdtempSync(join(tmpdir(), 'trellis-persist-test-'));
+      const store = new ContextStore({
+        repos: [{ path: root, alias: 'test-project' }],
+        cacheDir,
+        qualifyIds: false,
+      });
+      store.load();
+
+      const callOrder: string[] = [];
+      const invalidateSpy = vi.spyOn(store, 'invalidate').mockImplementation((...args) => {
+        callOrder.push('invalidate');
+        // Call through to original
+        return (ContextStore.prototype.invalidate as any).apply(store, args);
+      });
+      const persistSpy = vi.spyOn(store, 'persist').mockImplementation(async () => {
+        callOrder.push('persist');
+      });
+
+      const server = createMcpServer({
+        _storeBundle: { store, isMultiRepo: false, singleRepoProjectDir: root },
+      });
+
+      await callTool(server, 'trellis_write_section', {
+        plan_id: 'test', file: 'readme', section: 'Problem', content: 'Updated\n',
+      });
+
+      expect(callOrder).toEqual(['invalidate', 'persist']);
+      invalidateSpy.mockRestore();
+      persistSpy.mockRestore();
+    });
+  });
+
+  describe('cross-boundary MCP→CLI shared index', () => {
+    it('MCP persists index → fresh ContextStore reads it correctly', async () => {
+      const { root } = createFixture([
+        { id: 'a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nText\n' },
+        { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const cacheDir = mkdtempSync(join(tmpdir(), 'trellis-cross-'));
+      const mcpStore = new ContextStore({
+        repos: [{ path: root, alias: 'test-project' }],
+        cacheDir,
+        qualifyIds: false,
+      });
+      mcpStore.load();
+
+      const server = createMcpServer({
+        _storeBundle: { store: mcpStore, isMultiRepo: false, singleRepoProjectDir: root },
+      });
+
+      // Write via MCP tool
+      await callTool(server, 'trellis_update', {
+        plan_id: 'a', status: 'done', force: true,
+      });
+
+      // Persist like MCP server does on shutdown
+      await mcpStore.persist();
+
+      // Simulate CLI: new ContextStore reads the persisted index
+      const cliStore = new ContextStore({
+        repos: [{ path: root, alias: 'test-project' }],
+        cacheDir,
+        qualifyIds: false,
+      });
+      const cliCtx = cliStore.load();
+
+      // CLI should see the updated status from MCP's write
+      const planA = cliCtx.plans.find(p => p.id === 'a');
+      expect(planA?.frontmatter.status).toBe('done');
+
+      // Graph should reflect the change too
+      expect(cliCtx.graph.ready.has('b')).toBe(true);
+    });
+
+    it('MCP creates plan → CLI sees it via shared index', async () => {
+      const { root } = createFixture([]);
+      process.cwd = () => root;
+
+      const cacheDir = mkdtempSync(join(tmpdir(), 'trellis-cross-'));
+      const mcpStore = new ContextStore({
+        repos: [{ path: root, alias: 'test-project' }],
+        cacheDir,
+        qualifyIds: false,
+      });
+      mcpStore.load();
+
+      const server = createMcpServer({
+        _storeBundle: { store: mcpStore, isMultiRepo: false, singleRepoProjectDir: root },
+      });
+
+      // Create via MCP
+      await callTool(server, 'trellis_create', { id: 'new-plan', title: 'New Plan' });
+      await mcpStore.persist();
+
+      // CLI reads the shared index
+      const cliStore = new ContextStore({
+        repos: [{ path: root, alias: 'test-project' }],
+        cacheDir,
+        qualifyIds: false,
+      });
+      const cliCtx = cliStore.load();
+
+      expect(cliCtx.plans.length).toBe(1);
+      expect(cliCtx.plans[0].id).toBe('new-plan');
+    });
+
+    it('CLI writes plan file directly → MCP invalidate detects change', async () => {
+      const { root, plansDir } = createFixture([
+        { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
+      ]);
+      process.cwd = () => root;
+
+      const cacheDir = mkdtempSync(join(tmpdir(), 'trellis-cross-'));
+      const mcpStore = new ContextStore({
+        repos: [{ path: root, alias: 'test-project' }],
+        cacheDir,
+        qualifyIds: false,
+      });
+      mcpStore.load();
+
+      // Verify initial state
+      expect(mcpStore.get().plans.length).toBe(1);
+
+      // Simulate CLI writing a plan file directly (bypassing MCP)
+      const newPlanDir = join(plansDir, 'cli-plan');
+      mkdirSync(newPlanDir, { recursive: true });
+      writeFileSync(
+        join(newPlanDir, 'README.md'),
+        '---\ntitle: CLI Plan\nstatus: not_started\n---\n\n## Problem\nFrom CLI\n',
+      );
+
+      // MCP invalidates (as it would on watch event)
+      mcpStore.invalidate('test-project');
+
+      // MCP now sees the CLI-created plan
+      const ctx = mcpStore.get();
+      expect(ctx.plans.length).toBe(2);
+      expect(ctx.plans.some(p => p.id === 'cli-plan')).toBe(true);
     });
   });
 });

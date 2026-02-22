@@ -254,7 +254,7 @@ describe('computeCreate with type', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} });
+    });
 
     expect(result.id).toBe('my-feature');
 
@@ -287,7 +287,7 @@ describe('computeCreate with type', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} });
+    });
 
     expect(existsSync(join(root, 'plans', 'my-investigation', 'README.md'))).toBe(true);
     expect(existsSync(join(root, 'plans', 'my-investigation', 'implementation.md'))).toBe(false);
@@ -307,7 +307,7 @@ describe('computeCreate with type', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} });
+    });
 
     const readme = readFileSync(join(root, 'plans', 'my-bugfix', 'README.md'), 'utf8');
     const parsed = matter(readme);
@@ -324,7 +324,7 @@ describe('computeCreate with type', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} });
+    });
 
     const readme = readFileSync(join(root, 'plans', 'my-refactor', 'README.md'), 'utf8');
     const parsed = matter(readme);
@@ -342,7 +342,7 @@ describe('computeCreate with type', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} });
+    });
 
     const readme = readFileSync(join(root, 'plans', 'no-type', 'README.md'), 'utf8');
     const parsed = matter(readme);
@@ -362,7 +362,7 @@ describe('computeCreate with type', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} })).toThrow('Unknown template type');
+    })).toThrow('Unknown template type');
   });
 
   it('uses custom template when available', () => {
@@ -379,7 +379,7 @@ describe('computeCreate with type', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} });
+    });
 
     const readme = readFileSync(join(root, 'plans', 'custom', 'README.md'), 'utf8');
     expect(readme).toContain('## Custom Section');
@@ -402,7 +402,7 @@ describe('computeCreate with type', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} });
+    });
 
     const readme = readFileSync(join(root, 'plans', 'modified-feature', 'README.md'), 'utf8');
     expect(readme).toContain('## Extra Section');
@@ -419,7 +419,7 @@ describe('computeCreate with type', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} });
+    });
 
     const readme = readFileSync(join(root, 'plans', 'typed', 'README.md'), 'utf8');
     const parsed = matter(readme);
@@ -438,7 +438,7 @@ describe('computeCreate with type', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} });
+    });
 
     const readme = readFileSync(join(root, 'plans', 'with-deps', 'README.md'), 'utf8');
     const parsed = matter(readme);
@@ -461,7 +461,7 @@ describe('computeCreate with type', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       // projectDir intentionally omitted
-    }, { refresh: () => {} });
+    });
 
     const readme = readFileSync(join(root, 'plans', 'no-project-dir', 'README.md'), 'utf8');
     const parsed = matter(readme);
@@ -622,7 +622,8 @@ describe('type in set and show', () => {
       value: 'investigation',
       mode: 'replace',
       graph: ctx.graph,
-    }, { refresh: () => { ctx = createContext(root); } });
+    });
+    ctx = createContext(root);
 
     const show = computeShow({ planId: 'test', graph: ctx.graph });
     expect(show?.type).toBe('investigation');
@@ -640,7 +641,8 @@ describe('type in set and show', () => {
       value: 'bugfix',
       mode: 'replace',
       graph: ctx.graph,
-    }, { refresh: () => { ctx = createContext(root); } });
+    });
+    ctx = createContext(root);
 
     const show = computeShow({ planId: 'test', graph: ctx.graph });
     const json = JSON.parse(JSON.stringify(show));
@@ -657,7 +659,7 @@ describe('type in set and show', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} });
+    });
 
     const ctx2 = createContext(root);
     const plan = ctx2.plans.find(p => p.id === 'typed-plan');
@@ -674,7 +676,7 @@ describe('type in set and show', () => {
       plansDir: ctx.plansDir,
       graph: ctx.graph,
       projectDir: root,
-    }, { refresh: () => {} });
+    });
 
     const ctx2 = createContext(root);
     const result = computeStatus({

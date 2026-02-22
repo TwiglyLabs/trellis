@@ -292,7 +292,7 @@ describe('API-CLI consistency', () => {
       process.cwd = () => root;
 
       let ctx = createContext(root);
-      const apiResult = computeUpdate({ planId: 'plan-c', status: 'done', graph: ctx.graph, force: true }, { refresh: () => { ctx = createContext(root); } });
+      const apiResult = computeUpdate({ planId: 'plan-c', status: 'done', graph: ctx.graph, force: true });
 
       // Create new instance for CLI call (fresh state)
       process.cwd = () => root;
@@ -328,7 +328,7 @@ describe('API-CLI consistency', () => {
       process.cwd = () => root;
 
       let ctx = createContext(root);
-      const apiResult = computeUpdate({ planId: 'plan-a', status: 'in_progress', graph: ctx.graph, force: true }, { refresh: () => { ctx = createContext(root); } });
+      const apiResult = computeUpdate({ planId: 'plan-a', status: 'in_progress', graph: ctx.graph, force: true });
 
       // Create fresh fixture for CLI
       const { root: root2 } = createFixture([

@@ -1,6 +1,6 @@
 ---
 title: Wire ContextStore into MCP server with fs.watch
-status: not_started
+status: done
 description: >-
   Replace getToolContext() rebuild-from-scratch with ContextStore.get(), add
   fs.watch for live invalidation
@@ -10,6 +10,8 @@ tags:
   - 'epic:perf-cache'
 type: feature
 not_started_at: '2026-02-21T23:46:39.576Z'
+started_at: '2026-02-22T05:09:50.834Z'
+completed_at: '2026-02-22T13:57:27.296Z'
 ---
 
 ## Problem

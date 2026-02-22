@@ -29,7 +29,6 @@ export function setCommand(planId: string, field: string, values: string[], opti
   try {
     const result = computeSet(
       { planId, field, value, mode, graph: ctx.graph },
-      { refresh: () => {} },
     );
 
     if (options.json) {
