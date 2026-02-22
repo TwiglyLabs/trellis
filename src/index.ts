@@ -33,6 +33,8 @@ export type {
   BlockedPlanSummary,
   CreateOptions,
   CacheEntry,
+  PlanIndex,
+  RepoIndexEntry,
   BlockingPlan,
   StuckPlan,
   StalePlan,
@@ -56,6 +58,7 @@ export {
   parseInputs, parseOutputs,
   VALID_STATUSES, filterPlans,
   ensureCacheDir, readCache, writeCache, isCacheStale,
+  ContextStore, computeMtimeHash,
 } from './core/index.ts';
 
 // --- Feature compute functions ---

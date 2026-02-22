@@ -27,6 +27,8 @@ export type {
   LayerPressure,
   HealthSummary,
   BottleneckResult,
+  PlanIndex,
+  RepoIndexEntry,
 } from './types.ts';
 
 export { PlanFile, SECTION_REQUIREMENTS, STATUS_GATES, toSummary } from './types.ts';
@@ -101,6 +103,10 @@ export { ensureCacheDir, readCache, writeCache, isCacheStale } from './cache.ts'
 
 // --- Mutex ---
 export { createFileLock } from './mutex.ts';
+
+// --- Context Store ---
+export { ContextStore, computeMtimeHash } from './store.ts';
+export type { ContextStoreOptions } from './store.ts';
 
 // --- Utilities ---
 export type { ResolvedPlanId } from './utils.ts';

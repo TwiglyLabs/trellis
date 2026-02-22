@@ -169,6 +169,27 @@ export interface CacheEntry<T> {
   fetchedAt: string;  // ISO 8601
 }
 
+// --- Plan Index (ContextStore) ---
+
+export interface RepoIndexEntry {
+  path: string;
+  configMtime: string;  // ISO 8601
+  mtimeHash: string;    // composite hash of all plan file mtimes
+  scannedAt: string;    // ISO 8601
+  plans: Plan[];
+}
+
+export interface PlanIndex {
+  version: number;
+  repos: Record<string, RepoIndexEntry>;
+  graphSnapshot?: {
+    dependents: Record<string, string[]>;
+    dependencies: Record<string, string[]>;
+    blocked: string[];
+    ready: string[];
+  };
+}
+
 // --- Multi-repo context ---
 
 export interface RepoSpec {

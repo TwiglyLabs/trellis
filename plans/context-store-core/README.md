@@ -1,6 +1,6 @@
 ---
 title: 'ContextStore: cached, mtime-validated plan index'
-status: not_started
+status: done
 description: >-
   Core ContextStore class with file-based index, mtime validation, and
   incremental rescan
@@ -8,6 +8,8 @@ tags:
   - 'epic:perf-cache'
 type: feature
 not_started_at: '2026-02-21T23:46:09.092Z'
+started_at: '2026-02-22T00:04:06.060Z'
+completed_at: '2026-02-22T01:55:32.762Z'
 ---
 
 ## Problem
