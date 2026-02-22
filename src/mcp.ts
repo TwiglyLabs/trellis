@@ -1,10 +1,10 @@
-import { existsSync, readFileSync, mkdtempSync } from 'fs';
+import { existsSync, mkdtempSync } from 'fs';
 import { resolve, isAbsolute, join } from 'path';
 import { tmpdir } from 'os';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ContextStore, ensureCacheDir, loadConfig, createFileLock, resolvePlanId, parseQualifiedId, parseManifest } from './core/index.ts';
+import { ContextStore, ensureCacheDir, loadConfig, createFileLock, resolvePlanId, parseQualifiedId, resolveProjectRepos } from './core/index.ts';
 import type { PlanStatus, RepoSpec, MultiRepoEntry, TrellisConfig } from './core/types.ts';
 import type { GraphData } from './core/graph.ts';
 import { computeCreate } from './features/create/logic.ts';
@@ -76,23 +76,17 @@ export function loadProjectRepos(projectDir: string): RepoSpec[] {
     throw new Error(`No .trellis-project manifest found in ${absDir}`);
   }
 
-  const content = readFileSync(manifestPath, 'utf8');
-  const manifest = parseManifest(content);
-
-  const specs: RepoSpec[] = [];
-  for (const [alias, entry] of Object.entries(manifest.repos)) {
-    if (!entry.path) continue;
-
-    const absPath = isAbsolute(entry.path) ? entry.path : resolve(absDir, entry.path);
-    if (!existsSync(absPath)) {
-      throw new Error(`Path does not exist for repo "${alias}": ${absPath}`);
-    }
-
-    specs.push({ alias, path: absPath });
+  const resolved = resolveProjectRepos(manifestPath);
+  if (resolved.length === 0) {
+    throw new Error(`No repos with local "path" found in manifest at ${manifestPath}`);
   }
 
-  if (specs.length === 0) {
-    throw new Error(`No repos with local "path" found in manifest at ${manifestPath}`);
+  const specs: RepoSpec[] = [];
+  for (const repo of resolved) {
+    if (!repo.exists) {
+      throw new Error(`Path does not exist for repo "${repo.alias}": ${repo.localPath}`);
+    }
+    specs.push({ alias: repo.alias, path: repo.localPath });
   }
 
   return specs;

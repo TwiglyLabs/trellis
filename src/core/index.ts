@@ -15,6 +15,7 @@ export type {
   CompletenessResult,
   RepoEntry,
   ProjectManifest,
+  ResolvedRepo,
   StatusGate,
   PlanSummary,
   BlockedPlanSummary,
@@ -97,6 +98,7 @@ export {
   fetchRepoPlans,
   fetchProjectPlans,
   checkVisibility,
+  resolveProjectRepos,
 } from './manifest.ts';
 
 // --- Contracts ---

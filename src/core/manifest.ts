@@ -1,7 +1,10 @@
 import yaml from 'js-yaml';
 import { execFileSync } from 'child_process';
+import { existsSync, readFileSync } from 'fs';
+import { resolve, dirname, isAbsolute } from 'path';
+import { homedir } from 'os';
 import { parseFrontmatter } from './frontmatter.ts';
-import type { Plan, ProjectManifest, RepoEntry, ValidationError } from './types.ts';
+import type { Plan, ProjectManifest, RepoEntry, ResolvedRepo, ValidationError } from './types.ts';
 
 export interface GitExecutor {
   (args: string[], cwd: string): string | null;
@@ -22,6 +25,9 @@ export function parseManifest(content: string): ProjectManifest {
   }
   if (!doc.name || typeof doc.name !== 'string') {
     throw new Error('Invalid manifest: missing or non-string "name"');
+  }
+  if (doc.base_dir !== undefined && typeof doc.base_dir !== 'string') {
+    throw new Error('Invalid manifest: "base_dir" must be a string');
   }
   if (!doc.repos || typeof doc.repos !== 'object' || Array.isArray(doc.repos)) {
     throw new Error('Invalid manifest: missing or invalid "repos"');
@@ -44,6 +50,25 @@ export function parseManifest(content: string): ProjectManifest {
     const hasPath = entry.path && typeof entry.path === 'string';
     const hasUrl = entry.url && typeof entry.url === 'string';
 
+    // Validate optional display metadata
+    if (entry.name !== undefined && typeof entry.name !== 'string') {
+      throw new Error(`Invalid manifest: repo "${alias}" has non-string "name"`);
+    }
+    if (entry.description !== undefined && typeof entry.description !== 'string') {
+      throw new Error(`Invalid manifest: repo "${alias}" has non-string "description"`);
+    }
+    if (entry.tags !== undefined) {
+      if (!Array.isArray(entry.tags) || !entry.tags.every((t: unknown) => typeof t === 'string')) {
+        throw new Error(`Invalid manifest: repo "${alias}" has invalid "tags" (must be string array)`);
+      }
+    }
+
+    const metadata = {
+      ...(entry.name ? { name: entry.name as string } : {}),
+      ...(entry.description ? { description: entry.description as string } : {}),
+      ...(entry.tags ? { tags: entry.tags as string[] } : {}),
+    };
+
     // Entries must have either url+branch+visibility (for git fetch) or path (for local)
     if (!hasUrl && !hasPath) {
       throw new Error(`Invalid manifest: repo "${alias}" missing "url" or "path"`);
@@ -61,6 +86,7 @@ export function parseManifest(content: string): ProjectManifest {
         branch: entry.branch as string,
         visibility: entry.visibility as 'public' | 'private',
         ...(hasPath ? { path: entry.path as string } : {}),
+        ...metadata,
       };
     } else {
       // path-only entry (local repo, no git remote)
@@ -69,10 +95,15 @@ export function parseManifest(content: string): ProjectManifest {
         branch: '',
         visibility: 'private',
         path: entry.path as string,
+        ...metadata,
       };
     }
   }
-  return { name: doc.name, repos: result };
+  return {
+    name: doc.name,
+    ...(doc.base_dir ? { base_dir: doc.base_dir as string } : {}),
+    repos: result,
+  };
 }
 
 export function ensureRemote(name: string, url: string, cwd: string, git: GitExecutor = defaultGitExecutor): void {
@@ -222,4 +253,43 @@ export function checkVisibility(
   }
 
   return errors;
+}
+
+function expandTilde(p: string): string {
+  if (p === '~') return homedir();
+  if (p.startsWith('~/')) return resolve(homedir(), p.slice(2));
+  return p;
+}
+
+export function resolveProjectRepos(manifestPath: string): ResolvedRepo[] {
+  const absManifestPath = isAbsolute(manifestPath) ? manifestPath : resolve(manifestPath);
+  const content = readFileSync(absManifestPath, 'utf8');
+  const manifest = parseManifest(content);
+
+  const baseDir = manifest.base_dir
+    ? expandTilde(manifest.base_dir)
+    : dirname(absManifestPath);
+
+  const results: ResolvedRepo[] = [];
+  for (const [alias, entry] of Object.entries(manifest.repos)) {
+    if (!entry.path) continue;
+
+    const localPath = isAbsolute(entry.path)
+      ? entry.path
+      : resolve(baseDir, entry.path);
+
+    results.push({
+      alias,
+      name: entry.name ?? alias,
+      description: entry.description ?? '',
+      tags: entry.tags ?? [],
+      url: entry.url,
+      branch: entry.branch,
+      visibility: entry.visibility,
+      localPath,
+      exists: existsSync(localPath),
+    });
+  }
+
+  return results;
 }

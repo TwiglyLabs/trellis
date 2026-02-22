@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { tmpdir, homedir } from 'os';
 import {
   parseManifest,
   ensureRemote,
@@ -9,6 +12,7 @@ import {
   fetchRepoPlans,
   fetchProjectPlans,
   checkVisibility,
+  resolveProjectRepos,
   type GitExecutor,
 } from './manifest.ts';
 import type { ProjectManifest, Plan, RepoEntry } from './types.ts';
@@ -89,6 +93,74 @@ repos:
   it('throws on repo entry that is not an object', () => {
     expect(() => parseManifest('name: test\nrepos:\n  a: just-a-string\n'))
       .toThrow('repo "a" is not an object');
+  });
+
+  it('parses base_dir field', () => {
+    const result = parseManifest(`
+name: test
+base_dir: ~/repos
+repos:
+  a:
+    url: x
+    branch: main
+    visibility: public
+    path: org/repo-a
+`);
+    expect(result.base_dir).toBe('~/repos');
+  });
+
+  it('parses repo name, description, and tags', () => {
+    const result = parseManifest(`
+name: test
+repos:
+  a:
+    url: x
+    branch: main
+    visibility: public
+    name: My Repo
+    description: A test repo
+    tags: [frontend, internal]
+`);
+    expect(result.repos.a.name).toBe('My Repo');
+    expect(result.repos.a.description).toBe('A test repo');
+    expect(result.repos.a.tags).toEqual(['frontend', 'internal']);
+  });
+
+  it('throws on non-string base_dir', () => {
+    expect(() => parseManifest('name: test\nbase_dir: 123\nrepos:\n  a:\n    url: x\n    branch: main\n    visibility: public\n'))
+      .toThrow('"base_dir" must be a string');
+  });
+
+  it('throws on non-string repo name', () => {
+    expect(() => parseManifest('name: test\nrepos:\n  a:\n    url: x\n    branch: main\n    visibility: public\n    name: 123\n'))
+      .toThrow('repo "a" has non-string "name"');
+  });
+
+  it('throws on non-string repo description', () => {
+    expect(() => parseManifest('name: test\nrepos:\n  a:\n    url: x\n    branch: main\n    visibility: public\n    description: 123\n'))
+      .toThrow('repo "a" has non-string "description"');
+  });
+
+  it('throws on invalid tags', () => {
+    expect(() => parseManifest('name: test\nrepos:\n  a:\n    url: x\n    branch: main\n    visibility: public\n    tags: not-an-array\n'))
+      .toThrow('repo "a" has invalid "tags"');
+  });
+
+  it('throws on tags with non-string elements', () => {
+    expect(() => parseManifest('name: test\nrepos:\n  a:\n    url: x\n    branch: main\n    visibility: public\n    tags: [1, 2]\n'))
+      .toThrow('repo "a" has invalid "tags"');
+  });
+
+  it('omits base_dir when not present', () => {
+    const result = parseManifest(validManifest);
+    expect(result.base_dir).toBeUndefined();
+  });
+
+  it('backward compat — old manifests without new fields still work', () => {
+    const result = parseManifest(validManifest);
+    expect(result.repos.trellis.name).toBeUndefined();
+    expect(result.repos.trellis.description).toBeUndefined();
+    expect(result.repos.trellis.tags).toBeUndefined();
   });
 });
 
@@ -487,5 +559,254 @@ describe('checkVisibility', () => {
 
     const errors = checkVisibility(manifest, allPlans);
     expect(errors).toHaveLength(0);
+  });
+});
+
+// --- resolveProjectRepos ---
+
+describe('resolveProjectRepos', () => {
+  function writeTmpManifest(content: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const manifestPath = join(dir, '.trellis-project');
+    writeFileSync(manifestPath, content, 'utf8');
+    return manifestPath;
+  }
+
+  it('resolves repos with base_dir and relative paths', () => {
+    const manifestPath = writeTmpManifest(`
+name: test
+base_dir: /tmp
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: org/repo
+`);
+    const results = resolveProjectRepos(manifestPath);
+    expect(results).toHaveLength(1);
+    expect(results[0].alias).toBe('myrepo');
+    expect(results[0].localPath).toBe('/tmp/org/repo');
+  });
+
+  it('resolves repos without base_dir relative to manifest directory', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const manifestPath = join(dir, '.trellis-project');
+    // Create a subdirectory that the path points to
+    const repoDir = join(dir, 'subrepo');
+    mkdirSync(repoDir);
+    writeFileSync(manifestPath, `
+name: test
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: subrepo
+`, 'utf8');
+    const results = resolveProjectRepos(manifestPath);
+    expect(results).toHaveLength(1);
+    expect(results[0].localPath).toBe(repoDir);
+    expect(results[0].exists).toBe(true);
+  });
+
+  it('expands ~ in base_dir', () => {
+    const manifestPath = writeTmpManifest(`
+name: test
+base_dir: ~/repos
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: org/repo
+`);
+    const results = resolveProjectRepos(manifestPath);
+    expect(results[0].localPath).toBe(join(homedir(), 'repos', 'org/repo'));
+  });
+
+  it('sets exists: false for missing paths', () => {
+    const manifestPath = writeTmpManifest(`
+name: test
+base_dir: /nonexistent-base-dir-xyz
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: does-not-exist
+`);
+    const results = resolveProjectRepos(manifestPath);
+    expect(results[0].exists).toBe(false);
+  });
+
+  it('defaults name to alias, description to empty, tags to []', () => {
+    const manifestPath = writeTmpManifest(`
+name: test
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: /tmp
+`);
+    const results = resolveProjectRepos(manifestPath);
+    expect(results[0].name).toBe('myrepo');
+    expect(results[0].description).toBe('');
+    expect(results[0].tags).toEqual([]);
+  });
+
+  it('uses display metadata when provided', () => {
+    const manifestPath = writeTmpManifest(`
+name: test
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: /tmp
+    name: My Repo
+    description: A great repo
+    tags: [frontend, tools]
+`);
+    const results = resolveProjectRepos(manifestPath);
+    expect(results[0].name).toBe('My Repo');
+    expect(results[0].description).toBe('A great repo');
+    expect(results[0].tags).toEqual(['frontend', 'tools']);
+  });
+
+  it('skips repos without a path field', () => {
+    const manifestPath = writeTmpManifest(`
+name: test
+repos:
+  with-path:
+    url: git@example.com:org/a.git
+    branch: main
+    visibility: public
+    path: /tmp
+  without-path:
+    url: git@example.com:org/b.git
+    branch: main
+    visibility: public
+`);
+    const results = resolveProjectRepos(manifestPath);
+    expect(results).toHaveLength(1);
+    expect(results[0].alias).toBe('with-path');
+  });
+
+  it('backward compat — old manifest format still works', () => {
+    const manifestPath = writeTmpManifest(`
+name: twiglylabs
+repos:
+  trellis:
+    url: git@github.com:twiglylabs/trellis.git
+    branch: main
+    visibility: public
+    path: /tmp
+`);
+    const results = resolveProjectRepos(manifestPath);
+    expect(results).toHaveLength(1);
+    expect(results[0].alias).toBe('trellis');
+    expect(results[0].url).toBe('git@github.com:twiglylabs/trellis.git');
+    expect(results[0].branch).toBe('main');
+    expect(results[0].visibility).toBe('public');
+  });
+
+  it('uses absolute entry.path as-is, ignoring base_dir', () => {
+    const manifestPath = writeTmpManifest(`
+name: test
+base_dir: /should/be/ignored
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: /tmp
+`);
+    const results = resolveProjectRepos(manifestPath);
+    expect(results).toHaveLength(1);
+    expect(results[0].localPath).toBe('/tmp');
+    expect(results[0].exists).toBe(true);
+  });
+
+  it('expands bare ~ in base_dir to homedir', () => {
+    const manifestPath = writeTmpManifest(`
+name: test
+base_dir: "~"
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: somedir
+`);
+    const results = resolveProjectRepos(manifestPath);
+    expect(results[0].localPath).toBe(join(homedir(), 'somedir'));
+  });
+
+  it('resolves multiple repos and preserves manifest order', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const aDir = join(dir, 'a');
+    const bDir = join(dir, 'b');
+    mkdirSync(aDir);
+    mkdirSync(bDir);
+    const manifestPath = join(dir, '.trellis-project');
+    writeFileSync(manifestPath, `
+name: test
+repos:
+  alpha:
+    url: git@example.com:org/alpha.git
+    branch: main
+    visibility: public
+    path: a
+    name: Alpha Repo
+    tags: [frontend]
+  beta:
+    url: git@example.com:org/beta.git
+    branch: develop
+    visibility: private
+    path: b
+    description: The beta service
+  gamma:
+    url: git@example.com:org/gamma.git
+    branch: main
+    visibility: public
+`, 'utf8');
+    const results = resolveProjectRepos(manifestPath);
+    // gamma has no path, so it should be skipped
+    expect(results).toHaveLength(2);
+    expect(results[0].alias).toBe('alpha');
+    expect(results[0].name).toBe('Alpha Repo');
+    expect(results[0].tags).toEqual(['frontend']);
+    expect(results[0].localPath).toBe(aDir);
+    expect(results[0].exists).toBe(true);
+    expect(results[1].alias).toBe('beta');
+    expect(results[1].name).toBe('beta'); // defaults to alias
+    expect(results[1].description).toBe('The beta service');
+    expect(results[1].branch).toBe('develop');
+    expect(results[1].visibility).toBe('private');
+    expect(results[1].localPath).toBe(bDir);
+    expect(results[1].exists).toBe(true);
+  });
+
+  it('resolves path-only entries (no URL)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trellis-test-'));
+    const repoDir = join(dir, 'local-repo');
+    mkdirSync(repoDir);
+    const manifestPath = join(dir, '.trellis-project');
+    writeFileSync(manifestPath, `
+name: test
+repos:
+  local:
+    path: local-repo
+`, 'utf8');
+    const results = resolveProjectRepos(manifestPath);
+    expect(results).toHaveLength(1);
+    expect(results[0].alias).toBe('local');
+    expect(results[0].url).toBe('');
+    expect(results[0].branch).toBe('');
+    expect(results[0].visibility).toBe('private');
+    expect(results[0].localPath).toBe(repoDir);
+    expect(results[0].exists).toBe(true);
   });
 });

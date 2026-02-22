@@ -64,11 +64,27 @@ export interface RepoEntry {
   branch: string;
   visibility: 'public' | 'private';
   path?: string;
+  name?: string;
+  description?: string;
+  tags?: string[];
 }
 
 export interface ProjectManifest {
   name: string;
+  base_dir?: string;
   repos: Record<string, RepoEntry>;
+}
+
+export interface ResolvedRepo {
+  alias: string;
+  name: string;
+  description: string;
+  tags: string[];
+  url: string;
+  branch: string;
+  visibility: 'public' | 'private';
+  localPath: string;
+  exists: boolean;
 }
 
 // --- Completeness scoring ---
