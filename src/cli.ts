@@ -61,7 +61,11 @@ program
     if (opts.repos) {
       repos = parseReposFlag(opts.repos);
     } else if (opts.project) {
-      repos = loadProjectRepos(opts.project);
+      const result = loadProjectRepos(opts.project);
+      for (const w of result.warnings) {
+        console.error(`Warning: ${w}`);
+      }
+      repos = result.specs;
     }
     await startMcpServer(repos ? { repos } : undefined);
   });

@@ -112,6 +112,7 @@ export function parseConfigContent(content: string, cwd: string): TrellisConfig 
         config.chunk_strategy = value;
       }
       if (key === 'manifest') config.manifest = value;
+      if (key === 'project_root') config.project_root = value;
       if (key === 'default_plan_type') config.default_plan_type = value;
       if (key === 'stale_in_progress_days') {
         const parsed = parseInt(value, 10);
@@ -136,6 +137,7 @@ export function parseConfigContent(content: string, cwd: string): TrellisConfig 
     chunk_max_lines: config.chunk_max_lines,
     chunk_strategy: config.chunk_strategy,
     manifest: config.manifest,
+    project_root: config.project_root,
     completenessThresholds: config.completenessThresholds,
     default_plan_type: config.default_plan_type,
     stale_in_progress_days: config.stale_in_progress_days,

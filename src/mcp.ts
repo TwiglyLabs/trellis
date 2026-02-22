@@ -1,11 +1,11 @@
-import { existsSync, mkdtempSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync } from 'fs';
 import { resolve, isAbsolute, join } from 'path';
 import { tmpdir } from 'os';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ContextStore, ensureCacheDir, loadConfig, createFileLock, resolvePlanId, parseQualifiedId, resolveProjectRepos } from './core/index.ts';
-import type { PlanStatus, RepoSpec, MultiRepoEntry, TrellisConfig } from './core/types.ts';
+import { ContextStore, ensureCacheDir, loadConfig, createFileLock, resolvePlanId, parseQualifiedId, resolveProjectRepos, parseManifest, expandTilde } from './core/index.ts';
+import type { PlanStatus, RepoSpec, MultiRepoEntry, TrellisConfig, ProjectManifest } from './core/types.ts';
 import type { GraphData } from './core/graph.ts';
 import { computeCreate } from './features/create/logic.ts';
 import { computeWriteSection, computeWriteSections, computeReadSection } from './features/sections/logic.ts';
@@ -67,8 +67,10 @@ export function parseReposFlag(input: string): RepoSpec[] {
 
 /**
  * Load RepoSpec[] from a .trellis-project manifest, using entries that have a `path` field.
+ * Missing repos are collected in the returned `warnings` array rather than throwing,
+ * so callers can continue with available repos and report missing ones.
  */
-export function loadProjectRepos(projectDir: string): RepoSpec[] {
+export function loadProjectRepos(projectDir: string): { specs: RepoSpec[]; warnings: string[] } {
   const absDir = isAbsolute(projectDir) ? projectDir : resolve(projectDir);
   const manifestPath = join(absDir, '.trellis-project');
 
@@ -82,14 +84,20 @@ export function loadProjectRepos(projectDir: string): RepoSpec[] {
   }
 
   const specs: RepoSpec[] = [];
+  const warnings: string[] = [];
   for (const repo of resolved) {
     if (!repo.exists) {
-      throw new Error(`Path does not exist for repo "${repo.alias}": ${repo.localPath}`);
+      warnings.push(`Repo "${repo.alias}" path does not exist: ${repo.localPath}`);
+      continue;
     }
     specs.push({ alias: repo.alias, path: repo.localPath });
   }
 
-  return specs;
+  if (specs.length === 0) {
+    throw new Error(`All repos in manifest have missing paths. ${warnings.join('; ')}`);
+  }
+
+  return { specs, warnings };
 }
 
 /** Internal context returned by getToolContext() */
@@ -108,33 +116,90 @@ export interface McpServerOptions {
   /** Override cache directory (defaults to .trellis/cache/ for single-repo, tmpdir for multi-repo). */
   cacheDir?: string;
   /** Internal: pre-built store (used by startMcpServer to share store with watch lifecycle). */
-  _storeBundle?: { store: ContextStore; isMultiRepo: boolean; singleRepoProjectDir?: string };
+  _storeBundle?: { store: ContextStore; isMultiRepo: boolean; singleRepoProjectDir?: string; manifest?: ProjectManifest };
 }
 
 /**
  * Build a ContextStore and cacheDir from the given options.
  * Separated for testability — tests can create their own stores and pass them in.
+ *
+ * Resolution order:
+ * 1. Explicit --repos flag → multi-repo mode
+ * 2. Config has manifest + .trellis-project exists → project mode (auto multi-repo)
+ * 3. Fallback → single-repo mode
  */
-function buildStore(options?: McpServerOptions): { store: ContextStore; isMultiRepo: boolean; singleRepoProjectDir?: string } {
+function buildStore(options?: McpServerOptions): { store: ContextStore; isMultiRepo: boolean; singleRepoProjectDir?: string; manifest?: ProjectManifest } {
   const repos = options?.repos;
 
+  // Path 1: Explicit --repos flag
   if (repos && repos.length > 0) {
-    // Multi-repo mode
     const cacheDir = options?.cacheDir ?? mkdtempSync(join(tmpdir(), 'trellis-mcp-'));
     const store = new ContextStore({ repos, cacheDir });
     return { store, isMultiRepo: true };
   }
 
-  // Single-repo mode
+  // Load config for auto-detection
   const projectDir = process.cwd();
-  let cacheDir: string;
   let config: TrellisConfig;
   try {
     config = loadConfig(projectDir);
+  } catch {
+    config = { project: 'default', plans_dir: 'plans' } as TrellisConfig;
+  }
+
+  // Path 2: Project mode via project_root — leaf repo pointing to meta-repo
+  if (config.project_root) {
+    const projectRoot = expandTilde(config.project_root);
+    const manifestPath = join(projectRoot, '.trellis-project');
+    if (existsSync(manifestPath)) {
+      const { specs, warnings } = loadProjectRepos(projectRoot);
+      for (const w of warnings) {
+        process.stderr.write(`[trellis] warning: ${w}\n`);
+      }
+      const cacheDir = options?.cacheDir ?? ensureCacheDir(projectDir);
+      const store = new ContextStore({ repos: specs, cacheDir, qualifyIds: true });
+      let manifest: ProjectManifest | undefined;
+      try {
+        manifest = parseManifest(readFileSync(manifestPath, 'utf8'));
+      } catch {
+        // Non-fatal — manifest object is optional
+      }
+      return { store, isMultiRepo: true, singleRepoProjectDir: projectDir, manifest };
+    }
+    throw new Error(
+      `Config has "project_root: ${config.project_root}" but no .trellis-project found at ${projectRoot}.`,
+    );
+  }
+
+  // Path 2b: Project mode — config has manifest + .trellis-project exists locally (meta-repo case)
+  if (config.manifest) {
+    const manifestPath = join(projectDir, '.trellis-project');
+    if (existsSync(manifestPath)) {
+      const { specs, warnings } = loadProjectRepos(projectDir);
+      for (const w of warnings) {
+        process.stderr.write(`[trellis] warning: ${w}\n`);
+      }
+      const cacheDir = options?.cacheDir ?? ensureCacheDir(projectDir);
+      const store = new ContextStore({ repos: specs, cacheDir, qualifyIds: true });
+      let manifest: ProjectManifest | undefined;
+      try {
+        manifest = parseManifest(readFileSync(manifestPath, 'utf8'));
+      } catch {
+        // Non-fatal — manifest object is optional
+      }
+      return { store, isMultiRepo: true, singleRepoProjectDir: projectDir, manifest };
+    }
+    // Manifest configured but no .trellis-project — error
+    throw new Error(
+      `Config has "manifest" but no .trellis-project found in ${projectDir}. Run "trellis sync" first to fetch the project manifest.`,
+    );
+  }
+
+  // Path 3: Single-repo mode
+  let cacheDir: string;
+  try {
     cacheDir = options?.cacheDir ?? ensureCacheDir(projectDir);
   } catch {
-    // No config or can't create cache — use tmpdir
-    config = { project: 'default', plans_dir: 'plans' } as TrellisConfig;
     cacheDir = options?.cacheDir ?? mkdtempSync(join(tmpdir(), 'trellis-mcp-'));
   }
 
@@ -153,7 +218,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   });
 
   const withLock = createFileLock();
-  const { store, isMultiRepo, singleRepoProjectDir } = options?._storeBundle ?? buildStore(options);
+  const { store, isMultiRepo, singleRepoProjectDir, manifest: projectManifest } = options?._storeBundle ?? buildStore(options);
 
   // Load initial context (synchronous — populates cache).
   // Skip if an injected store bundle was provided (already loaded by caller).
@@ -588,11 +653,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     try {
       const ctx = getToolContext();
       if (ctx.isMultiRepo) {
+        const repos = ctx.repoEntries ?? [];
+        const plansDirs = repos.map(r => r.plansDir).filter((d): d is string => !!d);
         const result = computeLint({
           plans: ctx.plans,
           graph: ctx.graph,
-          projectDir: ctx.repoEntries?.[0]?.path ?? '',
-          plansDir: ctx.repoEntries?.[0]?.plansDir ?? '',
+          projectDir: repos[0]?.path ?? '',
+          plansDir: plansDirs[0] ?? '',
+          additionalPlansDirs: plansDirs.slice(1),
+          manifest: projectManifest,
           options: { strict },
         });
         return {

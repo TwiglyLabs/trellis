@@ -1,6 +1,6 @@
 ---
 title: 'MCP & CLI project mode: auto-detect manifest and aggregate across repos'
-status: not_started
+status: done
 description: >-
   Make the MCP server and CLI commands project-aware — auto-detect manifest from
   config, resolve all local repos, aggregate plans across repos, and support
@@ -11,6 +11,7 @@ tags:
   - 'epic:project-mode'
 type: feature
 not_started_at: '2026-02-22T15:05:05.286Z'
+completed_at: '2026-02-22T15:26:17.989Z'
 ---
 
 ## Problem

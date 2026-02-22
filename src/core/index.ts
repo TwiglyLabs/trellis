@@ -99,6 +99,7 @@ export {
   fetchProjectPlans,
   checkVisibility,
   resolveProjectRepos,
+  expandTilde,
 } from './manifest.ts';
 
 // --- Contracts ---

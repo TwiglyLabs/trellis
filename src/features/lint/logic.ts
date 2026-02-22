@@ -29,6 +29,8 @@ export interface ComputeLintOptions {
   graph: GraphData;
   projectDir: string;
   plansDir: string;
+  /** Additional plan directories to scan for structural issues (multi-repo). */
+  additionalPlansDirs?: string[];
   manifest?: ProjectManifest;
   projectName?: string;
   options?: { strict?: boolean; fix?: boolean; completeness?: boolean };
@@ -133,12 +135,14 @@ export function computeLint(opts: ComputeLintOptions): LintResult {
 
   // --- Structural checks ---
 
-  // Scan plans directory for malformed entries (single files, dirs without README.md)
-  if (existsSync(plansDir)) {
+  // Scan plans directories for malformed entries (single files, dirs without README.md)
+  const allPlansDirs = [plansDir, ...(opts.additionalPlansDirs ?? [])];
+  for (const dir of allPlansDirs) {
+    if (!existsSync(dir)) continue;
     let entries: string[];
-    try { entries = readdirSync(plansDir); } catch { entries = []; }
+    try { entries = readdirSync(dir); } catch { entries = []; }
     for (const entry of entries) {
-      const fullPath = join(plansDir, entry);
+      const fullPath = join(dir, entry);
       try {
         const stat = statSync(fullPath);
         if (!stat.isDirectory() && entry.endsWith('.md')) {

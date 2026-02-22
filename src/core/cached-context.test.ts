@@ -283,3 +283,281 @@ describe('createCachedContext with createFixture', () => {
     expect(ctx.plans.some(p => p.id === 'b')).toBe(true);
   });
 });
+
+// --- Project mode auto-detection ---
+
+describe('createCachedContext project mode', () => {
+  function setupProjectFixture() {
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth\n\n## Approach\nJWT\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'ui', title: 'UI', status: 'not_started', body: '\n## Problem\nUI\n\n## Approach\nReact\n' },
+      { id: 'dashboard', title: 'Dashboard', status: 'not_started', depends_on: ['alpha:auth'], body: '\n## Problem\nDash\n\n## Approach\nBuild\n' },
+    ]);
+
+    // Configure alpha as project root with manifest
+    writeFileSync(
+      join(alpha.root, '.trellis', 'config'),
+      `project: alpha\nplans_dir: plans\nmanifest: https://example.com/manifest.git\n`,
+    );
+
+    // Write .trellis-project manifest
+    const manifest = [
+      'name: test-project',
+      'repos:',
+      '  alpha:',
+      `    path: ${alpha.root}`,
+      '  beta:',
+      `    path: ${beta.root}`,
+    ].join('\n');
+    writeFileSync(join(alpha.root, '.trellis-project'), manifest);
+
+    return { alpha, beta };
+  }
+
+  it('enters project mode when manifest + .trellis-project exist', () => {
+    const { alpha } = setupProjectFixture();
+
+    const { ctx } = createCachedContext(alpha.root);
+
+    expect(ctx.plans.length).toBe(3);
+    // Plans should be qualified
+    const ids = ctx.plans.map(p => p.id);
+    expect(ids).toContain('alpha:auth');
+    expect(ids).toContain('beta:ui');
+    expect(ids).toContain('beta:dashboard');
+  });
+
+  it('resolves cross-repo dependencies in project mode', () => {
+    const { alpha } = setupProjectFixture();
+
+    const { ctx } = createCachedContext(alpha.root);
+
+    // beta:dashboard depends on alpha:auth
+    const dashboard = ctx.plans.find(p => p.id === 'beta:dashboard');
+    expect(dashboard).toBeDefined();
+    expect(dashboard!.frontmatter.depends_on).toContain('alpha:auth');
+
+    // alpha:auth is not done, so beta:dashboard should be blocked
+    expect(ctx.graph.blocked.has('beta:dashboard')).toBe(true);
+  });
+
+  it('returns manifest in context', () => {
+    const { alpha } = setupProjectFixture();
+
+    const { ctx } = createCachedContext(alpha.root);
+
+    expect(ctx.manifest).toBeDefined();
+    expect(ctx.manifest!.name).toBe('test-project');
+  });
+
+  it('falls back to single-repo when manifest configured but no .trellis-project', () => {
+    const { root } = createFixture([
+      { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
+    ]);
+    writeFileSync(
+      join(root, '.trellis', 'config'),
+      'project: test-project\nplans_dir: plans\nmanifest: https://example.com/manifest.git\n',
+    );
+
+    // No .trellis-project file — should fall back to single-repo silently
+    const { ctx } = createCachedContext(root);
+
+    expect(ctx.plans.length).toBe(1);
+    expect(ctx.plans[0].id).toBe('test');
+  });
+
+  it('warns and continues with available repos when some are missing', () => {
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth\n\n## Approach\nJWT\n' },
+    ]);
+
+    writeFileSync(
+      join(alpha.root, '.trellis', 'config'),
+      `project: alpha\nplans_dir: plans\nmanifest: https://example.com/manifest.git\n`,
+    );
+    writeFileSync(
+      join(alpha.root, '.trellis-project'),
+      [
+        'name: test-project',
+        'repos:',
+        '  alpha:',
+        `    path: ${alpha.root}`,
+        '  missing-repo:',
+        '    path: /nonexistent/path',
+      ].join('\n'),
+    );
+
+    const { ctx } = createCachedContext(alpha.root);
+
+    // Should include alpha plans despite missing-repo
+    expect(ctx.plans.length).toBe(1);
+    expect(ctx.plans[0].id).toBe('alpha:auth');
+  });
+
+  it('persists cache in project mode', async () => {
+    const { alpha } = setupProjectFixture();
+
+    const { persist } = createCachedContext(alpha.root);
+    await persist();
+
+    const indexPath = join(alpha.root, '.trellis', 'cache', 'context-store.json');
+    expect(existsSync(indexPath)).toBe(true);
+  });
+
+  it('warm cache returns same plans without rescan in project mode', async () => {
+    const { alpha } = setupProjectFixture();
+
+    // Cold start — populates cache
+    const { ctx: ctx1, persist } = createCachedContext(alpha.root);
+    await persist();
+
+    const scanSpy = vi.spyOn(await import('./scanner.ts'), 'scanPlans');
+
+    // Warm cache — should not rescan
+    const { ctx: ctx2 } = createCachedContext(alpha.root);
+
+    expect(scanSpy).not.toHaveBeenCalled();
+    scanSpy.mockRestore();
+
+    // Same plans returned
+    expect(ctx2.plans.length).toBe(ctx1.plans.length);
+    expect(ctx2.plans.map(p => p.id).sort()).toEqual(ctx1.plans.map(p => p.id).sort());
+    // Plans should still be qualified
+    expect(ctx2.plans.some(p => p.id === 'alpha:auth')).toBe(true);
+    expect(ctx2.plans.some(p => p.id === 'beta:ui')).toBe(true);
+    expect(ctx2.plans.some(p => p.id === 'beta:dashboard')).toBe(true);
+  });
+
+  it('warm cache graph is valid in project mode', async () => {
+    const { alpha } = setupProjectFixture();
+
+    const { ctx: ctx1, persist } = createCachedContext(alpha.root);
+    await persist();
+
+    const { ctx: ctx2 } = createCachedContext(alpha.root);
+
+    expect(ctx2.graph.plans.size).toBe(ctx1.graph.plans.size);
+    expect([...ctx2.graph.ready].sort()).toEqual([...ctx1.graph.ready].sort());
+    expect([...ctx2.graph.blocked].sort()).toEqual([...ctx1.graph.blocked].sort());
+    // Cross-repo dep should still be resolved
+    expect(ctx2.graph.blocked.has('beta:dashboard')).toBe(true);
+  });
+});
+
+// --- project_root config field ---
+
+describe('createCachedContext with project_root', () => {
+  function setupProjectRootFixture() {
+    // Create two repos: alpha (leaf) and beta
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth\n\n## Approach\nJWT\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'ui', title: 'UI', status: 'not_started', body: '\n## Problem\nUI\n\n## Approach\nReact\n' },
+      { id: 'dashboard', title: 'Dashboard', status: 'not_started', depends_on: ['alpha:auth'], body: '\n## Problem\nDash\n\n## Approach\nBuild\n' },
+    ]);
+
+    // Create a meta-repo directory with .trellis-project
+    const metaRoot = mkdtempSync(join(tmpdir(), 'trellis-meta-'));
+    const manifest = [
+      'name: test-project',
+      'repos:',
+      '  alpha:',
+      `    path: ${alpha.root}`,
+      '  beta:',
+      `    path: ${beta.root}`,
+    ].join('\n');
+    writeFileSync(join(metaRoot, '.trellis-project'), manifest);
+
+    // Configure alpha as a LEAF repo with project_root pointing to metaRoot
+    writeFileSync(
+      join(alpha.root, '.trellis', 'config'),
+      `project: alpha\nplans_dir: plans\nproject_root: ${metaRoot}\n`,
+    );
+
+    return { alpha, beta, metaRoot };
+  }
+
+  it('enters project mode from leaf repo via project_root', () => {
+    const { alpha } = setupProjectRootFixture();
+
+    const { ctx } = createCachedContext(alpha.root);
+
+    expect(ctx.plans.length).toBe(3);
+    const ids = ctx.plans.map(p => p.id);
+    expect(ids).toContain('alpha:auth');
+    expect(ids).toContain('beta:ui');
+    expect(ids).toContain('beta:dashboard');
+  });
+
+  it('resolves cross-repo dependencies via project_root', () => {
+    const { alpha } = setupProjectRootFixture();
+
+    const { ctx } = createCachedContext(alpha.root);
+
+    // beta:dashboard depends on alpha:auth (not done) → should be blocked
+    expect(ctx.graph.blocked.has('beta:dashboard')).toBe(true);
+  });
+
+  it('returns manifest in context via project_root', () => {
+    const { alpha } = setupProjectRootFixture();
+
+    const { ctx } = createCachedContext(alpha.root);
+
+    expect(ctx.manifest).toBeDefined();
+    expect(ctx.manifest!.name).toBe('test-project');
+  });
+
+  it('falls back to single-repo when project_root .trellis-project missing', () => {
+    const { root } = createFixture([
+      { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
+    ]);
+    const emptyDir = mkdtempSync(join(tmpdir(), 'trellis-empty-'));
+    writeFileSync(
+      join(root, '.trellis', 'config'),
+      `project: test-project\nplans_dir: plans\nproject_root: ${emptyDir}\n`,
+    );
+
+    // project_root dir has no .trellis-project → should fall back to single-repo
+    const { ctx } = createCachedContext(root);
+
+    expect(ctx.plans.length).toBe(1);
+    expect(ctx.plans[0].id).toBe('test');
+  });
+
+  it('persists cache in leaf repo, not meta-repo', async () => {
+    const { alpha, metaRoot } = setupProjectRootFixture();
+
+    const { persist } = createCachedContext(alpha.root);
+    await persist();
+
+    // Cache should be in the leaf repo
+    const leafCachePath = join(alpha.root, '.trellis', 'cache', 'context-store.json');
+    expect(existsSync(leafCachePath)).toBe(true);
+
+    // Meta-repo should NOT have a cache
+    const metaCachePath = join(metaRoot, '.trellis', 'cache', 'context-store.json');
+    expect(existsSync(metaCachePath)).toBe(false);
+  });
+
+  it('warm cache works with project_root', async () => {
+    const { alpha } = setupProjectRootFixture();
+
+    // Cold start
+    const { ctx: ctx1, persist } = createCachedContext(alpha.root);
+    await persist();
+
+    const scanSpy = vi.spyOn(await import('./scanner.ts'), 'scanPlans');
+
+    // Warm cache
+    const { ctx: ctx2 } = createCachedContext(alpha.root);
+
+    expect(scanSpy).not.toHaveBeenCalled();
+    scanSpy.mockRestore();
+
+    expect(ctx2.plans.length).toBe(ctx1.plans.length);
+    expect(ctx2.plans.map(p => p.id).sort()).toEqual(ctx1.plans.map(p => p.id).sort());
+  });
+});

@@ -25,7 +25,10 @@ describe('MCP server', () => {
     process.cwd = originalCwd;
   });
 
-  it('creates a server with eleven tools', () => {
+  it('creates a server with twelve tools', () => {
+    const { root } = createFixture([]);
+    process.cwd = () => root;
+
     const server = createMcpServer();
     const tools = Object.keys((server as any)._registeredTools);
     expect(tools).toContain('trellis_create');

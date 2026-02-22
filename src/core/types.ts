@@ -53,6 +53,9 @@ export interface TrellisConfig {
   chunk_max_lines?: number;
   chunk_strategy?: 'directory' | 'topological';
   manifest?: string;
+  /** Local path to the project root directory containing .trellis-project manifest.
+   *  When set in a leaf repo, enables project mode by resolving the manifest from this path. */
+  project_root?: string;
   completenessThresholds?: Record<string, number>;
   default_plan_type?: string;
   stale_in_progress_days?: number;

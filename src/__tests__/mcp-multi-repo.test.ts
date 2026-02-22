@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { createMcpServer, parseReposFlag, loadProjectRepos } from '../mcp.ts';
 import { resolvePlanId, buildGraph, createMultiContext } from '../core/index.ts';
@@ -93,12 +93,13 @@ describe('loadProjectRepos', () => {
     const { writeFileSync: wfs } = require('fs');
     wfs(join(projectDir, '.trellis-project'), manifest);
 
-    const specs = loadProjectRepos(projectDir);
+    const { specs, warnings } = loadProjectRepos(projectDir);
     expect(specs).toHaveLength(2);
     expect(specs[0].alias).toBe('alpha');
     expect(specs[0].path).toBe(repo1);
     expect(specs[1].alias).toBe('beta');
     expect(specs[1].path).toBe(repo2);
+    expect(warnings).toHaveLength(0);
   });
 
   it('skips repos without path field', () => {
@@ -122,7 +123,7 @@ describe('loadProjectRepos', () => {
     const { writeFileSync: wfs } = require('fs');
     wfs(join(projectDir, '.trellis-project'), manifest);
 
-    const specs = loadProjectRepos(projectDir);
+    const { specs } = loadProjectRepos(projectDir);
     expect(specs).toHaveLength(1);
     expect(specs[0].alias).toBe('alpha');
   });
@@ -150,7 +151,30 @@ describe('loadProjectRepos', () => {
     expect(() => loadProjectRepos(projectDir)).toThrow('No repos with local "path"');
   });
 
-  it('throws when path in manifest does not exist', () => {
+  it('warns on missing repo paths instead of throwing', () => {
+    const { root: repo1 } = createFixture([]);
+    const { root: projectDir } = createFixture([]);
+
+    const manifest = [
+      'name: test-project',
+      'repos:',
+      '  good-repo:',
+      `    path: ${repo1}`,
+      '  bad-repo:',
+      '    path: /nonexistent/path/to/repo',
+    ].join('\n');
+
+    const { writeFileSync: wfs } = require('fs');
+    wfs(join(projectDir, '.trellis-project'), manifest);
+
+    const { specs, warnings } = loadProjectRepos(projectDir);
+    expect(specs).toHaveLength(1);
+    expect(specs[0].alias).toBe('good-repo');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('bad-repo');
+  });
+
+  it('throws when all repo paths are missing', () => {
     const { root: projectDir } = createFixture([]);
 
     const manifest = [
@@ -163,8 +187,7 @@ describe('loadProjectRepos', () => {
     const { writeFileSync: wfs } = require('fs');
     wfs(join(projectDir, '.trellis-project'), manifest);
 
-    expect(() => loadProjectRepos(projectDir)).toThrow('Path does not exist');
-    expect(() => loadProjectRepos(projectDir)).toThrow('bad-repo');
+    expect(() => loadProjectRepos(projectDir)).toThrow('All repos in manifest have missing paths');
   });
 
   it('supports path-only entries (no url)', () => {
@@ -181,7 +204,7 @@ describe('loadProjectRepos', () => {
     const { writeFileSync: wfs } = require('fs');
     wfs(join(projectDir, '.trellis-project'), manifest);
 
-    const specs = loadProjectRepos(projectDir);
+    const { specs } = loadProjectRepos(projectDir);
     expect(specs).toHaveLength(1);
     expect(specs[0].alias).toBe('local-only');
     expect(specs[0].path).toBe(repo1);
@@ -696,5 +719,446 @@ describe('remote field', () => {
       value: 'updated',
     });
     expect(result.isError).toBeFalsy();
+  });
+});
+
+// =============================================
+// MCP project mode auto-detection
+// =============================================
+
+describe('MCP project mode auto-detection', () => {
+  let originalCwd: () => string;
+
+  beforeEach(() => {
+    originalCwd = process.cwd;
+  });
+
+  afterEach(() => {
+    process.cwd = originalCwd;
+  });
+
+  function writeManifest(projectDir: string, repos: Record<string, string>): void {
+    const { writeFileSync: wfs } = require('fs');
+    const lines = ['name: test-project', 'repos:'];
+    for (const [alias, path] of Object.entries(repos)) {
+      lines.push(`  ${alias}:`, `    path: ${path}`);
+    }
+    wfs(join(projectDir, '.trellis-project'), lines.join('\n'));
+  }
+
+  function writeConfig(projectDir: string, manifest: string): void {
+    const { writeFileSync: wfs, mkdirSync: mds, existsSync: es } = require('fs');
+    const trellisDir = join(projectDir, '.trellis');
+    if (!es(trellisDir)) mds(trellisDir, { recursive: true });
+    wfs(join(trellisDir, 'config'), `project: test-project\nplans_dir: plans\nmanifest: ${manifest}\n`);
+  }
+
+  it('auto-detects project mode when manifest + .trellis-project exist', async () => {
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth needed\n\n## Approach\nJWT\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'ui', title: 'UI', status: 'not_started', body: '\n## Problem\nUI needed\n\n## Approach\nReact\n' },
+    ]);
+
+    // Set up alpha as the "project root" with manifest pointing to both repos
+    writeConfig(alpha.root, 'https://example.com/manifest.git');
+    writeManifest(alpha.root, { alpha: alpha.root, beta: beta.root });
+    process.cwd = () => alpha.root;
+
+    const server = createMcpServer();
+    const result = await callTool(server, 'trellis_status', {});
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    expect(output.total).toBe(2);
+
+    // Plans should be qualified with repo aliases
+    const allIds = [
+      ...(output.byStatus.ready ?? []),
+      ...(output.byStatus.blocked ?? []),
+      ...(output.byStatus.draft ?? []),
+    ].map((p: any) => p.id);
+    expect(allIds).toContain('alpha:auth');
+    expect(allIds).toContain('beta:ui');
+  });
+
+  it('falls back to single-repo when no manifest configured', async () => {
+    const { root } = createFixture([
+      { id: 'test', title: 'Test', status: 'draft', body: '\n## Problem\nText\n' },
+    ]);
+    process.cwd = () => root;
+
+    const server = createMcpServer();
+    const result = await callTool(server, 'trellis_status', {});
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    expect(output.total).toBe(1);
+  });
+
+  it('throws when manifest configured but no .trellis-project', () => {
+    const { root } = createFixture([]);
+    writeConfig(root, 'https://example.com/manifest.git');
+    process.cwd = () => root;
+
+    expect(() => createMcpServer()).toThrow('trellis sync');
+  });
+
+  it('cross-repo deps work in project mode', async () => {
+    const alpha = createFixture([
+      { id: 'core', title: 'Core', status: 'done', body: '\n## Problem\nCore\n\n## Approach\nBuild\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'feature', title: 'Feature', status: 'not_started', depends_on: ['alpha:core'], body: '\n## Problem\nFeature\n\n## Approach\nBuild\n' },
+    ]);
+
+    writeConfig(alpha.root, 'https://example.com/manifest.git');
+    writeManifest(alpha.root, { alpha: alpha.root, beta: beta.root });
+    process.cwd = () => alpha.root;
+
+    const server = createMcpServer();
+    const result = await callTool(server, 'trellis_ready', {});
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    const readyIds = output.plans.map((p: any) => p.id);
+    expect(readyIds).toContain('beta:feature');
+  });
+
+  it('warns but continues when some repos are missing', async () => {
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth\n\n## Approach\nJWT\n' },
+    ]);
+
+    writeConfig(alpha.root, 'https://example.com/manifest.git');
+    writeManifest(alpha.root, { alpha: alpha.root, missing: '/nonexistent/repo' });
+    process.cwd = () => alpha.root;
+
+    // Should not throw — missing repos produce warnings, not failures
+    const server = createMcpServer();
+    const result = await callTool(server, 'trellis_status', {});
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    expect(output.total).toBe(1);
+  });
+
+  it('explicit --repos overrides project mode', async () => {
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth\n\n## Approach\nJWT\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'ui', title: 'UI', status: 'not_started', body: '\n## Problem\nUI\n\n## Approach\nReact\n' },
+    ]);
+
+    // Set up manifest pointing to alpha + beta
+    writeConfig(alpha.root, 'https://example.com/manifest.git');
+    writeManifest(alpha.root, { alpha: alpha.root, beta: beta.root });
+    process.cwd = () => alpha.root;
+
+    // But pass explicit --repos pointing only to beta
+    const server = createMcpServer({
+      repos: [{ alias: 'beta', path: beta.root }],
+    });
+    const result = await callTool(server, 'trellis_status', {});
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    // Only beta plans, not alpha — explicit repos override project mode
+    expect(output.total).toBe(1);
+    const allIds = [
+      ...(output.byStatus.ready ?? []),
+      ...(output.byStatus.blocked ?? []),
+      ...(output.byStatus.draft ?? []),
+    ].map((p: any) => p.id);
+    expect(allIds).toContain('beta:ui');
+    expect(allIds).not.toContain('alpha:auth');
+  });
+});
+
+// =============================================
+// --project flag (cli.ts integration)
+// =============================================
+
+describe('loadProjectRepos for --project flag', () => {
+  it('returns specs and empty warnings for valid repos', () => {
+    const { root: repo1 } = createFixture([
+      { id: 'plan-a', title: 'Plan A', status: 'draft', body: '\n## Problem\nA\n' },
+    ]);
+    const { root: repo2 } = createFixture([
+      { id: 'plan-b', title: 'Plan B', status: 'draft', body: '\n## Problem\nB\n' },
+    ]);
+    const { root: projectDir } = createFixture([]);
+
+    writeFileSync(
+      join(projectDir, '.trellis-project'),
+      ['name: test-project', 'repos:', `  alpha:`, `    path: ${repo1}`, `  beta:`, `    path: ${repo2}`].join('\n'),
+    );
+
+    const { specs, warnings } = loadProjectRepos(projectDir);
+    expect(specs).toHaveLength(2);
+    expect(specs[0].alias).toBe('alpha');
+    expect(specs[1].alias).toBe('beta');
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('returns warnings for missing repos without throwing', () => {
+    const { root: repo1 } = createFixture([]);
+    const { root: projectDir } = createFixture([]);
+
+    writeFileSync(
+      join(projectDir, '.trellis-project'),
+      ['name: test-project', 'repos:', `  good:`, `    path: ${repo1}`, `  missing:`, `    path: /nonexistent/repo`].join('\n'),
+    );
+
+    const { specs, warnings } = loadProjectRepos(projectDir);
+    expect(specs).toHaveLength(1);
+    expect(specs[0].alias).toBe('good');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('missing');
+    expect(warnings[0]).toContain('/nonexistent/repo');
+  });
+
+  it('specs from loadProjectRepos work with createMcpServer', () => {
+    const { root: repo1 } = createFixture([
+      { id: 'plan-a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nA\n\n## Approach\nBuild\n' },
+    ]);
+    const { root: projectDir } = createFixture([]);
+
+    writeFileSync(
+      join(projectDir, '.trellis-project'),
+      ['name: test-project', 'repos:', `  alpha:`, `    path: ${repo1}`].join('\n'),
+    );
+
+    const { specs } = loadProjectRepos(projectDir);
+    // This is what cli.ts does after destructuring
+    const server = createMcpServer({ repos: specs });
+    expect(server).toBeDefined();
+  });
+});
+
+// =============================================
+// MCP project_root config field
+// =============================================
+
+describe('MCP project_root config field', () => {
+  let originalCwd: () => string;
+
+  beforeEach(() => {
+    originalCwd = process.cwd;
+  });
+
+  afterEach(() => {
+    process.cwd = originalCwd;
+  });
+
+  it('enters project mode from leaf repo via project_root', async () => {
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth\n\n## Approach\nJWT\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'ui', title: 'UI', status: 'not_started', body: '\n## Problem\nUI\n\n## Approach\nReact\n' },
+    ]);
+
+    // Create meta-repo with .trellis-project
+    const { mkdtempSync: mkdt } = require('fs');
+    const { tmpdir: td } = require('os');
+    const metaRoot = mkdt(require('path').join(td(), 'trellis-meta-'));
+    writeFileSync(
+      require('path').join(metaRoot, '.trellis-project'),
+      ['name: test-project', 'repos:', `  alpha:`, `    path: ${alpha.root}`, `  beta:`, `    path: ${beta.root}`].join('\n'),
+    );
+
+    // Configure alpha as leaf with project_root
+    writeFileSync(
+      join(alpha.root, '.trellis', 'config'),
+      `project: alpha\nplans_dir: plans\nproject_root: ${metaRoot}\n`,
+    );
+    process.cwd = () => alpha.root;
+
+    const server = createMcpServer();
+    const result = await callTool(server, 'trellis_status', {});
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    expect(output.total).toBe(2);
+
+    const allIds = [
+      ...(output.byStatus.ready ?? []),
+      ...(output.byStatus.blocked ?? []),
+      ...(output.byStatus.draft ?? []),
+    ].map((p: any) => p.id);
+    expect(allIds).toContain('alpha:auth');
+    expect(allIds).toContain('beta:ui');
+  });
+
+  it('throws when project_root set but .trellis-project not found', () => {
+    const { root } = createFixture([]);
+    const { mkdtempSync: mkdt } = require('fs');
+    const { tmpdir: td } = require('os');
+    const emptyDir = mkdt(require('path').join(td(), 'trellis-empty-'));
+
+    writeFileSync(
+      join(root, '.trellis', 'config'),
+      `project: test\nplans_dir: plans\nproject_root: ${emptyDir}\n`,
+    );
+    process.cwd = () => root;
+
+    expect(() => createMcpServer()).toThrow('project_root');
+  });
+
+  it('cross-repo writes work via project_root', async () => {
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'draft', body: '\n## Problem\nAuth\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'ui', title: 'UI', status: 'draft', body: '\n## Problem\nUI\n' },
+    ]);
+
+    const { mkdtempSync: mkdt } = require('fs');
+    const { tmpdir: td } = require('os');
+    const metaRoot = mkdt(require('path').join(td(), 'trellis-meta-'));
+    writeFileSync(
+      require('path').join(metaRoot, '.trellis-project'),
+      ['name: test-project', 'repos:', `  alpha:`, `    path: ${alpha.root}`, `  beta:`, `    path: ${beta.root}`].join('\n'),
+    );
+
+    writeFileSync(
+      join(alpha.root, '.trellis', 'config'),
+      `project: alpha\nplans_dir: plans\nproject_root: ${metaRoot}\n`,
+    );
+    process.cwd = () => alpha.root;
+
+    const server = createMcpServer();
+
+    // Write to beta's plan from alpha's context
+    const result = await callTool(server, 'trellis_set', {
+      plan_id: 'beta:ui',
+      field: 'description',
+      value: 'Updated from alpha',
+    });
+    expect(result.isError).toBeFalsy();
+    const output = JSON.parse(result.content[0].text);
+    expect(output.value).toBe('Updated from alpha');
+  });
+});
+
+// =============================================
+// Lint structural checks across repos
+// =============================================
+
+describe('MCP lint structural checks in multi-repo', () => {
+  let originalCwd: () => string;
+
+  beforeEach(() => {
+    originalCwd = process.cwd;
+  });
+
+  afterEach(() => {
+    process.cwd = originalCwd;
+  });
+
+  it('detects structural issues in non-first repos', async () => {
+    // alpha has valid plans
+    const alpha = createFixture([
+      { id: 'core', title: 'Core', status: 'draft', body: '\n## Problem\nCore\n' },
+    ]);
+    // beta has valid plans too
+    const beta = createFixture([
+      { id: 'ui', title: 'UI', status: 'draft', body: '\n## Problem\nUI\n' },
+    ]);
+
+    // Add a malformed entry (directory without README.md) in beta's plans dir
+    mkdirSync(join(beta.plansDir, 'broken-plan'), { recursive: true });
+    // Add just a random file, no README.md
+    writeFileSync(join(beta.plansDir, 'broken-plan', 'notes.txt'), 'not a plan');
+
+    const server = createMcpServer({
+      repos: [
+        { alias: 'alpha', path: alpha.root },
+        { alias: 'beta', path: beta.root },
+      ],
+    });
+
+    const result = await callTool(server, 'trellis_lint', {});
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    const missingReadme = output.structural.errors.filter(
+      (e: any) => e.type === 'missing_readme',
+    );
+    expect(missingReadme.length).toBeGreaterThanOrEqual(1);
+    expect(missingReadme.some((e: any) => e.planId === 'broken-plan')).toBe(true);
+  });
+
+  it('detects single-file plans in non-first repos', async () => {
+    const alpha = createFixture([
+      { id: 'core', title: 'Core', status: 'draft', body: '\n## Problem\nCore\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'ui', title: 'UI', status: 'draft', body: '\n## Problem\nUI\n' },
+    ]);
+
+    // Add a single-file plan in beta (a .md file directly in plans dir)
+    writeFileSync(join(beta.plansDir, 'bad-plan.md'), '---\ntitle: Bad\nstatus: draft\n---\n');
+
+    const server = createMcpServer({
+      repos: [
+        { alias: 'alpha', path: alpha.root },
+        { alias: 'beta', path: beta.root },
+      ],
+    });
+
+    const result = await callTool(server, 'trellis_lint', {});
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    const singleFile = output.structural.errors.filter(
+      (e: any) => e.type === 'single_file_plan',
+    );
+    expect(singleFile.length).toBeGreaterThanOrEqual(1);
+    expect(singleFile.some((e: any) => e.planId === 'bad-plan.md')).toBe(true);
+  });
+
+  it('detects visibility violations in project mode with manifest', async () => {
+    const alpha = createFixture([
+      { id: 'secret', title: 'Secret', status: 'not_started', body: '\n## Problem\nSecret stuff\n\n## Approach\nPrivate\n' },
+    ]);
+    const beta = createFixture([
+      { id: 'public-thing', title: 'Public', status: 'not_started', depends_on: ['alpha:secret'], body: '\n## Problem\nPublic\n\n## Approach\nBuild\n' },
+    ]);
+
+    // Set up project mode with visibility metadata
+    writeFileSync(
+      join(alpha.root, '.trellis', 'config'),
+      `project: alpha\nplans_dir: plans\nmanifest: https://example.com/manifest.git\n`,
+    );
+    const manifest = [
+      'name: test-project',
+      'repos:',
+      '  alpha:',
+      `    path: ${alpha.root}`,
+      '    url: https://github.com/org/alpha.git',
+      '    branch: main',
+      '    visibility: private',
+      '  beta:',
+      `    path: ${beta.root}`,
+      '    url: https://github.com/org/beta.git',
+      '    branch: main',
+      '    visibility: public',
+    ].join('\n');
+    writeFileSync(join(alpha.root, '.trellis-project'), manifest);
+    process.cwd = () => alpha.root;
+
+    const server = createMcpServer();
+    const result = await callTool(server, 'trellis_lint', {});
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    const visibilityErrors = output.errors.filter((e: any) => e.type === 'visibility');
+    expect(visibilityErrors.length).toBeGreaterThanOrEqual(1);
+    expect(visibilityErrors[0].message).toContain('public');
+    expect(visibilityErrors[0].message).toContain('private');
   });
 });

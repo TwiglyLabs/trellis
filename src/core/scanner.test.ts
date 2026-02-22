@@ -294,6 +294,22 @@ describe('loadConfig', () => {
     expect(config.manifest).toBeUndefined();
   });
 
+  it('parses project_root from config', () => {
+    const dir = createFixtureDir();
+    writeFileSync(join(dir, '.trellis'), 'project: trellis\nplans_dir: plans\nproject_root: ~/repos/twiglylabs/twiglylabs\n');
+
+    const config = loadConfig(dir);
+    expect(config.project_root).toBe('~/repos/twiglylabs/twiglylabs');
+  });
+
+  it('returns undefined project_root when not in config', () => {
+    const dir = createFixtureDir();
+    writeFileSync(join(dir, '.trellis'), 'project: test\nplans_dir: plans\n');
+
+    const config = loadConfig(dir);
+    expect(config.project_root).toBeUndefined();
+  });
+
   describe('directory format', () => {
     afterEach(() => {
       vi.restoreAllMocks();
