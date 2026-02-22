@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { relative } from 'path';
 import type { Command } from 'commander';
-import { createContext } from '../../core/index.ts';
+import { createCachedContext } from '../../core/index.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
 import { computeShow } from './logic.ts';
 import { computeReadSection } from '../sections/logic.ts';
@@ -16,6 +16,7 @@ export function register(program: Command): void {
     .option('--section <section>', 'Read specific section (requires --file)')
     .option('--raw', 'Output raw plan content')
     .option('--offline', 'Skip remote fetch, use cache or local only')
+    .option('--no-cache', 'Bypass the index and force full rescan')
     .addHelpText('after', '\nExamples:\n  $ trellis show core-types\n  $ trellis show core-types --json\n  $ trellis show core-types --file implementation --section Steps\n  $ trellis show core-types --raw')
     .action((planId, options) => showCommand(planId, options));
 }
@@ -27,10 +28,12 @@ interface ShowOptions {
   section?: string;
   raw?: boolean;
   offline?: boolean;
+  cache?: boolean;
 }
 
-export function showCommand(planId: string, options?: ShowOptions): void {
-  const ctx = createContext(process.cwd(), { offline: options?.offline });
+export async function showCommand(planId: string, options?: ShowOptions): Promise<void> {
+  const { ctx, persist } = createCachedContext(process.cwd(), { offline: options?.offline, noCache: options?.cache === false });
+  try {
 
   // --file / --section mode: granular content read
   if (options?.file || options?.section) {
@@ -210,4 +213,7 @@ export function showCommand(planId: string, options?: ShowOptions): void {
   }
 
   console.log();
+  } finally {
+    await persist();
+  }
 }

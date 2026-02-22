@@ -99,6 +99,8 @@ function qualifyPlan(plan: Plan, alias: string): Plan {
 export interface ContextStoreOptions {
   repos: RepoSpec[];
   cacheDir: string;
+  /** When false, plan IDs are not qualified with repo aliases. Default: true. */
+  qualifyIds?: boolean;
 }
 
 /**
@@ -112,6 +114,7 @@ export class ContextStore {
   private repos: RepoSpec[];
   private cacheDir: string;
   private indexPath: string;
+  private qualifyIds: boolean;
   private context: MultiContext | null = null;
   private index: PlanIndex | null = null;
   private lock = createFileLock();
@@ -122,6 +125,7 @@ export class ContextStore {
     this.repos = opts.repos;
     this.cacheDir = opts.cacheDir;
     this.indexPath = join(opts.cacheDir, INDEX_FILENAME);
+    this.qualifyIds = opts.qualifyIds ?? true;
   }
 
   /**
@@ -170,7 +174,9 @@ export class ContextStore {
 
     for (const repo of this.repos) {
       const entry = repoEntries.find(e => e.alias === repo.alias)!;
-      const repoPlans = allPlans.filter(p => p.repoAlias === repo.alias);
+      const repoPlans = this.qualifyIds
+        ? allPlans.filter(p => p.repoAlias === repo.alias)
+        : allPlans.filter(p => !p.repoAlias || p.repoAlias === repo.alias);
       const plansDir = entry.plansDir ?? join(repo.path, 'plans');
       const configMtime = getConfigMtime(repo.path);
 
@@ -226,13 +232,17 @@ export class ContextStore {
     try {
       const rawPlans = scanPlans(plansDir);
       if (config) attachCompleteness(rawPlans, config);
-      newPlans = rawPlans.map(p => qualifyPlan(p, alias));
+      newPlans = this.qualifyIds
+        ? rawPlans.map(p => qualifyPlan(p, alias))
+        : rawPlans;
     } catch {
       // scan failed — use empty plans
     }
 
     // Build PlanChangeEvents for patchGraph from the diff
-    const oldPlans = this.context.plans.filter(p => p.repoAlias === alias);
+    const oldPlans = this.qualifyIds
+      ? this.context.plans.filter(p => p.repoAlias === alias)
+      : this.context.plans; // single-repo: all plans belong to the only repo
     const events = diffPlansToEvents(oldPlans, newPlans);
 
     // Apply incremental graph update
@@ -420,20 +430,23 @@ export class ContextStore {
       try {
         const rawPlans = scanPlans(resolvedPlansDir);
         if (config) attachCompleteness(rawPlans, config);
-        plans = rawPlans.map(p => qualifyPlan(p, repo.alias));
+        plans = this.qualifyIds
+          ? rawPlans.map(p => qualifyPlan(p, repo.alias))
+          : rawPlans;
       } catch (e: any) {
         error = e.message;
         plans = [];
       }
     } else if (!stale) {
-      // Plans from cache already have qualified IDs — no need to re-qualify
-      // But we need to ensure they're properly qualified
-      plans = plans.map(p => {
-        if (!p.id.startsWith(`${repo.alias}:`)) {
-          return qualifyPlan(p, repo.alias);
-        }
-        return p;
-      });
+      // Plans from cache — ensure consistent qualification
+      if (this.qualifyIds) {
+        plans = plans.map(p => {
+          if (!p.id.startsWith(`${repo.alias}:`)) {
+            return qualifyPlan(p, repo.alias);
+          }
+          return p;
+        });
+      }
     }
 
     const entry: MultiRepoEntry = {
@@ -494,10 +507,13 @@ function dateReplacer(_key: string, value: any): any {
   return value;
 }
 
+/**
+ * JSON reviver — intentionally does NOT convert date strings during parse.
+ * Date fields are handled by revivePlan() which is the single source of truth
+ * for Plan date revival. This avoids accidentally converting ISO strings in
+ * non-Date fields (e.g. RepoIndexEntry.scannedAt, configMtime).
+ */
 function dateReviver(_key: string, value: any): any {
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && _key === 'updatedAt') {
-    return new Date(value);
-  }
   return value;
 }
 

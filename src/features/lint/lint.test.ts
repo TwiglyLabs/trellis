@@ -24,7 +24,7 @@ describe('lint command', () => {
     process.exitCode = undefined;
   });
 
-  it('passes clean plans', () => {
+  it('passes clean plans', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done', body: VALID_BODY, implementationMd: VALID_IMPL,
         outputsMd: '## Types\n- Person\n' },
@@ -34,28 +34,28 @@ describe('lint command', () => {
     ]);
     process.cwd = () => root;
 
-    lintCommand();
+    await lintCommand();
 
     const output = logs.join('\n');
     expect(output).toMatch(/^.*2 plans OK$/m);
     expect(process.exitCode).toBeUndefined();
   });
 
-  it('detects missing dependencies', () => {
+  it('detects missing dependencies', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started', depends_on: ['nonexistent'],
         body: VALID_BODY, implementationMd: VALID_IMPL },
     ]);
     process.cwd = () => root;
 
-    lintCommand();
+    await lintCommand();
 
     const output = logs.join('\n');
     expect(output).toContain('Unknown dependency');
     expect(output).toContain('nonexistent');
   });
 
-  it('detects done plans with incomplete deps', () => {
+  it('detects done plans with incomplete deps', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started', body: VALID_BODY, implementationMd: VALID_IMPL },
       { id: 'b', title: 'Plan B', status: 'done', depends_on: ['a'],
@@ -64,13 +64,13 @@ describe('lint command', () => {
     ]);
     process.cwd = () => root;
 
-    lintCommand();
+    await lintCommand();
 
     const output = logs.join('\n');
     expect(output).toContain('b is done but depends on a');
   });
 
-  it('warns about in_progress with incomplete deps', () => {
+  it('warns about in_progress with incomplete deps', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started', body: VALID_BODY, implementationMd: VALID_IMPL },
       { id: 'b', title: 'Plan B', status: 'in_progress', depends_on: ['a'],
@@ -79,13 +79,13 @@ describe('lint command', () => {
     ]);
     process.cwd = () => root;
 
-    lintCommand();
+    await lintCommand();
 
     const output = logs.join('\n');
     expect(output).toContain('b is in_progress but depends on a');
   });
 
-  it('counts multi-error plans correctly for okCount', () => {
+  it('counts multi-error plans correctly for okCount', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done', body: VALID_BODY, implementationMd: VALID_IMPL,
         outputsMd: '## Types\n- Person\n' },
@@ -99,14 +99,14 @@ describe('lint command', () => {
     ]);
     process.cwd = () => root;
 
-    lintCommand();
+    await lintCommand();
 
     const output = logs.join('\n');
     // c has multiple errors but should count as 1 plan with errors
     expect(output).toContain('2 of 3 plans OK');
   });
 
-  it('detects orphaned draft plans', () => {
+  it('detects orphaned draft plans', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'draft', body: '\n## Problem\n\nP\n' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'],
@@ -116,25 +116,25 @@ describe('lint command', () => {
     ]);
     process.cwd = () => root;
 
-    lintCommand();
+    await lintCommand();
 
     const output = logs.join('\n');
     expect(output).toContain('Orphaned plan: c');
     expect(output).not.toContain('Orphaned plan: a');
   });
 
-  it('sets exit code with --strict and warnings', () => {
+  it('sets exit code with --strict and warnings', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'draft', body: '\n## Problem\n\nP\n' },
     ]);
     process.cwd = () => root;
 
-    lintCommand({ strict: true });
+    await lintCommand({ strict: true });
 
     expect(process.exitCode).toBe(1);
   });
 
-  it('outputs JSON with errors and warnings', () => {
+  it('outputs JSON with errors and warnings', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started', depends_on: ['nonexistent'],
         body: VALID_BODY, implementationMd: VALID_IMPL },
@@ -143,7 +143,7 @@ describe('lint command', () => {
     ]);
     process.cwd = () => root;
 
-    lintCommand({ json: true });
+    await lintCommand({ json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.ok).toBe(false);
@@ -156,7 +156,7 @@ describe('lint command', () => {
     expect(parsed.structural).toBeDefined();
   });
 
-  it('outputs clean JSON when no issues', () => {
+  it('outputs clean JSON when no issues', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done', body: VALID_BODY, implementationMd: VALID_IMPL,
         outputsMd: '## Types\n- Person\n' },
@@ -166,7 +166,7 @@ describe('lint command', () => {
     ]);
     process.cwd = () => root;
 
-    lintCommand({ json: true });
+    await lintCommand({ json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.ok).toBe(true);
@@ -174,19 +174,19 @@ describe('lint command', () => {
     expect(parsed.warnings).toEqual([]);
   });
 
-  it('does not set exit code without --strict for warnings only', () => {
+  it('does not set exit code without --strict for warnings only', async () => {
     // Draft plan with proper ## Problem — only generates orphan warning, no errors
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'draft', body: '\n## Problem\n\nP\n' },
     ]);
     process.cwd = () => root;
 
-    lintCommand();
+    await lintCommand();
 
     expect(process.exitCode).toBeUndefined();
   });
 
-  it('warns when plan has dependents but no outputs.md', () => {
+  it('warns when plan has dependents but no outputs.md', async () => {
     const { root } = createFixture([
       { id: 'core', title: 'Core', status: 'not_started', body: VALID_BODY, implementationMd: VALID_IMPL },
       { id: 'parser', title: 'Parser', status: 'not_started', depends_on: ['core'],
@@ -195,14 +195,14 @@ describe('lint command', () => {
     ]);
     process.cwd = () => root;
 
-    lintCommand();
+    await lintCommand();
 
     const output = logs.join('\n');
     expect(output).toContain('core');
     expect(output).toContain('has dependents but no outputs.md');
   });
 
-  it('passes when contracts are consistent', () => {
+  it('passes when contracts are consistent', async () => {
     const { root } = createFixture([
       { id: 'upstream', title: 'Upstream', status: 'not_started',
         body: VALID_BODY, implementationMd: VALID_IMPL,
@@ -213,7 +213,7 @@ describe('lint command', () => {
     ]);
     process.cwd = () => root;
 
-    lintCommand();
+    await lintCommand();
 
     const output = logs.join('\n');
     expect(output).toMatch(/^.*2 plans OK$/m);
@@ -221,74 +221,74 @@ describe('lint command', () => {
   });
 
   describe('--completeness flag', () => {
-    it('emits warnings for stub sections', () => {
+    it('emits warnings for stub sections', async () => {
       const { root } = createFixture([
         { id: 'stub', title: 'Stub Plan', status: 'draft', body: '\n## Problem\nTBD\n' },
       ]);
       process.cwd = () => root;
 
-      lintCommand({ completeness: true });
+      await lintCommand({ completeness: true });
 
       const output = logs.join('\n');
       expect(output).toContain('stub: Problem is stub');
     });
 
-    it('does not emit completeness warnings without --completeness', () => {
+    it('does not emit completeness warnings without --completeness', async () => {
       const { root } = createFixture([
         { id: 'stub', title: 'Stub Plan', status: 'draft', body: '\n## Problem\nTBD\n' },
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).not.toContain('Problem is stub');
     });
 
-    it('emits warnings for thin sections', () => {
+    it('emits warnings for thin sections', async () => {
       const words25 = Array(25).fill('word').join(' ');
       const { root } = createFixture([
         { id: 'thin', title: 'Thin Plan', status: 'draft', body: `\n## Problem\n${words25}\n` },
       ]);
       process.cwd = () => root;
 
-      lintCommand({ completeness: true });
+      await lintCommand({ completeness: true });
 
       const output = logs.join('\n');
       expect(output).toContain('thin: Problem is thin (25 words)');
     });
 
-    it('does not warn for complete sections', () => {
+    it('does not warn for complete sections', async () => {
       const words60 = Array(60).fill('word').join(' ');
       const { root } = createFixture([
         { id: 'full', title: 'Full Plan', status: 'draft', body: `\n## Problem\n${words60}\n` },
       ]);
       process.cwd = () => root;
 
-      lintCommand({ completeness: true });
+      await lintCommand({ completeness: true });
 
       const output = logs.join('\n');
       expect(output).not.toContain('full: Problem');
     });
 
-    it('with --strict, stub sections cause exit code 1', () => {
+    it('with --strict, stub sections cause exit code 1', async () => {
       const { root } = createFixture([
         { id: 'stub', title: 'Stub Plan', status: 'draft', body: '\n## Problem\nTBD\n' },
       ]);
       process.cwd = () => root;
 
-      lintCommand({ completeness: true, strict: true });
+      await lintCommand({ completeness: true, strict: true });
 
       expect(process.exitCode).toBe(1);
     });
 
-    it('includes completeness warnings in JSON output', () => {
+    it('includes completeness warnings in JSON output', async () => {
       const { root } = createFixture([
         { id: 'stub', title: 'Stub Plan', status: 'draft', body: '\n## Problem\nTBD\n' },
       ]);
       process.cwd = () => root;
 
-      lintCommand({ completeness: true, json: true });
+      await lintCommand({ completeness: true, json: true });
 
       const parsed = JSON.parse(logs.join(''));
       const completenessWarnings = parsed.warnings.filter((w: any) => w.type === 'completeness');

@@ -1,6 +1,6 @@
 ---
 title: Wire ContextStore into CLI commands
-status: not_started
+status: done
 description: >-
   CLI commands use ContextStore for mtime-validated cached reads instead of full
   rescan
@@ -10,6 +10,7 @@ tags:
   - 'epic:perf-cache'
 type: feature
 not_started_at: '2026-02-21T23:46:24.180Z'
+completed_at: '2026-02-22T04:52:09.882Z'
 ---
 
 ## Problem

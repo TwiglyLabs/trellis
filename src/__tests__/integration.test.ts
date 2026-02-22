@@ -49,7 +49,7 @@ describe('integration: full workflow', () => {
     expect(config).toContain('plans_dir: plans');
   });
 
-  it('full lifecycle: create plans -> status -> ready -> update -> check unblocked', () => {
+  it('full lifecycle: create plans -> status -> ready -> update -> check unblocked', async () => {
     // Create a realistic project with dependencies
     const { root, plansDir } = createFixture([
       { id: 'contracts/core-types', title: 'Core Types', status: 'done', tags: ['foundation'] },
@@ -64,7 +64,7 @@ describe('integration: full workflow', () => {
 
     // Status shows dashboard (done hidden by default)
     logs = [];
-    statusCommand({});
+    await statusCommand({});
     let output = logs.join('\n');
     expect(output).toContain('5 plans'); // 7 total minus 2 done
     expect(output).toContain('READY');
@@ -74,7 +74,7 @@ describe('integration: full workflow', () => {
 
     // Ready shows plans with satisfied deps
     logs = [];
-    readyCommand({});
+    await readyCommand({});
     output = logs.join('\n');
     expect(output).toContain('impl/extraction');
     expect(output).toContain('impl/auth-service');
@@ -83,14 +83,14 @@ describe('integration: full workflow', () => {
 
     // Ready with repo filter
     logs = [];
-    readyCommand({ repo: 'cloud' });
+    await readyCommand({ repo: 'cloud' });
     output = logs.join('\n');
     expect(output).toContain('impl/auth-service');
     expect(output).not.toContain('impl/extraction');
 
     // Show blocked plan details
     logs = [];
-    showCommand('impl/cloud-api');
+    await showCommand('impl/cloud-api');
     output = logs.join('\n');
     expect(output).toContain('Cloud API');
     expect(output).toContain('blocked');
@@ -99,7 +99,7 @@ describe('integration: full workflow', () => {
 
     // Lint passes
     logs = [];
-    lintCommand();
+    await lintCommand();
     output = logs.join('\n');
     expect(output).toContain('7 plans OK');
 
@@ -118,13 +118,13 @@ describe('integration: full workflow', () => {
 
     // After update, schema-v6 should now be ready
     logs = [];
-    readyCommand({});
+    await readyCommand({});
     output = logs.join('\n');
     expect(output).toContain('impl/schema-v6');
 
     // cloud-api still blocked (needs auth-service too)
     logs = [];
-    showCommand('impl/cloud-api');
+    await showCommand('impl/cloud-api');
     output = logs.join('\n');
     expect(output).toContain('blocked');
 
@@ -137,20 +137,20 @@ describe('integration: full workflow', () => {
 
     // JSON output works (--all to see everything)
     logs = [];
-    statusCommand({ json: true, all: true });
+    await statusCommand({ json: true, all: true });
     const jsonOutput = JSON.parse(logs.join(''));
     expect(jsonOutput.project).toBe('test-project');
     expect(jsonOutput.plans.length).toBe(7);
   });
 
-  it('lint detects issues', () => {
+  it('lint detects issues', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started', depends_on: ['nonexistent'] },
       { id: 'b', title: 'Plan B', status: 'done', depends_on: ['a'] },
     ]);
     process.cwd = () => root;
 
-    lintCommand();
+    await lintCommand();
 
     const output = logs.join('\n');
     expect(output).toContain('Unknown dependency');
@@ -158,12 +158,12 @@ describe('integration: full workflow', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('handles missing plans directory gracefully', () => {
+  it('handles missing plans directory gracefully', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'trellis-int-'));
     writeFileSync(join(dir, '.trellis'), 'project: test\nplans_dir: plans\n');
     process.cwd = () => dir;
 
-    statusCommand({});
+    await statusCommand({});
 
     expect(logs.join('\n')).toContain('No plans found');
   });

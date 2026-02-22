@@ -120,7 +120,7 @@ function resolveRemotePlans(
 }
 
 /** Offline mode: use only cached data, degrade silently if empty. */
-function resolveFromCacheOnly(
+export function resolveFromCacheOnly(
   projectDir: string,
   config: TrellisConfig,
 ): { remotePlans: Plan[]; manifest?: ProjectManifest } {

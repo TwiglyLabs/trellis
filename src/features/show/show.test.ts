@@ -25,13 +25,13 @@ describe('show command', () => {
     process.exitCode = undefined;
   });
 
-  it('shows plan details', () => {
+  it('shows plan details', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'in_progress', tags: ['foundation'], repo: 'public' },
     ]);
     process.cwd = () => root;
 
-    showCommand('a');
+    await showCommand('a');
 
     const output = logs.join('\n');
     expect(output).toContain('Plan A');
@@ -40,14 +40,14 @@ describe('show command', () => {
     expect(output).toContain('public');
   });
 
-  it('shows dependency chain with status', () => {
+  it('shows dependency chain with status', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
     ]);
     process.cwd = () => root;
 
-    showCommand('b');
+    await showCommand('b');
 
     const output = logs.join('\n');
     expect(output).toContain('Depends on');
@@ -55,21 +55,21 @@ describe('show command', () => {
     expect(output).toContain('done');
   });
 
-  it('shows blocked status', () => {
+  it('shows blocked status', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
     ]);
     process.cwd = () => root;
 
-    showCommand('b');
+    await showCommand('b');
 
     const output = logs.join('\n');
     expect(output).toContain('blocked');
     expect(output).toContain('blocking');
   });
 
-  it('shows what the plan blocks', () => {
+  it('shows what the plan blocks', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
@@ -77,7 +77,7 @@ describe('show command', () => {
     ]);
     process.cwd = () => root;
 
-    showCommand('a');
+    await showCommand('a');
 
     const output = logs.join('\n');
     expect(output).toContain('Blocks');
@@ -86,16 +86,16 @@ describe('show command', () => {
     expect(output).toContain('transitive');
   });
 
-  it('errors on missing plan', () => {
+  it('errors on missing plan', async () => {
     const { root } = createFixture([]);
     process.cwd = () => root;
 
-    showCommand('nonexistent');
+    await showCommand('nonexistent');
 
     expect(errors.join('\n')).toContain('not found');
   });
 
-  it('outputs JSON', () => {
+  it('outputs JSON', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], tags: ['infra'], description: 'B desc' },
@@ -103,7 +103,7 @@ describe('show command', () => {
     ]);
     process.cwd = () => root;
 
-    showCommand('b', { json: true });
+    await showCommand('b', { json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.id).toBe('b');
@@ -117,17 +117,17 @@ describe('show command', () => {
     expect(parsed.filePath).toContain('plans/b/README.md');
   });
 
-  it('outputs JSON error for missing plan', () => {
+  it('outputs JSON error for missing plan', async () => {
     const { root } = createFixture([]);
     process.cwd = () => root;
 
-    showCommand('nonexistent', { json: true });
+    await showCommand('nonexistent', { json: true });
 
     const parsed = JSON.parse(errors.join(''));
     expect(parsed.error).toContain('not found');
   });
 
-  it('shows critical path for deep chain', () => {
+  it('shows critical path for deep chain', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
@@ -135,7 +135,7 @@ describe('show command', () => {
     ]);
     process.cwd = () => root;
 
-    showCommand('c');
+    await showCommand('c');
 
     const output = logs.join('\n');
     expect(output).toContain('Critical path');
@@ -145,7 +145,7 @@ describe('show command', () => {
     expect(output).toContain('c');
   });
 
-  it('shows contracts with --contracts flag', () => {
+  it('shows contracts with --contracts flag', async () => {
     const { root } = createFixture([
       { id: 'core', title: 'Core', status: 'not_started', directory: true,
         outputsMd: '## Types\n- Person\n- Family\n',
@@ -153,7 +153,7 @@ describe('show command', () => {
     ]);
     process.cwd = () => root;
 
-    showCommand('core', { contracts: true });
+    await showCommand('core', { contracts: true });
 
     const output = logs.join('\n');
     expect(output).toContain('Inputs:');
@@ -163,13 +163,13 @@ describe('show command', () => {
     expect(output).toContain('Person');
   });
 
-  it('shows (none) for missing contracts with --contracts flag', () => {
+  it('shows (none) for missing contracts with --contracts flag', async () => {
     const { root } = createFixture([
       { id: 'bare', title: 'Bare Plan', status: 'not_started' },
     ]);
     process.cwd = () => root;
 
-    showCommand('bare', { contracts: true });
+    await showCommand('bare', { contracts: true });
 
     const output = logs.join('\n');
     expect(output).toContain('Inputs:');
@@ -177,21 +177,21 @@ describe('show command', () => {
     expect(output).toContain('Outputs:');
   });
 
-  it('does not show contracts without --contracts flag', () => {
+  it('does not show contracts without --contracts flag', async () => {
     const { root } = createFixture([
       { id: 'core', title: 'Core', status: 'not_started', directory: true,
         outputsMd: '## Types\n- Person\n' },
     ]);
     process.cwd = () => root;
 
-    showCommand('core');
+    await showCommand('core');
 
     const output = logs.join('\n');
     expect(output).not.toContain('Inputs:');
     expect(output).not.toContain('Outputs:');
   });
 
-  it('includes contracts in JSON output with --contracts flag', () => {
+  it('includes contracts in JSON output with --contracts flag', async () => {
     const { root } = createFixture([
       { id: 'core', title: 'Core', status: 'not_started', directory: true,
         outputsMd: '## Types\n- Person\n- Family\n',
@@ -199,7 +199,7 @@ describe('show command', () => {
     ]);
     process.cwd = () => root;
 
-    showCommand('core', { json: true, contracts: true });
+    await showCommand('core', { json: true, contracts: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.outputs).toBeDefined();
@@ -208,14 +208,14 @@ describe('show command', () => {
     expect(parsed.inputs).toBeDefined();
   });
 
-  it('omits contracts from JSON output without --contracts flag', () => {
+  it('omits contracts from JSON output without --contracts flag', async () => {
     const { root } = createFixture([
       { id: 'core', title: 'Core', status: 'not_started', directory: true,
         outputsMd: '## Types\n- Person\n' },
     ]);
     process.cwd = () => root;
 
-    showCommand('core', { json: true });
+    await showCommand('core', { json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.outputs).toBeUndefined();

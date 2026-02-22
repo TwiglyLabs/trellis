@@ -19,7 +19,7 @@ describe('status command', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows dashboard grouped by status', () => {
+  it('shows dashboard grouped by status', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
@@ -28,7 +28,7 @@ describe('status command', () => {
     ]);
     process.cwd = () => root;
 
-    statusCommand({});
+    await statusCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('READY');
@@ -38,52 +38,52 @@ describe('status command', () => {
     expect(output).toContain('3 plans'); // excludes done
   });
 
-  it('shows blocked plans with waiting info', () => {
+  it('shows blocked plans with waiting info', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
     ]);
     process.cwd = () => root;
 
-    statusCommand({});
+    await statusCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('BLOCKED');
     expect(output).toContain('waiting on');
   });
 
-  it('filters by tag', () => {
+  it('filters by tag', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started', tags: ['cloud'] },
       { id: 'b', title: 'Plan B', status: 'not_started', tags: ['public'] },
     ]);
     process.cwd = () => root;
 
-    statusCommand({ tag: 'cloud' });
+    await statusCommand({ tag: 'cloud' });
 
     const output = logs.join('\n');
     expect(output).toContain('1 plan');
   });
 
-  it('includes assignee in JSON output', () => {
+  it('includes assignee in JSON output', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'in_progress', assignee: 'agent-1' },
     ]);
     process.cwd = () => root;
 
-    statusCommand({ json: true });
+    await statusCommand({ json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.plans[0].assignee).toBe('agent-1');
   });
 
-  it('outputs JSON', () => {
+  it('outputs JSON', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started' },
     ]);
     process.cwd = () => root;
 
-    statusCommand({ json: true });
+    await statusCommand({ json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.project).toBe('test-project');
@@ -91,14 +91,14 @@ describe('status command', () => {
     expect(parsed.plans[0].id).toBe('a');
   });
 
-  it('hides done plans by default', () => {
+  it('hides done plans by default', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
     ]);
     process.cwd = () => root;
 
-    statusCommand({});
+    await statusCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('READY');
@@ -107,21 +107,21 @@ describe('status command', () => {
     expect(output).toContain('1 plan');
   });
 
-  it('hides archived plans by default', () => {
+  it('hides archived plans by default', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'archived' },
       { id: 'b', title: 'Plan B', status: 'not_started' },
     ]);
     process.cwd = () => root;
 
-    statusCommand({});
+    await statusCommand({});
 
     const output = logs.join('\n');
     expect(output).not.toContain('ARCHIVED');
     expect(output).not.toContain('Plan A');
   });
 
-  it('--all shows done and archived plans', () => {
+  it('--all shows done and archived plans', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'archived' },
@@ -129,14 +129,14 @@ describe('status command', () => {
     ]);
     process.cwd = () => root;
 
-    statusCommand({ all: true });
+    await statusCommand({ all: true });
 
     const output = logs.join('\n');
     expect(output).toContain('DONE');
     expect(output).toContain('3 plans');
   });
 
-  it('--done shows done but not archived', () => {
+  it('--done shows done but not archived', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'archived' },
@@ -144,7 +144,7 @@ describe('status command', () => {
     ]);
     process.cwd = () => root;
 
-    statusCommand({ done: true });
+    await statusCommand({ done: true });
 
     const output = logs.join('\n');
     expect(output).toContain('DONE');
@@ -152,7 +152,7 @@ describe('status command', () => {
     expect(output).toContain('2 plans');
   });
 
-  it('--archived shows archived but not done', () => {
+  it('--archived shows archived but not done', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'archived' },
@@ -160,7 +160,7 @@ describe('status command', () => {
     ]);
     process.cwd = () => root;
 
-    statusCommand({ archived: true });
+    await statusCommand({ archived: true });
 
     const output = logs.join('\n');
     expect(output).not.toContain('DONE');
@@ -168,34 +168,34 @@ describe('status command', () => {
     expect(output).toContain('2 plans');
   });
 
-  it('--json respects default filter', () => {
+  it('--json respects default filter', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'not_started' },
     ]);
     process.cwd = () => root;
 
-    statusCommand({ json: true });
+    await statusCommand({ json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.plans).toHaveLength(1);
     expect(parsed.plans[0].id).toBe('b');
   });
 
-  it('--json --all includes done and archived', () => {
+  it('--json --all includes done and archived', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'not_started' },
     ]);
     process.cwd = () => root;
 
-    statusCommand({ json: true, all: true });
+    await statusCommand({ json: true, all: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.plans).toHaveLength(2);
   });
 
-  it('shows chunk summary line', () => {
+  it('shows chunk summary line', async () => {
     const { root } = createFixture([
       { id: 'contracts/core', title: 'Core', status: 'not_started' },
       { id: 'contracts/auth', title: 'Auth', status: 'not_started' },
@@ -203,7 +203,7 @@ describe('status command', () => {
     ]);
     process.cwd = () => root;
 
-    statusCommand({});
+    await statusCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('Chunks:');

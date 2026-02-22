@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { join } from 'path';
 import type { Command } from 'commander';
-import { createContext } from '../../core/index.ts';
+import { createCachedContext } from '../../core/index.ts';
 import { resolveProjectPlans, buildReposArray } from '../../core/utils.ts';
 import { computeLint } from './logic.ts';
 import type { LintIssue } from './logic.ts';
@@ -15,77 +15,82 @@ export function register(program: Command): void {
     .option('--fix', 'Auto-scaffold missing files and sections')
     .option('--completeness', 'Warn about stub and thin plan sections')
     .option('--offline', 'Skip remote fetch, use cache or local only')
+    .option('--no-cache', 'Bypass the index and force full rescan')
     .option('--project', 'Show plans from all repos in the project')
     .addHelpText('after', '\nExamples:\n  $ trellis lint\n  $ trellis lint --strict\n  $ trellis lint --json\n  $ trellis lint --fix\n  $ trellis lint --completeness\n  $ trellis lint --project')
     .action((options) => lintCommand(options));
 }
 
-export function lintCommand(options?: { strict?: boolean; json?: boolean; fix?: boolean; completeness?: boolean; offline?: boolean; project?: boolean }): void {
-  const ctx = createContext(process.cwd(), { offline: options?.offline });
-  const { isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options?.project);
+export async function lintCommand(options?: { strict?: boolean; json?: boolean; fix?: boolean; completeness?: boolean; offline?: boolean; cache?: boolean; project?: boolean }): Promise<void> {
+  const { ctx, persist } = createCachedContext(process.cwd(), { offline: options?.offline, noCache: options?.cache === false });
+  try {
+    const { isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options?.project);
 
-  const result = computeLint({
-    plans: ctx.plans,
-    graph: ctx.graph,
-    projectDir: ctx.projectDir,
-    plansDir: join(ctx.projectDir, ctx.config.plans_dir),
-    manifest: ctx.manifest,
-    projectName: ctx.config.project,
-    options: { strict: options?.strict, fix: options?.fix, completeness: options?.completeness },
-  });
+    const result = computeLint({
+      plans: ctx.plans,
+      graph: ctx.graph,
+      projectDir: ctx.projectDir,
+      plansDir: join(ctx.projectDir, ctx.config.plans_dir),
+      manifest: ctx.manifest,
+      projectName: ctx.config.project,
+      options: { strict: options?.strict, fix: options?.fix, completeness: options?.completeness },
+    });
 
-  if (options?.json) {
-    const mapIssue = (e: LintIssue) => {
-      const base: Record<string, unknown> = {
-        plan_id: e.planId,
-        type: e.type,
-        message: e.message,
+    if (options?.json) {
+      const mapIssue = (e: LintIssue) => {
+        const base: Record<string, unknown> = {
+          plan_id: e.planId,
+          type: e.type,
+          message: e.message,
+        };
+        if (isProject) {
+          const colonIdx = e.planId.indexOf(':');
+          base.repoAlias = colonIdx === -1 ? null : e.planId.substring(0, colonIdx);
+        }
+        return base;
       };
+
+      const output: Record<string, unknown> = {
+        ok: result.ok,
+        total: result.total,
+        ok_count: result.okCount,
+        errors: result.errors.map(mapIssue),
+        warnings: result.warnings.map(mapIssue),
+        structural: {
+          errors: result.structural.errors.map(mapIssue),
+          warnings: result.structural.warnings.map(mapIssue),
+        },
+        fixed: result.fixed,
+      };
+
       if (isProject) {
-        const colonIdx = e.planId.indexOf(':');
-        base.repoAlias = colonIdx === -1 ? null : e.planId.substring(0, colonIdx);
+        // Build repos array from all unique plan IDs in issues
+        const allPlanIds = new Set<string>();
+        for (const e of result.errors) allPlanIds.add(e.planId);
+        for (const w of result.warnings) allPlanIds.add(w.planId);
+        const items = [...allPlanIds].map(id => {
+          const colonIdx = id.indexOf(':');
+          return { repoAlias: colonIdx === -1 ? undefined : id.substring(0, colonIdx) };
+        });
+        output.repos = buildReposArray(items, ctx.config.project);
       }
-      return base;
-    };
 
-    const output: Record<string, unknown> = {
-      ok: result.ok,
-      total: result.total,
-      ok_count: result.okCount,
-      errors: result.errors.map(mapIssue),
-      warnings: result.warnings.map(mapIssue),
-      structural: {
-        errors: result.structural.errors.map(mapIssue),
-        warnings: result.structural.warnings.map(mapIssue),
-      },
-      fixed: result.fixed,
-    };
-
-    if (isProject) {
-      // Build repos array from all unique plan IDs in issues
-      const allPlanIds = new Set<string>();
-      for (const e of result.errors) allPlanIds.add(e.planId);
-      for (const w of result.warnings) allPlanIds.add(w.planId);
-      const items = [...allPlanIds].map(id => {
-        const colonIdx = id.indexOf(':');
-        return { repoAlias: colonIdx === -1 ? undefined : id.substring(0, colonIdx) };
-      });
-      output.repos = buildReposArray(items, ctx.config.project);
+      console.log(JSON.stringify(output, null, 2));
+    } else if (isProject) {
+      printProjectLint(result, ctx.config.project);
+    } else {
+      printLocalLint(result);
     }
 
-    console.log(JSON.stringify(output, null, 2));
-  } else if (isProject) {
-    printProjectLint(result, ctx.config.project);
-  } else {
-    printLocalLint(result);
-  }
+    if (result.errors.length > 0) {
+      process.exitCode = 1;
+    }
 
-  if (result.errors.length > 0) {
-    process.exitCode = 1;
-  }
-
-  if (options?.strict && result.warnings.length > 0) {
-    process.exitCode = 1;
+    if (options?.strict && result.warnings.length > 0) {
+      process.exitCode = 1;
+    }
+  } finally {
+    await persist();
   }
 }
 

@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { createContext } from '../../core/index.ts';
+import { createCachedContext } from '../../core/index.ts';
 import type { PlanSummary, BlockedPlanSummary } from '../../core/types.ts';
 import { padRight, pluralize, computeColumnWidth, resolveProjectPlans, buildReposArray } from '../../core/utils.ts';
 import { computeStatus } from './logic.ts';
@@ -16,6 +16,7 @@ export function register(program: Command): void {
     .option('--done', 'Include done plans')
     .option('--archived', 'Include archived plans')
     .option('--offline', 'Skip remote fetch, use cache or local only')
+    .option('--no-cache', 'Bypass the index and force full rescan')
     .option('--project', 'Show plans from all repos in the project')
     .addHelpText('after', '\nExamples:\n  $ trellis status\n  $ trellis status --tag foundation\n  $ trellis status --json\n  $ trellis status --all\n  $ trellis status --done\n  $ trellis status --project')
     .action((options) => statusCommand(options));
@@ -29,86 +30,91 @@ interface StatusOptions {
   done?: boolean;
   archived?: boolean;
   offline?: boolean;
+  cache?: boolean;
   project?: boolean;
 }
 
-export function statusCommand(options: StatusOptions): void {
-  const ctx = createContext(process.cwd(), { offline: options.offline });
-  const { isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options.project);
+export async function statusCommand(options: StatusOptions): Promise<void> {
+  const { ctx, persist } = createCachedContext(process.cwd(), { offline: options.offline, noCache: options.cache === false });
+  try {
+    const { isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options.project);
 
-  const showDone = options.all || options.done;
-  const showArchived = options.all || options.archived;
+    const showDone = options.all || options.done;
+    const showArchived = options.all || options.archived;
 
-  const result = computeStatus({
-    plans: ctx.plans,
-    config: ctx.config,
-    graph: ctx.graph,
-    filters: {
-      tag: options.tag,
-      repo: options.repo,
-      showDone,
-      showArchived,
-      project: isProject,
-    },
-  });
-
-  const allPlans = [
-    ...result.byStatus.ready,
-    ...result.byStatus.blocked,
-    ...result.byStatus.inProgress,
-    ...result.byStatus.draft,
-    ...result.byStatus.done,
-    ...result.byStatus.archived,
-  ];
-
-  if (options.json) {
-    const output: Record<string, unknown> = {
-      project: result.project,
-      total: allPlans.length,
-      chunks: {
-        total: result.chunks.total,
-        over_budget: result.chunks.overBudget,
+    const result = computeStatus({
+      plans: ctx.plans,
+      config: ctx.config,
+      graph: ctx.graph,
+      filters: {
+        tag: options.tag,
+        repo: options.repo,
+        showDone,
+        showArchived,
+        project: isProject,
       },
-      plans: allPlans.map((p) => {
-        const base: Record<string, unknown> = {
-          id: p.id,
-          title: p.title,
-          status: p.status,
-          blocked: false,
-          ready: false,
-          depends_on: [],
-          tags: p.tags,
-          repo: p.repo,
-          assignee: p.assignee,
-          repoAlias: p.repoAlias ?? null,
-        };
-        if ('waitingOn' in p) {
-          return { ...base, blocked: true, waiting_on: (p as BlockedPlanSummary).waitingOn };
-        }
-        if (result.byStatus.ready.includes(p as PlanSummary)) {
-          return { ...base, ready: true };
-        }
-        return base;
-      }),
-    };
+    });
 
-    if (isProject) {
-      output.repos = buildReposArray(allPlans, ctx.config.project);
+    const allPlans = [
+      ...result.byStatus.ready,
+      ...result.byStatus.blocked,
+      ...result.byStatus.inProgress,
+      ...result.byStatus.draft,
+      ...result.byStatus.done,
+      ...result.byStatus.archived,
+    ];
+
+    if (options.json) {
+      const output: Record<string, unknown> = {
+        project: result.project,
+        total: allPlans.length,
+        chunks: {
+          total: result.chunks.total,
+          over_budget: result.chunks.overBudget,
+        },
+        plans: allPlans.map((p) => {
+          const base: Record<string, unknown> = {
+            id: p.id,
+            title: p.title,
+            status: p.status,
+            blocked: false,
+            ready: false,
+            depends_on: [],
+            tags: p.tags,
+            repo: p.repo,
+            assignee: p.assignee,
+            repoAlias: p.repoAlias ?? null,
+          };
+          if ('waitingOn' in p) {
+            return { ...base, blocked: true, waiting_on: (p as BlockedPlanSummary).waitingOn };
+          }
+          if (result.byStatus.ready.includes(p as PlanSummary)) {
+            return { ...base, ready: true };
+          }
+          return base;
+        }),
+      };
+
+      if (isProject) {
+        output.repos = buildReposArray(allPlans, ctx.config.project);
+      }
+
+      console.log(JSON.stringify(output, null, 2));
+      return;
     }
 
-    console.log(JSON.stringify(output, null, 2));
-    return;
-  }
+    if (allPlans.length === 0) {
+      console.log('No plans found.');
+      return;
+    }
 
-  if (allPlans.length === 0) {
-    console.log('No plans found.');
-    return;
-  }
-
-  if (isProject) {
-    printProjectStatus(result, allPlans, ctx.config.project);
-  } else {
-    printLocalStatus(result, allPlans);
+    if (isProject) {
+      printProjectStatus(result, allPlans, ctx.config.project);
+    } else {
+      printLocalStatus(result, allPlans);
+    }
+  } finally {
+    await persist();
   }
 }
 

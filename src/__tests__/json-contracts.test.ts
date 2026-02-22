@@ -54,7 +54,7 @@ describe('JSON contracts', () => {
   });
 
   describe('status --json', () => {
-    it('outputs correct field names and structure', () => {
+    it('outputs correct field names and structure', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done', tags: ['tag1'], repo: 'public' },
         { id: 'plan-b', title: 'Plan B', status: 'not_started', tags: ['tag2'] },
@@ -65,7 +65,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      statusCommand({ json: true, all: true });
+      await statusCommand({ json: true, all: true });
 
       const output = JSON.parse(logs[0]);
 
@@ -106,7 +106,7 @@ describe('JSON contracts', () => {
       expect(readyPlan.ready).toBe(true);
     });
 
-    it('filters by status flags', () => {
+    it('filters by status flags', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done' },
         { id: 'plan-b', title: 'Plan B', status: 'archived' },
@@ -116,7 +116,7 @@ describe('JSON contracts', () => {
       process.cwd = () => root;
 
       // Without --all, done and archived are excluded
-      statusCommand({ json: true });
+      await statusCommand({ json: true });
       let output = JSON.parse(logs[0]);
       expect(output.total).toBe(1);
       expect(output.plans.find((p: any) => p.status === 'done')).toBeUndefined();
@@ -124,21 +124,21 @@ describe('JSON contracts', () => {
 
       // With --done, done is included
       logs = [];
-      statusCommand({ json: true, done: true });
+      await statusCommand({ json: true, done: true });
       output = JSON.parse(logs[0]);
       expect(output.total).toBe(2);
       expect(output.plans.find((p: any) => p.status === 'done')).toBeDefined();
 
       // With --all, all are included
       logs = [];
-      statusCommand({ json: true, all: true });
+      await statusCommand({ json: true, all: true });
       output = JSON.parse(logs[0]);
       expect(output.total).toBe(3);
     });
   });
 
   describe('ready --json', () => {
-    it('outputs array of plans with correct fields', () => {
+    it('outputs array of plans with correct fields', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'not_started', tags: ['tag1'], repo: 'public', description: 'Description A' },
         { id: 'plan-b', title: 'Plan B', status: 'not_started', depends_on: ['plan-a'] },
@@ -146,7 +146,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      readyCommand({ json: true });
+      await readyCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       expect(Array.isArray(output)).toBe(true);
@@ -167,7 +167,7 @@ describe('JSON contracts', () => {
       expect(Array.isArray(plan.depends_on)).toBe(true);
     });
 
-    it('outputs single plan with --next flag', () => {
+    it('outputs single plan with --next flag', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'not_started' },
         { id: 'plan-b', title: 'Plan B', status: 'not_started' },
@@ -175,7 +175,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      readyCommand({ json: true, next: true });
+      await readyCommand({ json: true, next: true });
 
       const output = JSON.parse(logs[0]);
       expect(output).toHaveProperty('id');
@@ -184,14 +184,14 @@ describe('JSON contracts', () => {
       expect(output).toHaveProperty('depends_on');
     });
 
-    it('outputs null when no plans are ready with --next', () => {
+    it('outputs null when no plans are ready with --next', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done' },
       ]);
       fixtureRoot = root;
       process.cwd = () => root;
 
-      readyCommand({ json: true, next: true });
+      await readyCommand({ json: true, next: true });
 
       const output = JSON.parse(logs[0]);
       expect(output).toBe(null);
@@ -199,7 +199,7 @@ describe('JSON contracts', () => {
   });
 
   describe('show --json', () => {
-    it('outputs plan details with correct field names', () => {
+    it('outputs plan details with correct field names', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done', tags: ['tag1'], repo: 'public' },
         {
@@ -215,7 +215,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      showCommand('plan-b', { json: true });
+      await showCommand('plan-b', { json: true });
 
       const output = JSON.parse(logs[0]);
 
@@ -247,7 +247,7 @@ describe('JSON contracts', () => {
       expect(output.started_at).toBe('2026-02-11T10:00:00Z');
     });
 
-    it('includes contracts when --contracts flag is set', () => {
+    it('includes contracts when --contracts flag is set', async () => {
       const { root } = createFixture([
         {
           id: 'plan-a',
@@ -261,19 +261,19 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      showCommand('plan-a', { json: true, contracts: true });
+      await showCommand('plan-a', { json: true, contracts: true });
 
       const output = JSON.parse(logs[0]);
       expect(output).toHaveProperty('inputs');
       expect(output).toHaveProperty('outputs');
     });
 
-    it('errors with correct format when plan not found', () => {
+    it('errors with correct format when plan not found', async () => {
       const { root } = createFixture([]);
       fixtureRoot = root;
       process.cwd = () => root;
 
-      showCommand('nonexistent', { json: true });
+      await showCommand('nonexistent', { json: true });
 
       const output = JSON.parse(errors[0]);
       expect(output).toHaveProperty('error');
@@ -338,7 +338,7 @@ describe('JSON contracts', () => {
   });
 
   describe('lint --json', () => {
-    it('outputs lint results with correct field names', () => {
+    it('outputs lint results with correct field names', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done' },
         { id: 'plan-b', title: 'Plan B', status: 'not_started', depends_on: ['nonexistent'] },
@@ -346,7 +346,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      lintCommand({ json: true });
+      await lintCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
 
@@ -365,14 +365,14 @@ describe('JSON contracts', () => {
       expect(Array.isArray(output.warnings)).toBe(true);
     });
 
-    it('outputs error/warning objects with plan_id', () => {
+    it('outputs error/warning objects with plan_id', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'not_started', depends_on: ['nonexistent'] },
       ]);
       fixtureRoot = root;
       process.cwd = () => root;
 
-      lintCommand({ json: true });
+      await lintCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       expect(output.errors.length).toBeGreaterThan(0);
@@ -386,7 +386,7 @@ describe('JSON contracts', () => {
   });
 
   describe('graph --json', () => {
-    it('outputs graph with nodes and edges', () => {
+    it('outputs graph with nodes and edges', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done', tags: ['tag1'] },
         { id: 'plan-b', title: 'Plan B', status: 'not_started', depends_on: ['plan-a'] },
@@ -394,7 +394,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      graphCommand({ json: true });
+      await graphCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
 
@@ -404,7 +404,7 @@ describe('JSON contracts', () => {
       expect(Array.isArray(output.edges)).toBe(true);
     });
 
-    it('nodes have correct field names', () => {
+    it('nodes have correct field names', async () => {
       const { root } = createFixture([
         {
           id: 'plan-a',
@@ -419,7 +419,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      graphCommand({ json: true });
+      await graphCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       const node = output.nodes[0];
@@ -437,7 +437,7 @@ describe('JSON contracts', () => {
       expect(Array.isArray(node.depends_on)).toBe(true);
     });
 
-    it('edges have from and to fields', () => {
+    it('edges have from and to fields', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done' },
         { id: 'plan-b', title: 'Plan B', status: 'not_started', depends_on: ['plan-a'] },
@@ -445,7 +445,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      graphCommand({ json: true });
+      await graphCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       expect(output.edges.length).toBeGreaterThan(0);
@@ -563,7 +563,7 @@ describe('JSON contracts', () => {
   });
 
   describe('bottlenecks --json', () => {
-    it('outputs correct top-level structure', () => {
+    it('outputs correct top-level structure', async () => {
       const { root } = createFixture([
         { id: 'blocker', title: 'Blocker', status: 'in_progress', started_at: '2020-01-01' },
         { id: 'blocked-a', title: 'Blocked A', status: 'not_started', depends_on: ['blocker'] },
@@ -573,7 +573,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      bottlenecksCommand({ json: true });
+      await bottlenecksCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
 
@@ -589,7 +589,7 @@ describe('JSON contracts', () => {
       expect(Array.isArray(output.layerPressure)).toBe(true);
     });
 
-    it('highBlockingPlans have correct fields', () => {
+    it('highBlockingPlans have correct fields', async () => {
       const { root } = createFixture([
         { id: 'root', title: 'Root', status: 'in_progress', started_at: '2020-01-01' },
         { id: 'child', title: 'Child', status: 'not_started', depends_on: ['root'] },
@@ -597,7 +597,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      bottlenecksCommand({ json: true });
+      await bottlenecksCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       expect(output.highBlockingPlans.length).toBeGreaterThan(0);
@@ -610,7 +610,7 @@ describe('JSON contracts', () => {
       expect(typeof plan.blockingFactor).toBe('number');
     });
 
-    it('stuckPlans have correct fields', () => {
+    it('stuckPlans have correct fields', async () => {
       const { root } = createFixture([
         { id: 'stuck', title: 'Stuck Plan', status: 'in_progress', started_at: '2020-01-01' },
       ]);
@@ -620,7 +620,7 @@ describe('JSON contracts', () => {
       utimesSync(join(root, 'plans', 'stuck', 'README.md'), oldDate, oldDate);
       process.cwd = () => root;
 
-      bottlenecksCommand({ json: true });
+      await bottlenecksCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       expect(output.stuckPlans.length).toBeGreaterThan(0);
@@ -632,14 +632,14 @@ describe('JSON contracts', () => {
       expect(typeof plan.daysInStatus).toBe('number');
     });
 
-    it('stalePlans have correct fields', () => {
+    it('stalePlans have correct fields', async () => {
       const { root } = createFixture([
         { id: 'stale', title: 'Stale Plan', status: 'in_progress', started_at: '2020-01-01' },
       ]);
       fixtureRoot = root;
       process.cwd = () => root;
 
-      bottlenecksCommand({ json: true });
+      await bottlenecksCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       expect(output.stalePlans.length).toBeGreaterThan(0);
@@ -652,7 +652,7 @@ describe('JSON contracts', () => {
       expect(typeof plan.daysInStatus).toBe('number');
     });
 
-    it('layerPressure entries have correct fields', () => {
+    it('layerPressure entries have correct fields', async () => {
       const { root } = createFixture([
         { id: 'a', title: 'A', status: 'in_progress' },
         { id: 'b', title: 'B', status: 'not_started', depends_on: ['a'] },
@@ -660,7 +660,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      bottlenecksCommand({ json: true });
+      await bottlenecksCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       const layers = output.layerPressure.filter((l: any) => l.blocked > 0 || l.inProgress > 0);
@@ -675,7 +675,7 @@ describe('JSON contracts', () => {
       expect(typeof layer.ratio).toBe('number');
     });
 
-    it('healthSummary has correct fields', () => {
+    it('healthSummary has correct fields', async () => {
       const { root } = createFixture([
         { id: 'a', title: 'A', status: 'in_progress' },
         { id: 'b', title: 'B', status: 'not_started' },
@@ -683,7 +683,7 @@ describe('JSON contracts', () => {
       fixtureRoot = root;
       process.cwd = () => root;
 
-      bottlenecksCommand({ json: true });
+      await bottlenecksCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       const hs = output.healthSummary;

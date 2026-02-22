@@ -31,7 +31,7 @@ describe('bottlenecks command', () => {
     }
   });
 
-  it('shows "No bottlenecks detected" for healthy project', () => {
+  it('shows "No bottlenecks detected" for healthy project', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started' },
       { id: 'b', title: 'Plan B', status: 'not_started' },
@@ -39,14 +39,14 @@ describe('bottlenecks command', () => {
     fixtureRoot = root;
     process.cwd = () => root;
 
-    bottlenecksCommand({});
+    await bottlenecksCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('Project Health');
     expect(output).toContain('No bottlenecks detected');
   });
 
-  it('shows stuck plans section', () => {
+  it('shows stuck plans section', async () => {
     const { root } = createFixture([
       { id: 'stuck-plan', title: 'Stuck Plan', status: 'in_progress', started_at: '2020-01-01' },
     ]);
@@ -56,14 +56,14 @@ describe('bottlenecks command', () => {
     utimesSync(join(root, 'plans', 'stuck-plan', 'README.md'), oldDate, oldDate);
     process.cwd = () => root;
 
-    bottlenecksCommand({});
+    await bottlenecksCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('Stuck Plans');
     expect(output).toContain('stuck-plan');
   });
 
-  it('shows top blockers section', () => {
+  it('shows top blockers section', async () => {
     const { root } = createFixture([
       { id: 'blocker', title: 'The Blocker', status: 'in_progress' },
       { id: 'child-a', title: 'Child A', status: 'not_started', depends_on: ['blocker'] },
@@ -72,7 +72,7 @@ describe('bottlenecks command', () => {
     fixtureRoot = root;
     process.cwd = () => root;
 
-    bottlenecksCommand({});
+    await bottlenecksCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('Top Blockers');
@@ -80,21 +80,21 @@ describe('bottlenecks command', () => {
     expect(output).toContain('2');
   });
 
-  it('shows stale plans section', () => {
+  it('shows stale plans section', async () => {
     const { root } = createFixture([
       { id: 'stale-plan', title: 'Stale Plan', status: 'in_progress', started_at: '2020-01-01' },
     ]);
     fixtureRoot = root;
     process.cwd = () => root;
 
-    bottlenecksCommand({});
+    await bottlenecksCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('Stale Plans');
     expect(output).toContain('stale-plan');
   });
 
-  it('shows queue pressure section', () => {
+  it('shows queue pressure section', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'A', status: 'in_progress' },
       { id: 'b', title: 'B', status: 'not_started', depends_on: ['a'] },
@@ -104,14 +104,14 @@ describe('bottlenecks command', () => {
     fixtureRoot = root;
     process.cwd = () => root;
 
-    bottlenecksCommand({});
+    await bottlenecksCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('Queue Pressure');
     expect(output).toContain('layer');
   });
 
-  it('outputs valid JSON with --json flag', () => {
+  it('outputs valid JSON with --json flag', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'A', status: 'in_progress', started_at: '2020-01-01' },
       { id: 'b', title: 'B', status: 'not_started', depends_on: ['a'] },
@@ -119,7 +119,7 @@ describe('bottlenecks command', () => {
     fixtureRoot = root;
     process.cwd = () => root;
 
-    bottlenecksCommand({ json: true });
+    await bottlenecksCommand({ json: true });
 
     const output = JSON.parse(logs[0]);
     expect(output).toHaveProperty('highBlockingPlans');
@@ -129,7 +129,7 @@ describe('bottlenecks command', () => {
     expect(output).toHaveProperty('healthSummary');
   });
 
-  it('shows health summary counts', () => {
+  it('shows health summary counts', async () => {
     const { root } = createFixture([
       { id: 'active', title: 'Active', status: 'in_progress' },
       { id: 'blocked', title: 'Blocked', status: 'not_started', depends_on: ['active'] },
@@ -139,7 +139,7 @@ describe('bottlenecks command', () => {
     fixtureRoot = root;
     process.cwd = () => root;
 
-    bottlenecksCommand({});
+    await bottlenecksCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('4 plans');

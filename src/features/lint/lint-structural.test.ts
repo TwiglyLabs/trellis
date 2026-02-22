@@ -26,7 +26,7 @@ describe('lint structural checks', () => {
   // --- File layout checks ---
 
   describe('file layout', () => {
-    it('errors when plan is a single .md file, not a directory', () => {
+    it('errors when plan is a single .md file, not a directory', async () => {
       const { root } = createFixture([]);
       // Create a single .md file in plans/ (not a directory)
       const { writeFileSync, mkdirSync } = require('fs');
@@ -35,7 +35,7 @@ describe('lint structural checks', () => {
       writeFileSync(join(root, 'plans', 'orphan.md'), '---\ntitle: Orphan\nstatus: draft\n---\n\n## Problem\n\nP\n');
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('orphan.md');
@@ -43,14 +43,14 @@ describe('lint structural checks', () => {
       expect(process.exitCode).toBe(1);
     });
 
-    it('errors when directory is missing README.md', () => {
+    it('errors when directory is missing README.md', async () => {
       const { root } = createFixture([]);
       const { mkdirSync } = require('fs');
       const { join } = require('path');
       mkdirSync(join(root, 'plans', 'empty-dir'), { recursive: true });
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('empty-dir');
@@ -58,7 +58,7 @@ describe('lint structural checks', () => {
       expect(process.exitCode).toBe(1);
     });
 
-    it('warns when plan has depends_on but no inputs.md', () => {
+    it('warns when plan has depends_on but no inputs.md', async () => {
       const BODY = '\n## Problem\n\nP\n\n## Approach\n\nA\n';
       const IMPL = '## Steps\n\n## Testing\n\n## Done-when\n';
       const { root } = createFixture([
@@ -69,14 +69,14 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('consumer');
       expect(output).toContain('depends_on but no inputs.md');
     });
 
-    it('does not warn about missing inputs.md when no depends_on', () => {
+    it('does not warn about missing inputs.md when no depends_on', async () => {
       const { root } = createFixture([
         { id: 'standalone', title: 'Standalone', status: 'not_started',
           body: '\n## Problem\n\nP\n\n## Approach\n\nA\n',
@@ -84,13 +84,13 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).not.toContain('inputs.md');
     });
 
-    it('warns when plan has dependents but no outputs.md', () => {
+    it('warns when plan has dependents but no outputs.md', async () => {
       const BODY = '\n## Problem\n\nP\n\n## Approach\n\nA\n';
       const IMPL = '## Steps\n\n## Testing\n\n## Done-when\n';
       const { root } = createFixture([
@@ -101,14 +101,14 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('core');
       expect(output).toContain('has dependents but no outputs.md');
     });
 
-    it('does not warn about missing outputs.md when no dependents', () => {
+    it('does not warn about missing outputs.md when no dependents', async () => {
       const { root } = createFixture([
         { id: 'leaf', title: 'Leaf', status: 'not_started',
           body: '\n## Problem\n\nP\n\n## Approach\n\nA\n',
@@ -116,7 +116,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).not.toContain('outputs.md');
@@ -126,13 +126,13 @@ describe('lint structural checks', () => {
   // --- Section checks ---
 
   describe('section checks', () => {
-    it('errors when README.md missing ## Problem for draft plan', () => {
+    it('errors when README.md missing ## Problem for draft plan', async () => {
       const { root } = createFixture([
         { id: 'no-problem', title: 'No Problem', status: 'draft', body: '\n## Approach\n\nSome approach\n' },
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('no-problem');
@@ -140,7 +140,7 @@ describe('lint structural checks', () => {
       expect(process.exitCode).toBe(1);
     });
 
-    it('errors when plan at not_started missing ## Approach', () => {
+    it('errors when plan at not_started missing ## Approach', async () => {
       const { root } = createFixture([
         {
           id: 'no-approach', title: 'No Approach', status: 'not_started',
@@ -150,7 +150,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('no-approach');
@@ -158,7 +158,7 @@ describe('lint structural checks', () => {
       expect(process.exitCode).toBe(1);
     });
 
-    it('errors when plan at not_started missing implementation.md', () => {
+    it('errors when plan at not_started missing implementation.md', async () => {
       const { root } = createFixture([
         {
           id: 'no-impl', title: 'No Impl', status: 'not_started',
@@ -167,7 +167,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('no-impl');
@@ -175,7 +175,7 @@ describe('lint structural checks', () => {
       expect(process.exitCode).toBe(1);
     });
 
-    it('errors when implementation.md missing required sections', () => {
+    it('errors when implementation.md missing required sections', async () => {
       const { root } = createFixture([
         {
           id: 'bad-impl', title: 'Bad Impl', status: 'not_started',
@@ -185,7 +185,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('bad-impl');
@@ -194,7 +194,7 @@ describe('lint structural checks', () => {
       expect(process.exitCode).toBe(1);
     });
 
-    it('warns when inputs.md exists but missing From plans / From existing code', () => {
+    it('warns when inputs.md exists but missing From plans / From existing code', async () => {
       const { root } = createFixture([
         { id: 'upstream', title: 'Upstream', status: 'done' },
         {
@@ -207,14 +207,14 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('bad-inputs');
       expect(output).toMatch(/inputs\.md.*From plans.*From existing code/i);
     });
 
-    it('does not warn about inputs.md sections when it has From plans', () => {
+    it('does not warn about inputs.md sections when it has From plans', async () => {
       const { root } = createFixture([
         { id: 'upstream', title: 'Upstream', status: 'done' },
         {
@@ -227,7 +227,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).not.toMatch(/inputs\.md.*From plans.*From existing code/i);
@@ -237,7 +237,7 @@ describe('lint structural checks', () => {
   // --- Status gate compliance ---
 
   describe('status gate compliance', () => {
-    it('errors when done plan with dependents has no outputs.md', () => {
+    it('errors when done plan with dependents has no outputs.md', async () => {
       const { root } = createFixture([
         {
           id: 'done-core', title: 'Done Core', status: 'done',
@@ -248,7 +248,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('done-core');
@@ -256,7 +256,7 @@ describe('lint structural checks', () => {
       expect(process.exitCode).toBe(1);
     });
 
-    it('does not error for done plan without dependents missing outputs.md', () => {
+    it('does not error for done plan without dependents missing outputs.md', async () => {
       const { root } = createFixture([
         {
           id: 'done-leaf', title: 'Done Leaf', status: 'done',
@@ -266,14 +266,14 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       // Should not have gate-related errors for outputs.md
       expect(output).not.toMatch(/outputs\.md.*required.*dependents/i);
     });
 
-    it('passes well-formed plan at not_started', () => {
+    it('passes well-formed plan at not_started', async () => {
       const { root } = createFixture([
         {
           id: 'good-plan', title: 'Good Plan', status: 'not_started',
@@ -283,14 +283,14 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('1 plans OK');
       expect(process.exitCode).toBeUndefined();
     });
 
-    it('catches retroactive gate violations from manual edits', () => {
+    it('catches retroactive gate violations from manual edits', async () => {
       // A plan that claims to be in_progress but is missing implementation.md
       const { root } = createFixture([
         {
@@ -301,7 +301,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand();
+      await lintCommand();
 
       const output = logs.join('\n');
       expect(output).toContain('violated');
@@ -313,7 +313,7 @@ describe('lint structural checks', () => {
   // --- --fix flag ---
 
   describe('--fix flag', () => {
-    it('creates missing implementation.md with required headings', () => {
+    it('creates missing implementation.md with required headings', async () => {
       const { root } = createFixture([
         {
           id: 'needs-impl', title: 'Needs Impl', status: 'not_started',
@@ -322,7 +322,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand({ fix: true });
+      await lintCommand({ fix: true });
 
       const output = logs.join('\n');
       expect(output).toContain('needs-impl: created implementation.md');
@@ -336,13 +336,13 @@ describe('lint structural checks', () => {
       expect(content).toContain('## Done-when');
     });
 
-    it('adds missing ## Problem heading to README.md', () => {
+    it('adds missing ## Problem heading to README.md', async () => {
       const { root } = createFixture([
         { id: 'no-problem', title: 'No Problem', status: 'draft', body: '\nSome content\n' },
       ]);
       process.cwd = () => root;
 
-      lintCommand({ fix: true });
+      await lintCommand({ fix: true });
 
       const output = logs.join('\n');
       expect(output).toContain('no-problem: added ## Problem to README.md');
@@ -353,7 +353,7 @@ describe('lint structural checks', () => {
       expect(content).toContain('## Problem');
     });
 
-    it('adds missing ## Approach heading to README.md', () => {
+    it('adds missing ## Approach heading to README.md', async () => {
       const { root } = createFixture([
         {
           id: 'no-approach', title: 'No Approach', status: 'not_started',
@@ -363,7 +363,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand({ fix: true });
+      await lintCommand({ fix: true });
 
       const output = logs.join('\n');
       expect(output).toContain('no-approach: added ## Approach to README.md');
@@ -374,7 +374,7 @@ describe('lint structural checks', () => {
       expect(content).toContain('## Approach');
     });
 
-    it('does not overwrite existing content', () => {
+    it('does not overwrite existing content', async () => {
       const { root } = createFixture([
         {
           id: 'partial', title: 'Partial', status: 'not_started',
@@ -384,7 +384,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand({ fix: true });
+      await lintCommand({ fix: true });
 
       const { readFileSync } = require('fs');
       const { join } = require('path');
@@ -394,7 +394,7 @@ describe('lint structural checks', () => {
       expect(implContent).toContain('## Done-when');
     });
 
-    it('creates missing outputs.md for done plan with dependents', () => {
+    it('creates missing outputs.md for done plan with dependents', async () => {
       const { root } = createFixture([
         {
           id: 'done-core', title: 'Done Core', status: 'done',
@@ -412,7 +412,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand({ fix: true });
+      await lintCommand({ fix: true });
 
       const output = logs.join('\n');
       expect(output).toContain('done-core: created outputs.md');
@@ -423,7 +423,7 @@ describe('lint structural checks', () => {
       expect(content).toContain('## Outputs');
     });
 
-    it('reports what was fixed', () => {
+    it('reports what was fixed', async () => {
       const { root } = createFixture([
         {
           id: 'fixable', title: 'Fixable', status: 'not_started',
@@ -432,7 +432,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand({ fix: true });
+      await lintCommand({ fix: true });
 
       const output = logs.join('\n');
       // Should report the Fixed section
@@ -444,7 +444,7 @@ describe('lint structural checks', () => {
   // --- JSON output ---
 
   describe('JSON output', () => {
-    it('includes structural errors/warnings in JSON', () => {
+    it('includes structural errors/warnings in JSON', async () => {
       const { root } = createFixture([
         {
           id: 'bad', title: 'Bad', status: 'not_started',
@@ -454,7 +454,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand({ json: true });
+      await lintCommand({ json: true });
 
       const parsed = JSON.parse(logs.join(''));
       expect(parsed.structural).toBeDefined();
@@ -464,7 +464,7 @@ describe('lint structural checks', () => {
       expect(parsed.structural.errors[0]).toHaveProperty('message');
     });
 
-    it('does not include contract_coverage in JSON', () => {
+    it('does not include contract_coverage in JSON', async () => {
       const { root } = createFixture([
         { id: 'a', title: 'A', status: 'done',
           body: '\n## Problem\n\nP\n\n## Approach\n\nA\n',
@@ -472,13 +472,13 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand({ json: true });
+      await lintCommand({ json: true });
 
       const parsed = JSON.parse(logs.join(''));
       expect(parsed).not.toHaveProperty('contract_coverage');
     });
 
-    it('includes structural warnings in JSON', () => {
+    it('includes structural warnings in JSON', async () => {
       const { root } = createFixture([
         {
           id: 'core', title: 'Core', status: 'not_started',
@@ -494,13 +494,13 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand({ json: true });
+      await lintCommand({ json: true });
 
       const parsed = JSON.parse(logs.join(''));
       expect(parsed.structural.warnings.length).toBeGreaterThan(0);
     });
 
-    it('includes fixed items in JSON when --fix and --json combined', () => {
+    it('includes fixed items in JSON when --fix and --json combined', async () => {
       const { root } = createFixture([
         {
           id: 'fixable', title: 'Fixable', status: 'not_started',
@@ -510,7 +510,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand({ json: true, fix: true });
+      await lintCommand({ json: true, fix: true });
 
       const parsed = JSON.parse(logs.join(''));
       expect(parsed.fixed).toBeDefined();
@@ -601,7 +601,7 @@ describe('lint structural checks', () => {
   // --- Old contract checks removed ---
 
   describe('old contract checks removed', () => {
-    it('does not produce orphaned_input_ref errors', () => {
+    it('does not produce orphaned_input_ref errors', async () => {
       const { root } = createFixture([
         {
           id: 'upstream', title: 'Upstream', status: 'not_started',
@@ -619,14 +619,14 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand({ json: true });
+      await lintCommand({ json: true });
 
       const parsed = JSON.parse(logs.join(''));
       const orphanedRef = parsed.errors.find((e: any) => e.type === 'orphaned_input_ref');
       expect(orphanedRef).toBeUndefined();
     });
 
-    it('does not produce missing_upstream_outputs warnings', () => {
+    it('does not produce missing_upstream_outputs warnings', async () => {
       const { root } = createFixture([
         {
           id: 'no-outputs', title: 'No Outputs', status: 'not_started',
@@ -643,7 +643,7 @@ describe('lint structural checks', () => {
       ]);
       process.cwd = () => root;
 
-      lintCommand({ json: true });
+      await lintCommand({ json: true });
 
       const parsed = JSON.parse(logs.join(''));
       const upstreamWarning = parsed.warnings.find((w: any) => w.type === 'missing_upstream_outputs');

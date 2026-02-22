@@ -2,16 +2,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Plan, ProjectManifest, TrellisConfig } from '../core/types.ts';
 import type { GraphData } from '../core/graph.ts';
 
-// Mock createContext so we can inject remote plans + manifest
+// Mock createCachedContext and createContext so we can inject remote plans + manifest
 vi.mock('../core/index.ts', async () => {
   const actual = await vi.importActual<typeof import('../core/index.ts')>('../core/index.ts');
   return {
     ...actual,
+    createCachedContext: vi.fn(),
     createContext: vi.fn(),
   };
 });
 
-import { createContext, mergeWithRemote, buildGraph } from '../core/index.ts';
+import { createCachedContext, createContext, mergeWithRemote, buildGraph } from '../core/index.ts';
 import { buildReposArray } from '../core/utils.ts';
 import { statusCommand } from '../features/status/command.ts';
 import { readyCommand } from '../features/ready/command.ts';
@@ -20,6 +21,7 @@ import { lintCommand } from '../features/lint/command.ts';
 import { epicCommand } from '../features/epic/command.ts';
 import { chunksCommand } from '../features/chunks/command.ts';
 
+const MockCreateCachedContext = vi.mocked(createCachedContext);
 const MockCreateContext = vi.mocked(createContext);
 
 // --- Helpers ---
@@ -61,14 +63,19 @@ const testManifest: ProjectManifest = {
 const testConfig: TrellisConfig = { project: 'myproject', plans_dir: 'plans' };
 
 function setupContext(plans: Plan[], graph: GraphData, manifest?: ProjectManifest) {
-  MockCreateContext.mockReturnValue({
+  const ctx = {
     projectDir: '/tmp/test',
     config: testConfig,
     plansDir: '/tmp/test/plans',
     plans,
     graph,
     manifest,
+  };
+  MockCreateCachedContext.mockReturnValue({
+    ctx,
+    persist: async () => {},
   });
+  MockCreateContext.mockReturnValue(ctx);
 }
 
 describe('--project --json command-layer tests', () => {
@@ -84,6 +91,7 @@ describe('--project --json command-layer tests', () => {
     vi.spyOn(console, 'error').mockImplementation((...args: any[]) => {
       errors.push(args.join(' '));
     });
+    MockCreateCachedContext.mockReset();
     MockCreateContext.mockReset();
   });
 
@@ -109,9 +117,9 @@ describe('--project --json command-layer tests', () => {
   // =============================================
 
   describe('status --project --json', () => {
-    it('includes repos array and repoAlias on plans', () => {
+    it('includes repos array and repoAlias on plans', async () => {
       setupContext(merged, graph, testManifest);
-      statusCommand({ json: true, project: true, all: true });
+      await statusCommand({ json: true, project: true, all: true });
 
       const output = JSON.parse(logs[0]);
       expect(output).toHaveProperty('repos');
@@ -134,9 +142,9 @@ describe('--project --json command-layer tests', () => {
       expect(localPlan.repoAlias).toBeNull();
     });
 
-    it('omits repos array without --project', () => {
+    it('omits repos array without --project', async () => {
       setupContext(merged, graph, testManifest);
-      statusCommand({ json: true });
+      await statusCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       expect(output).not.toHaveProperty('repos');
@@ -148,9 +156,9 @@ describe('--project --json command-layer tests', () => {
   // =============================================
 
   describe('ready --project --json', () => {
-    it('includes repos array and repoAlias on plans', () => {
+    it('includes repos array and repoAlias on plans', async () => {
       setupContext(merged, graph, testManifest);
-      readyCommand({ json: true, project: true });
+      await readyCommand({ json: true, project: true });
 
       const output = JSON.parse(logs[0]);
       expect(output).toHaveProperty('repos');
@@ -167,9 +175,9 @@ describe('--project --json command-layer tests', () => {
       expect(localPlan.repoAlias).toBeNull();
     });
 
-    it('outputs bare array without --project (backwards compat)', () => {
+    it('outputs bare array without --project (backwards compat)', async () => {
       setupContext(merged, graph, testManifest);
-      readyCommand({ json: true });
+      await readyCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       expect(Array.isArray(output)).toBe(true);
@@ -181,9 +189,9 @@ describe('--project --json command-layer tests', () => {
   // =============================================
 
   describe('graph --project --json', () => {
-    it('includes repos array and repoAlias on nodes', () => {
+    it('includes repos array and repoAlias on nodes', async () => {
       setupContext(merged, graph, testManifest);
-      graphCommand({ json: true, project: true });
+      await graphCommand({ json: true, project: true });
 
       const output = JSON.parse(logs[0]);
       expect(output).toHaveProperty('repos');
@@ -199,9 +207,9 @@ describe('--project --json command-layer tests', () => {
       expect(localNode.repoAlias).toBeNull();
     });
 
-    it('omits repos array without --project', () => {
+    it('omits repos array without --project', async () => {
       setupContext(merged, graph, testManifest);
-      graphCommand({ json: true });
+      await graphCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       expect(output).not.toHaveProperty('repos');
@@ -213,7 +221,7 @@ describe('--project --json command-layer tests', () => {
   // =============================================
 
   describe('lint --project --json', () => {
-    it('includes repos array and repoAlias on issues', () => {
+    it('includes repos array and repoAlias on issues', async () => {
       // Create plans with lint errors: missing dep
       const lintLocal = [
         makePlan('broken', { depends_on: ['nonexistent'] }),
@@ -225,7 +233,7 @@ describe('--project --json command-layer tests', () => {
       const lintGraph = buildGraph(lintMerged);
 
       setupContext(lintMerged, lintGraph, testManifest);
-      lintCommand({ json: true, project: true });
+      await lintCommand({ json: true, project: true });
 
       const output = JSON.parse(logs[0]);
       expect(output).toHaveProperty('repos');
@@ -244,11 +252,11 @@ describe('--project --json command-layer tests', () => {
       }
     });
 
-    it('omits repos and repoAlias without --project', () => {
+    it('omits repos and repoAlias without --project', async () => {
       const lintLocal = [makePlan('broken', { depends_on: ['nonexistent'] })];
       const lintGraph = buildGraph(lintLocal);
       setupContext(lintLocal, lintGraph);
-      lintCommand({ json: true });
+      await lintCommand({ json: true });
 
       const output = JSON.parse(logs[0]);
       expect(output).not.toHaveProperty('repos');
@@ -320,9 +328,9 @@ describe('--project --json command-layer tests', () => {
   // =============================================
 
   describe('no manifest + --project', () => {
-    it('warns to stderr and shows local-only', () => {
+    it('warns to stderr and shows local-only', async () => {
       setupContext(merged, graph); // no manifest
-      statusCommand({ json: true, project: true });
+      await statusCommand({ json: true, project: true });
 
       expect(errors).toContain('No manifest configured — showing local plans only');
       const output = JSON.parse(logs[0]);

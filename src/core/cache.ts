@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'fs';
 import { join, dirname } from 'path';
 import type { CacheEntry } from './types.ts';
 
@@ -27,7 +27,8 @@ export function readCache<T>(projectDir: string, key: string): CacheEntry<T> | n
   }
 }
 
-/** Write data wrapped in a CacheEntry to .trellis/cache/<key>.json. */
+/** Write data wrapped in a CacheEntry to .trellis/cache/<key>.json.
+ *  Uses atomic write (write-tmp-rename) to prevent partial reads. */
 export function writeCache<T>(projectDir: string, key: string, data: T): void {
   const filePath = join(projectDir, '.trellis', 'cache', `${key}.json`);
   mkdirSync(dirname(filePath), { recursive: true });
@@ -35,7 +36,9 @@ export function writeCache<T>(projectDir: string, key: string, data: T): void {
     data,
     fetchedAt: new Date().toISOString(),
   };
-  writeFileSync(filePath, JSON.stringify(entry, null, 2) + '\n');
+  const tmpPath = `${filePath}.${Date.now()}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(entry, null, 2) + '\n');
+  renameSync(tmpPath, filePath);
 }
 
 /** Check if a cache entry is stale. Pure function — no filesystem access. */

@@ -19,7 +19,7 @@ describe('ready command', () => {
     vi.restoreAllMocks();
   });
 
-  it('lists ready plans', () => {
+  it('lists ready plans', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
@@ -27,25 +27,25 @@ describe('ready command', () => {
     ]);
     process.cwd = () => root;
 
-    readyCommand({});
+    await readyCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('b');
     expect(output).not.toContain('\nc');
   });
 
-  it('shows message when no plans ready', () => {
+  it('shows message when no plans ready', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'in_progress' },
     ]);
     process.cwd = () => root;
 
-    readyCommand({});
+    await readyCommand({});
 
     expect(logs.join('\n')).toContain('No plans are ready');
   });
 
-  it('outputs JSON', () => {
+  it('outputs JSON', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], tags: ['infra'], repo: 'public', description: 'B desc' },
@@ -53,7 +53,7 @@ describe('ready command', () => {
     ]);
     process.cwd = () => root;
 
-    readyCommand({ json: true });
+    await readyCommand({ json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed).toHaveLength(1);
@@ -65,19 +65,19 @@ describe('ready command', () => {
     expect(parsed[0].description).toBe('B desc');
   });
 
-  it('outputs empty JSON array when no plans ready', () => {
+  it('outputs empty JSON array when no plans ready', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'in_progress' },
     ]);
     process.cwd = () => root;
 
-    readyCommand({ json: true });
+    await readyCommand({ json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed).toEqual([]);
   });
 
-  it('--next returns single highest-priority plan', () => {
+  it('--next returns single highest-priority plan', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
@@ -86,7 +86,7 @@ describe('ready command', () => {
     ]);
     process.cwd = () => root;
 
-    readyCommand({ next: true });
+    await readyCommand({ next: true });
 
     const output = logs.join('\n');
     expect(output).toContain('a');
@@ -95,51 +95,51 @@ describe('ready command', () => {
     expect(lines).toHaveLength(1);
   });
 
-  it('--next with --json returns single plan object', () => {
+  it('--next with --json returns single plan object', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
     ]);
     process.cwd = () => root;
 
-    readyCommand({ next: true, json: true });
+    await readyCommand({ next: true, json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.id).toBe('a');
     expect(parsed.title).toBe('Plan A');
   });
 
-  it('--next with nothing ready shows message', () => {
+  it('--next with nothing ready shows message', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'in_progress' },
     ]);
     process.cwd = () => root;
 
-    readyCommand({ next: true });
+    await readyCommand({ next: true });
 
     expect(logs.join('\n')).toContain('No plans are ready');
   });
 
-  it('--next with --json and nothing ready returns null', () => {
+  it('--next with --json and nothing ready returns null', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'in_progress' },
     ]);
     process.cwd = () => root;
 
-    readyCommand({ next: true, json: true });
+    await readyCommand({ next: true, json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed).toBeNull();
   });
 
-  it('filters by repo', () => {
+  it('filters by repo', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'not_started', repo: 'cloud' },
       { id: 'b', title: 'Plan B', status: 'not_started', repo: 'public' },
     ]);
     process.cwd = () => root;
 
-    readyCommand({ repo: 'cloud' });
+    await readyCommand({ repo: 'cloud' });
 
     const output = logs.join('\n');
     expect(output).toContain('a');

@@ -61,7 +61,7 @@ describe('API-CLI consistency', () => {
   });
 
   describe('status', () => {
-    it('CLI JSON matches API return values', () => {
+    it('CLI JSON matches API return values', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done', tags: ['tag1'], repo: 'public' },
         { id: 'plan-b', title: 'Plan B', status: 'not_started', tags: ['tag2'] },
@@ -75,7 +75,7 @@ describe('API-CLI consistency', () => {
       const ctx = createContext(root);
       const apiResult = computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: { showDone: true } });
 
-      statusCommand({ json: true, done: true });
+      await statusCommand({ json: true, done: true });
       const cliOutput = JSON.parse(logs[0]);
 
       // Same project
@@ -118,7 +118,7 @@ describe('API-CLI consistency', () => {
       expect(cliOutput.chunks.over_budget).toBe(apiResult.chunks.overBudget);
     });
 
-    it('respects status filters consistently', () => {
+    it('respects status filters consistently', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done' },
         { id: 'plan-b', title: 'Plan B', status: 'archived' },
@@ -131,7 +131,7 @@ describe('API-CLI consistency', () => {
 
       // Without flags
       const apiResult1 = computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: { showDone: false, showArchived: false } });
-      statusCommand({ json: true });
+      await statusCommand({ json: true });
       const cliOutput1 = JSON.parse(logs[0]);
 
       const apiTotal1 = [
@@ -145,7 +145,7 @@ describe('API-CLI consistency', () => {
       // With --done
       logs = [];
       const apiResult2 = computeStatus({ plans: ctx.plans, config: ctx.config, graph: ctx.graph, filters: { showDone: true, showArchived: false } });
-      statusCommand({ json: true, done: true });
+      await statusCommand({ json: true, done: true });
       const cliOutput2 = JSON.parse(logs[0]);
 
       const apiTotal2 = [
@@ -160,7 +160,7 @@ describe('API-CLI consistency', () => {
   });
 
   describe('ready', () => {
-    it('CLI JSON matches API return values', () => {
+    it('CLI JSON matches API return values', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'not_started', tags: ['tag1'], repo: 'public' },
         { id: 'plan-b', title: 'Plan B', status: 'not_started', depends_on: ['plan-a'] },
@@ -171,7 +171,7 @@ describe('API-CLI consistency', () => {
       const ctx = createContext(root);
       const apiResult = computeReady({ plans: ctx.plans, graph: ctx.graph });
 
-      readyCommand({ json: true });
+      await readyCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
 
       // Same plan IDs
@@ -188,7 +188,7 @@ describe('API-CLI consistency', () => {
       }
     });
 
-    it('filters by tag and repo consistently', () => {
+    it('filters by tag and repo consistently', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'not_started', tags: ['tag1'], repo: 'public' },
         { id: 'plan-b', title: 'Plan B', status: 'not_started', tags: ['tag2'], repo: 'cloud' },
@@ -200,7 +200,7 @@ describe('API-CLI consistency', () => {
 
       // Filter by repo
       const apiResult = computeReady({ plans: ctx.plans, graph: ctx.graph, filters: { repo: 'public' } });
-      readyCommand({ json: true, repo: 'public' });
+      await readyCommand({ json: true, repo: 'public' });
       const cliOutput = JSON.parse(logs[0]);
 
       expect(cliOutput.map((p: any) => p.id)).toEqual(apiResult.plans.map((p) => p.id));
@@ -208,7 +208,7 @@ describe('API-CLI consistency', () => {
       // Filter by tag
       logs = [];
       const apiResult2 = computeReady({ plans: ctx.plans, graph: ctx.graph, filters: { tag: 'tag2' } });
-      readyCommand({ json: true, tag: 'tag2' });
+      await readyCommand({ json: true, tag: 'tag2' });
       const cliOutput2 = JSON.parse(logs[0]);
 
       expect(cliOutput2.map((p: any) => p.id)).toEqual(apiResult2.plans.map((p) => p.id));
@@ -216,7 +216,7 @@ describe('API-CLI consistency', () => {
   });
 
   describe('show', () => {
-    it('CLI JSON matches API return values', () => {
+    it('CLI JSON matches API return values', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done', tags: ['tag1'], repo: 'public' },
         {
@@ -235,7 +235,7 @@ describe('API-CLI consistency', () => {
       const ctx = createContext(root);
       const apiResult = computeShow({ planId: 'plan-b', graph: ctx.graph });
 
-      showCommand('plan-b', { json: true });
+      await showCommand('plan-b', { json: true });
       const cliOutput = JSON.parse(logs[0]);
 
       expect(apiResult).toBeDefined();
@@ -264,7 +264,7 @@ describe('API-CLI consistency', () => {
       expect(cliOutput.completed_at).toBe(apiResult.completedAt);
     });
 
-    it('returns null for nonexistent plan consistently', () => {
+    it('returns null for nonexistent plan consistently', async () => {
       const { root } = createFixture([]);
       fixtureRoot = root;
       process.cwd = () => root;
@@ -272,7 +272,7 @@ describe('API-CLI consistency', () => {
       const ctx = createContext(root);
       const apiResult = computeShow({ planId: 'nonexistent', graph: ctx.graph });
 
-      showCommand('nonexistent', { json: true });
+      await showCommand('nonexistent', { json: true });
       const cliOutput = JSON.parse(errors[0]);
 
       expect(apiResult).toBe(null);
@@ -352,7 +352,7 @@ describe('API-CLI consistency', () => {
   });
 
   describe('lint', () => {
-    it('CLI JSON matches API return values', () => {
+    it('CLI JSON matches API return values', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done' },
         { id: 'plan-b', title: 'Plan B', status: 'not_started', depends_on: ['nonexistent'] },
@@ -363,7 +363,7 @@ describe('API-CLI consistency', () => {
       const ctx = createContext(root);
       const apiResult = computeLint({ plans: ctx.plans, graph: ctx.graph, projectDir: ctx.projectDir, plansDir: ctx.plansDir, options: {} });
 
-      lintCommand({ json: true });
+      await lintCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
 
       expect(cliOutput.ok).toBe(apiResult.ok);
@@ -373,7 +373,7 @@ describe('API-CLI consistency', () => {
       expect(cliOutput.warnings.length).toBe(apiResult.warnings.length);
     });
 
-    it('reports same error details', () => {
+    it('reports same error details', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'not_started', depends_on: ['nonexistent'] },
       ]);
@@ -383,7 +383,7 @@ describe('API-CLI consistency', () => {
       const ctx = createContext(root);
       const apiResult = computeLint({ plans: ctx.plans, graph: ctx.graph, projectDir: ctx.projectDir, plansDir: ctx.plansDir, options: {} });
 
-      lintCommand({ json: true });
+      await lintCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
 
       expect(apiResult.errors.length).toBeGreaterThan(0);
@@ -399,7 +399,7 @@ describe('API-CLI consistency', () => {
   });
 
   describe('graph', () => {
-    it('CLI JSON matches API return values', () => {
+    it('CLI JSON matches API return values', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done', tags: ['tag1'] },
         { id: 'plan-b', title: 'Plan B', status: 'not_started', depends_on: ['plan-a'] },
@@ -410,7 +410,7 @@ describe('API-CLI consistency', () => {
       const ctx = createContext(root);
       const apiResult = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
 
-      graphCommand({ json: true });
+      await graphCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
 
       // Same number of nodes
@@ -430,7 +430,7 @@ describe('API-CLI consistency', () => {
       expect(cliEdgeKeys).toEqual(apiEdgeKeys);
     });
 
-    it('nodes have same blocked/ready status', () => {
+    it('nodes have same blocked/ready status', async () => {
       const { root } = createFixture([
         { id: 'plan-a', title: 'Plan A', status: 'done' },
         { id: 'plan-b', title: 'Plan B', status: 'not_started', depends_on: ['plan-a'] },
@@ -443,7 +443,7 @@ describe('API-CLI consistency', () => {
       const ctx = createContext(root);
       const apiResult = computeGraph({ plans: ctx.plans, graph: ctx.graph, config: ctx.config });
 
-      graphCommand({ json: true });
+      await graphCommand({ json: true });
       const cliOutput = JSON.parse(logs[0]);
 
       for (const cliNode of cliOutput.nodes) {

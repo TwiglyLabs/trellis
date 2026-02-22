@@ -19,16 +19,16 @@ describe('graph command', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows message when no plans found', () => {
+  it('shows message when no plans found', async () => {
     const { root } = createFixture([]);
     process.cwd = () => root;
 
-    graphCommand({});
+    await graphCommand({});
 
     expect(logs.join('\n')).toContain('No plans found');
   });
 
-  it('outputs JSON DAG', () => {
+  it('outputs JSON DAG', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], tags: ['infra'] },
@@ -36,7 +36,7 @@ describe('graph command', () => {
     ]);
     process.cwd = () => root;
 
-    graphCommand({ json: true });
+    await graphCommand({ json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.nodes).toHaveLength(3);
@@ -53,31 +53,31 @@ describe('graph command', () => {
     expect(parsed.edges).toContainEqual({ from: 'b', to: 'c' });
   });
 
-  it('outputs empty JSON DAG when no plans', () => {
+  it('outputs empty JSON DAG when no plans', async () => {
     const { root } = createFixture([]);
     process.cwd = () => root;
 
-    graphCommand({ json: true });
+    await graphCommand({ json: true });
 
     const parsed = JSON.parse(logs.join(''));
     expect(parsed.nodes).toEqual([]);
     expect(parsed.edges).toEqual([]);
   });
 
-  it('shows text summary with plan and edge counts', () => {
+  it('shows text summary with plan and edge counts', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'Plan A', status: 'done' },
       { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'] },
     ]);
     process.cwd = () => root;
 
-    graphCommand({});
+    await graphCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('2 plans, 1 edge');
   });
 
-  it('shows ready plans', () => {
+  it('shows ready plans', async () => {
     const { root } = createFixture([
       { id: 'auth', title: 'Auth', status: 'done' },
       { id: 'api', title: 'API', status: 'not_started', depends_on: ['auth'] },
@@ -85,13 +85,13 @@ describe('graph command', () => {
     ]);
     process.cwd = () => root;
 
-    graphCommand({});
+    await graphCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('Ready: api, docs');
   });
 
-  it('shows blocked plans with reasons', () => {
+  it('shows blocked plans with reasons', async () => {
     const { root } = createFixture([
       { id: 'core', title: 'Core', status: 'not_started' },
       { id: 'auth', title: 'Auth', status: 'not_started', depends_on: ['core'] },
@@ -99,7 +99,7 @@ describe('graph command', () => {
     ]);
     process.cwd = () => root;
 
-    graphCommand({});
+    await graphCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('Blocked:');
@@ -107,7 +107,7 @@ describe('graph command', () => {
     expect(output).toContain('frontend (by: auth, core)');
   });
 
-  it('shows critical path', () => {
+  it('shows critical path', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'A', status: 'not_started' },
       { id: 'b', title: 'B', status: 'not_started', depends_on: ['a'] },
@@ -115,13 +115,13 @@ describe('graph command', () => {
     ]);
     process.cwd = () => root;
 
-    graphCommand({});
+    await graphCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('Critical path: a → b → c (3 steps)');
   });
 
-  it('picks longest critical path across multiple leaf nodes', () => {
+  it('picks longest critical path across multiple leaf nodes', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'A', status: 'not_started' },
       { id: 'b', title: 'B', status: 'not_started', depends_on: ['a'] },
@@ -131,20 +131,20 @@ describe('graph command', () => {
     ]);
     process.cwd = () => root;
 
-    graphCommand({});
+    await graphCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('Critical path: a \u2192 b \u2192 c (3 steps)');
   });
 
-  it('omits ready and blocked lines when all plans are done', () => {
+  it('omits ready and blocked lines when all plans are done', async () => {
     const { root } = createFixture([
       { id: 'a', title: 'A', status: 'done' },
       { id: 'b', title: 'B', status: 'done', depends_on: ['a'] },
     ]);
     process.cwd = () => root;
 
-    graphCommand({});
+    await graphCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('2 plans, 1 edge');
@@ -152,7 +152,7 @@ describe('graph command', () => {
     expect(output).not.toContain('Blocked:');
   });
 
-  it('shows zero edges for independent plans', () => {
+  it('shows zero edges for independent plans', async () => {
     const { root } = createFixture([
       { id: 'x', title: 'X', status: 'not_started' },
       { id: 'y', title: 'Y', status: 'not_started' },
@@ -160,7 +160,7 @@ describe('graph command', () => {
     ]);
     process.cwd = () => root;
 
-    graphCommand({});
+    await graphCommand({});
 
     const output = logs.join('\n');
     expect(output).toContain('3 plans, 0 edges');
@@ -168,13 +168,13 @@ describe('graph command', () => {
     expect(output).not.toContain('Blocked:');
   });
 
-  it('omits critical path for single-node graph', () => {
+  it('omits critical path for single-node graph', async () => {
     const { root } = createFixture([
       { id: 'solo', title: 'Solo', status: 'not_started' },
     ]);
     process.cwd = () => root;
 
-    graphCommand({});
+    await graphCommand({});
 
     const output = logs.join('\n');
     expect(output).not.toContain('Critical path');
