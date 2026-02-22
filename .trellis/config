@@ -1,3 +1,4 @@
 project: trellis
 plans_dir: plans
 manifest: git@github.com:twiglylabs/twiglylabs.git
+project_root: ~/repos/twiglylabs/twiglylabs
