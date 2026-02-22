@@ -321,6 +321,7 @@ export class ContextStore {
       if (!this.context) return;
 
       // Echo suppression: skip events for repos that were just invalidated
+      // (must happen before ID normalization since it relies on qualified IDs)
       const filteredEvents = batch.events.filter(event => {
         const colonIdx = event.planId.indexOf(':');
         if (colonIdx === -1) return true;
@@ -330,12 +331,35 @@ export class ContextStore {
 
       if (filteredEvents.length === 0) return;
 
+      // Normalize event IDs to match the graph's ID scheme.
+      // watchMultiRepo always qualifies planIds (alias:localId), but the graph
+      // uses unqualified IDs in single-repo mode and qualified IDs in multi-repo mode.
+      let normalizedEvents: PlanChangeEvent[];
+      if (!this.qualifyIds) {
+        // Single-repo mode: strip alias prefix so IDs match unqualified graph keys
+        normalizedEvents = filteredEvents.map(event => {
+          const colonIdx = event.planId.indexOf(':');
+          if (colonIdx === -1) return event;
+          const localId = event.planId.substring(colonIdx + 1);
+          return { ...event, planId: localId };
+        });
+      } else {
+        // Multi-repo mode: qualify plan objects so plan.id matches the qualified graph key
+        normalizedEvents = filteredEvents.map(event => {
+          if (event.type === 'plan-removed') return event;
+          const colonIdx = event.planId.indexOf(':');
+          if (colonIdx === -1) return event;
+          const alias = event.planId.substring(0, colonIdx);
+          return { ...event, plan: qualifyPlan(event.plan, alias) };
+        });
+      }
+
       // Apply incremental graph update directly (not via applyBatch)
       // to support per-repo config for completeness scoring
-      const newGraph = patchGraph(this.context!.graph, filteredEvents);
+      const newGraph = patchGraph(this.context!.graph, normalizedEvents);
 
       // Attach completeness using per-repo config
-      for (const event of filteredEvents) {
+      for (const event of normalizedEvents) {
         if (event.type === 'plan-removed') continue;
         const plan = newGraph.plans.get(event.planId);
         if (!plan) continue;

@@ -796,6 +796,201 @@ describe('ContextStore watch preconditions', () => {
   });
 });
 
+// --- Watch ID normalization (regression: plan duplication bug) ---
+
+describe('ContextStore watch ID normalization', () => {
+  it('single-repo: watch update does not create qualified duplicate', async () => {
+    const fixture = createTestFixture(1, 1);
+    const store = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+      qualifyIds: false,
+    });
+    store.load();
+
+    // Verify initial state uses unqualified keys
+    const initialCtx = store.get();
+    expect(initialCtx.graph.plans.size).toBe(1);
+    expect(initialCtx.graph.plans.has('plan-0')).toBe(true);
+    expect(initialCtx.graph.plans.has('repo-0:plan-0')).toBe(false);
+
+    // Watch for changes
+    let watchHandle: { close(): void } | null = null;
+    const changePromise = new Promise<any>((resolve) => {
+      watchHandle = store.watch((ctx) => {
+        resolve(ctx);
+      });
+    });
+
+    await new Promise(r => setTimeout(r, 100));
+
+    // Modify the plan to trigger a watch event
+    // (watchMultiRepo will qualify the event as 'repo-0:plan-0')
+    writeFileSync(
+      join(fixture.repos[0].plansDir, 'plan-0', 'README.md'),
+      '---\ntitle: Updated Plan\nstatus: done\n---\n\n## Problem\nUpdated\n\n## Approach\nUpdated\n',
+    );
+
+    try {
+      const updatedCtx = await Promise.race([
+        changePromise,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('watch timeout')), 5000),
+        ),
+      ]);
+
+      // The graph MUST still have exactly 1 plan with unqualified key 'plan-0'.
+      // Before the fix, patchGraph would see 'repo-0:plan-0' (from watchMultiRepo)
+      // and not find it in the graph (which uses 'plan-0'), creating a duplicate.
+      expect(updatedCtx.graph.plans.size).toBe(1);
+      expect(updatedCtx.graph.plans.has('plan-0')).toBe(true);
+      expect(updatedCtx.graph.plans.has('repo-0:plan-0')).toBe(false);
+
+      // Verify the update was applied
+      const plan = updatedCtx.graph.plans.get('plan-0')!;
+      expect(plan.frontmatter.title).toBe('Updated Plan');
+      expect(plan.frontmatter.status).toBe('done');
+    } finally {
+      watchHandle?.close();
+    }
+  });
+
+  it('single-repo: watch add uses unqualified key', async () => {
+    const fixture = createTestFixture(1, 1);
+    const store = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+      qualifyIds: false,
+    });
+    store.load();
+    expect(store.get().graph.plans.size).toBe(1);
+
+    let watchHandle: { close(): void } | null = null;
+    const changePromise = new Promise<any>((resolve) => {
+      watchHandle = store.watch((ctx) => {
+        resolve(ctx);
+      });
+    });
+
+    await new Promise(r => setTimeout(r, 100));
+
+    // Add a new plan (watchMultiRepo will emit as 'repo-0:new-plan')
+    const newPlanDir = join(fixture.repos[0].plansDir, 'new-plan');
+    mkdirSync(newPlanDir, { recursive: true });
+    writeFileSync(
+      join(newPlanDir, 'README.md'),
+      '---\ntitle: New Plan\nstatus: draft\n---\n\n## Problem\nNew\n\n## Approach\nNew\n',
+    );
+
+    try {
+      const updatedCtx = await Promise.race([
+        changePromise,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('watch timeout')), 5000),
+        ),
+      ]);
+
+      expect(updatedCtx.graph.plans.size).toBe(2);
+      expect(updatedCtx.graph.plans.has('new-plan')).toBe(true);
+      expect(updatedCtx.graph.plans.has('repo-0:new-plan')).toBe(false);
+    } finally {
+      watchHandle?.close();
+    }
+  });
+
+  it('single-repo: watch remove uses unqualified key', async () => {
+    const fixture = createTestFixture(1, 2);
+    const store = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+      qualifyIds: false,
+    });
+    store.load();
+    expect(store.get().graph.plans.size).toBe(2);
+
+    let watchHandle: { close(): void } | null = null;
+    const changePromise = new Promise<any>((resolve) => {
+      watchHandle = store.watch((ctx) => {
+        resolve(ctx);
+      });
+    });
+
+    await new Promise(r => setTimeout(r, 100));
+
+    // Remove plan-1 (watchMultiRepo will emit as 'repo-0:plan-1')
+    rmSync(join(fixture.repos[0].plansDir, 'plan-1'), { recursive: true });
+
+    try {
+      const updatedCtx = await Promise.race([
+        changePromise,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('watch timeout')), 5000),
+        ),
+      ]);
+
+      expect(updatedCtx.graph.plans.size).toBe(1);
+      expect(updatedCtx.graph.plans.has('plan-0')).toBe(true);
+      expect(updatedCtx.graph.plans.has('plan-1')).toBe(false);
+    } finally {
+      watchHandle?.close();
+    }
+  });
+
+  it('multi-repo: watch update qualifies plan.id and repoAlias', async () => {
+    const fixture = createTestFixture(2, 1);
+    const store = new ContextStore({
+      repos: fixture.repoSpecs,
+      cacheDir: fixture.cacheDir,
+      qualifyIds: true,
+    });
+    store.load();
+
+    const initialCtx = store.get();
+    expect(initialCtx.graph.plans.size).toBe(2);
+    expect(initialCtx.graph.plans.has('repo-0:plan-0')).toBe(true);
+    expect(initialCtx.graph.plans.has('repo-1:plan-0')).toBe(true);
+
+    let watchHandle: { close(): void } | null = null;
+    const changePromise = new Promise<any>((resolve) => {
+      watchHandle = store.watch((ctx) => {
+        resolve(ctx);
+      });
+    });
+
+    await new Promise(r => setTimeout(r, 100));
+
+    // Update plan in repo-0
+    writeFileSync(
+      join(fixture.repos[0].plansDir, 'plan-0', 'README.md'),
+      '---\ntitle: Repo0 Updated\nstatus: done\n---\n\n## Problem\nUpdated\n\n## Approach\nUpdated\n',
+    );
+
+    try {
+      const updatedCtx = await Promise.race([
+        changePromise,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('watch timeout')), 5000),
+        ),
+      ]);
+
+      // Should still be 2 plans, no duplicates
+      expect(updatedCtx.graph.plans.size).toBe(2);
+      expect(updatedCtx.graph.plans.has('repo-0:plan-0')).toBe(true);
+      expect(updatedCtx.graph.plans.has('repo-1:plan-0')).toBe(true);
+      // Unqualified key should NOT exist
+      expect(updatedCtx.graph.plans.has('plan-0')).toBe(false);
+
+      // Verify plan.id and repoAlias are set correctly on the updated plan
+      const plan = updatedCtx.graph.plans.get('repo-0:plan-0')!;
+      expect(plan.id).toBe('repo-0:plan-0');
+      expect(plan.repoAlias).toBe('repo-0');
+      expect(plan.frontmatter.title).toBe('Repo0 Updated');
+    } finally {
+      watchHandle?.close();
+    }
+  });
+});
+
 // --- Performance benchmarks ---
 
 describe('ContextStore performance', () => {
