@@ -152,7 +152,10 @@ export function computeLint(opts: ComputeLintOptions): LintResult {
     }
   }
 
-  for (const plan of plans) {
+  // Structural checks only apply to local plans — remote plans have
+  // git-reference filePaths that don't exist on the local filesystem.
+  const localPlans = plans.filter(p => !p.remote);
+  for (const plan of localPlans) {
     const planDir = dirname(plan.filePath);
     const hasDependents = (graph.dependents.get(plan.id) ?? []).length > 0;
     const hasDependsOn = (plan.frontmatter.depends_on ?? []).length > 0;

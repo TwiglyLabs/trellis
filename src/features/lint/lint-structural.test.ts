@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createFixture } from '../../__tests__/helpers.ts';
 import { lintCommand } from './command.ts';
+import { computeLint } from './logic.ts';
+import type { Plan } from '../../core/types.ts';
+import { buildGraph } from '../../core/graph.ts';
 
 describe('lint structural checks', () => {
   let originalCwd: () => string;
@@ -514,6 +517,84 @@ describe('lint structural checks', () => {
       expect(Array.isArray(parsed.fixed)).toBe(true);
       expect(parsed.fixed.length).toBeGreaterThan(0);
       expect(parsed.fixed.some((f: string) => f.includes('fixable'))).toBe(true);
+    });
+  });
+
+  // --- Remote plan exclusion ---
+
+  describe('remote plan exclusion', () => {
+    it('skips structural checks for remote plans', () => {
+      // Remote plan with a git-reference filePath that doesn't exist on disk.
+      // Without the fix, structural checks (existsSync, readFileSync) would
+      // produce false errors for this plan.
+      const remotePlan: Plan = {
+        id: 'other-repo/remote-plan',
+        filePath: 'other-repo/main:plans/remote-plan/README.md',
+        frontmatter: {
+          title: 'Remote Plan',
+          status: 'in_progress',
+          depends_on: [],
+        },
+        body: '\n## Problem\n\nP\n',
+        lineCount: 5,
+        updatedAt: new Date(),
+        fileHashes: {},
+        remote: true,
+      };
+
+      const { root, plansDir } = createFixture([]);
+      const graph = buildGraph([remotePlan]);
+
+      const result = computeLint({
+        plans: [remotePlan],
+        graph,
+        projectDir: root,
+        plansDir,
+      });
+
+      // Remote plan should NOT produce structural errors (like missing implementation.md)
+      const remoteStructuralErrors = result.structural.errors.filter(
+        e => e.planId === 'other-repo/remote-plan'
+      );
+      const remoteStructuralWarnings = result.structural.warnings.filter(
+        w => w.planId === 'other-repo/remote-plan'
+      );
+      expect(remoteStructuralErrors).toEqual([]);
+      expect(remoteStructuralWarnings).toEqual([]);
+    });
+
+    it('still runs non-structural checks on remote plans', () => {
+      // A remote plan that is "done" but depends on a non-existent plan
+      const remotePlan: Plan = {
+        id: 'other-repo/bad-deps',
+        filePath: 'other-repo/main:plans/bad-deps/README.md',
+        frontmatter: {
+          title: 'Bad Deps',
+          status: 'done',
+          depends_on: ['nonexistent-plan'],
+        },
+        body: '',
+        lineCount: 1,
+        updatedAt: new Date(),
+        fileHashes: {},
+        remote: true,
+      };
+
+      const { root, plansDir } = createFixture([]);
+      const graph = buildGraph([remotePlan]);
+
+      const result = computeLint({
+        plans: [remotePlan],
+        graph,
+        projectDir: root,
+        plansDir,
+      });
+
+      // Non-structural checks should still catch the missing dependency
+      const missingDep = result.errors.find(
+        e => e.planId === 'other-repo/bad-deps' && e.type === 'missing_dependency'
+      );
+      expect(missingDep).toBeDefined();
     });
   });
 
