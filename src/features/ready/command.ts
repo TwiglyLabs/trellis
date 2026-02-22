@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import type { Command } from 'commander';
 import { createCachedContext } from '../../core/index.ts';
 import type { PlanSummary } from '../../core/types.ts';
-import { padRight, computeColumnWidth, resolveProjectPlans, buildReposArray } from '../../core/utils.ts';
+import { padRight, computeColumnWidth, resolveIsProject, buildReposArray } from '../../core/utils.ts';
 import { computeReady } from './logic.ts';
 import { computeShow } from '../show/logic.ts';
 
@@ -34,7 +34,7 @@ interface ReadyOptions {
 export async function readyCommand(options: ReadyOptions): Promise<void> {
   const { ctx, persist } = createCachedContext(process.cwd(), { offline: options.offline, noCache: options.cache === false });
   try {
-    const { isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options.project);
+    const isProject = resolveIsProject(ctx, options.project);
 
     const result = computeReady({
       plans: ctx.plans,

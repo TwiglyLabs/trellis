@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import { createCachedContext, computeCriticalPath, pluralize } from '../../core/index.ts';
-import { resolveProjectPlans, buildReposArray } from '../../core/utils.ts';
+import { resolveIsProject, buildReposArray } from '../../core/utils.ts';
 import { computeGraph } from './logic.ts';
 
 export function register(program: Command): void {
@@ -19,7 +19,8 @@ export async function graphCommand(options: { json?: boolean; offline?: boolean;
   const cwd = process.cwd();
   const { ctx, persist } = createCachedContext(cwd, { offline: options.offline, noCache: options.cache === false });
   try {
-    const { plans: displayPlans, isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options.project);
+    const isProject = resolveIsProject(ctx, options.project);
+    const displayPlans = isProject ? ctx.plans : ctx.plans.filter(p => p.repoAlias == null);
     const result = computeGraph({ plans: displayPlans, graph: ctx.graph, config: ctx.config });
 
     if (options.json) {

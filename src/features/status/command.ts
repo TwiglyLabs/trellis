@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import type { Command } from 'commander';
 import { createCachedContext } from '../../core/index.ts';
 import type { PlanSummary, BlockedPlanSummary } from '../../core/types.ts';
-import { padRight, pluralize, computeColumnWidth, resolveProjectPlans, buildReposArray } from '../../core/utils.ts';
+import { padRight, pluralize, computeColumnWidth, resolveIsProject, buildReposArray } from '../../core/utils.ts';
 import { computeStatus } from './logic.ts';
 
 export function register(program: Command): void {
@@ -37,7 +37,7 @@ interface StatusOptions {
 export async function statusCommand(options: StatusOptions): Promise<void> {
   const { ctx, persist } = createCachedContext(process.cwd(), { offline: options.offline, noCache: options.cache === false });
   try {
-    const { isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options.project);
+    const isProject = resolveIsProject(ctx, options.project);
 
     const showDone = options.all || options.done;
     const showArchived = options.all || options.archived;

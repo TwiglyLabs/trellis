@@ -3,7 +3,7 @@ import {
   mergeWithRemote,
   buildGraph,
   toSummary,
-  resolveProjectPlans,
+  resolveIsProject,
   buildReposArray,
 } from '../core/index.ts';
 import type { Plan, ProjectManifest, PlanSummary, TrellisContext } from '../core/types.ts';
@@ -77,39 +77,35 @@ describe('toSummary propagates repoAlias', () => {
 });
 
 // =============================================
-// resolveProjectPlans
+// resolveIsProject
 // =============================================
 
-describe('resolveProjectPlans', () => {
-  const local = [makePlan('auth')];
-  const remote = [makePlan('ui-lib', { repoAlias: 'canopy' })];
-  const merged = mergeWithRemote(local, remote);
-
-  it('returns local plans only when project is false', () => {
-    const result = resolveProjectPlans(merged, testManifest, false);
-    expect(result.isProject).toBe(false);
-    expect(result.plans.map(p => p.id)).toEqual(['auth']);
+describe('resolveIsProject', () => {
+  it('returns true when isProjectMode is true', () => {
+    expect(resolveIsProject({ isProjectMode: true, manifest: testManifest })).toBe(true);
   });
 
-  it('returns all plans when project is true with manifest', () => {
-    const result = resolveProjectPlans(merged, testManifest, true);
-    expect(result.isProject).toBe(true);
-    expect(result.plans).toHaveLength(2);
+  it('returns true when isProjectMode is true even without manifest', () => {
+    expect(resolveIsProject({ isProjectMode: true })).toBe(true);
   });
 
-  it('falls back to local with no manifest', () => {
+  it('returns false when isProjectMode is false and no flag', () => {
+    expect(resolveIsProject({ isProjectMode: false, manifest: testManifest })).toBe(false);
+  });
+
+  it('returns true when --project flag passed with manifest', () => {
+    expect(resolveIsProject({ isProjectMode: false, manifest: testManifest }, true)).toBe(true);
+  });
+
+  it('warns and returns false when --project flag passed without manifest', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const result = resolveProjectPlans(merged, undefined, true);
-    expect(result.isProject).toBe(false);
-    expect(result.plans.map(p => p.id)).toEqual(['auth']);
+    expect(resolveIsProject({ isProjectMode: false }, true)).toBe(false);
     expect(errorSpy).toHaveBeenCalledWith('No manifest configured — showing local plans only');
     errorSpy.mockRestore();
   });
 
-  it('returns local plans when project is undefined', () => {
-    const result = resolveProjectPlans(merged, testManifest);
-    expect(result.isProject).toBe(false);
-    expect(result.plans.map(p => p.id)).toEqual(['auth']);
+  it('returns false when no flag and not in project mode', () => {
+    expect(resolveIsProject({ isProjectMode: false })).toBe(false);
   });
 });
 

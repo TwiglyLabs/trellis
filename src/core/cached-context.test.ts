@@ -218,7 +218,7 @@ describe('createCachedContext noCache flag', () => {
 // --- TrellisContext shape ---
 
 describe('createCachedContext returns TrellisContext', () => {
-  it('has projectDir, config, plansDir, plans, graph', () => {
+  it('has projectDir, config, plansDir, plans, graph, isProjectMode', () => {
     const { root, plansDir } = createSingleRepoFixture(2);
 
     const { ctx } = createCachedContext(root);
@@ -228,6 +228,7 @@ describe('createCachedContext returns TrellisContext', () => {
     expect(ctx.plansDir).toBe(plansDir);
     expect(ctx.plans.length).toBe(2);
     expect(ctx.graph).toBeDefined();
+    expect(ctx.isProjectMode).toBe(false);
   });
 });
 
@@ -322,6 +323,7 @@ describe('createCachedContext project mode', () => {
     const { ctx } = createCachedContext(alpha.root);
 
     expect(ctx.plans.length).toBe(3);
+    expect(ctx.isProjectMode).toBe(true);
     // Plans should be qualified
     const ids = ctx.plans.map(p => p.id);
     expect(ids).toContain('alpha:auth');
@@ -486,6 +488,7 @@ describe('createCachedContext with project_root', () => {
     const { ctx } = createCachedContext(alpha.root);
 
     expect(ctx.plans.length).toBe(3);
+    expect(ctx.isProjectMode).toBe(true);
     const ids = ctx.plans.map(p => p.id);
     expect(ids).toContain('alpha:auth');
     expect(ids).toContain('beta:ui');
@@ -540,6 +543,29 @@ describe('createCachedContext with project_root', () => {
     // Meta-repo should NOT have a cache
     const metaCachePath = join(metaRoot, '.trellis', 'cache', 'context-store.json');
     expect(existsSync(metaCachePath)).toBe(false);
+  });
+
+  it('--no-cache with project_root still returns isProjectMode true', () => {
+    const { alpha } = setupProjectRootFixture();
+
+    const { ctx } = createCachedContext(alpha.root, { noCache: true });
+
+    expect(ctx.isProjectMode).toBe(true);
+    expect(ctx.plans.length).toBe(3);
+    const ids = ctx.plans.map(p => p.id);
+    expect(ids).toContain('alpha:auth');
+    expect(ids).toContain('beta:ui');
+    expect(ids).toContain('beta:dashboard');
+  });
+
+  it('--no-cache with project_root does not persist', async () => {
+    const { alpha } = setupProjectRootFixture();
+
+    const { persist } = createCachedContext(alpha.root, { noCache: true });
+    await persist();
+
+    const indexPath = join(alpha.root, '.trellis', 'cache', 'context-store.json');
+    expect(existsSync(indexPath)).toBe(false);
   });
 
   it('warm cache works with project_root', async () => {

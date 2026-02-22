@@ -16,6 +16,7 @@ export interface TrellisContext {
   readonly plans: Plan[];
   readonly graph: GraphData;
   readonly manifest?: ProjectManifest;
+  readonly isProjectMode: boolean;
 }
 
 export interface CreateContextOptions {
@@ -160,7 +161,7 @@ export function createContext(projectDir: string, options?: CreateContextOptions
   attachCompleteness(plans, config);
   const graph = buildGraph(plans);
 
-  return { projectDir, config, plansDir, plans, graph, manifest };
+  return { projectDir, config, plansDir, plans, graph, manifest, isProjectMode: false };
 }
 
 /** Re-scan plans and rebuild the graph, preserving config. */

@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { join } from 'path';
 import type { Command } from 'commander';
 import { createCachedContext } from '../../core/index.ts';
-import { resolveProjectPlans, buildReposArray } from '../../core/utils.ts';
+import { resolveIsProject, buildReposArray } from '../../core/utils.ts';
 import { computeLint } from './logic.ts';
 import type { LintIssue } from './logic.ts';
 
@@ -24,7 +24,7 @@ export function register(program: Command): void {
 export async function lintCommand(options?: { strict?: boolean; json?: boolean; fix?: boolean; completeness?: boolean; offline?: boolean; cache?: boolean; project?: boolean }): Promise<void> {
   const { ctx, persist } = createCachedContext(process.cwd(), { offline: options?.offline, noCache: options?.cache === false });
   try {
-    const { isProject } = resolveProjectPlans(ctx.plans, ctx.manifest, options?.project);
+    const isProject = resolveIsProject(ctx, options?.project);
 
     const result = computeLint({
       plans: ctx.plans,

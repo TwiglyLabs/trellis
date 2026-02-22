@@ -62,7 +62,7 @@ const testManifest: ProjectManifest = {
 
 const testConfig: TrellisConfig = { project: 'myproject', plans_dir: 'plans' };
 
-function setupContext(plans: Plan[], graph: GraphData, manifest?: ProjectManifest) {
+function setupContext(plans: Plan[], graph: GraphData, manifest?: ProjectManifest, isProjectMode = false) {
   const ctx = {
     projectDir: '/tmp/test',
     config: testConfig,
@@ -70,6 +70,7 @@ function setupContext(plans: Plan[], graph: GraphData, manifest?: ProjectManifes
     plans,
     graph,
     manifest,
+    isProjectMode,
   };
   MockCreateCachedContext.mockReturnValue({
     ctx,
@@ -324,19 +325,95 @@ describe('--project --json command-layer tests', () => {
   });
 
   // =============================================
-  // No manifest + --project
+  // Auto-detection via isProjectMode
+  // =============================================
+
+  describe('auto-detection via isProjectMode', () => {
+    it('status shows project output when isProjectMode is true without --project', async () => {
+      setupContext(merged, graph, testManifest, true);
+      await statusCommand({ json: true, all: true });
+
+      const output = JSON.parse(logs[0]);
+      expect(output).toHaveProperty('repos');
+      // Should include all plans (local + remote)
+      const planIds = output.plans.map((p: any) => p.id);
+      expect(planIds).toContain('canopy:ui-lib');
+      expect(planIds).toContain('auth');
+    });
+
+    it('ready shows project output when isProjectMode is true without --project', async () => {
+      setupContext(merged, graph, testManifest, true);
+      await readyCommand({ json: true });
+
+      const output = JSON.parse(logs[0]);
+      expect(output).toHaveProperty('repos');
+      expect(output).toHaveProperty('plans');
+    });
+
+    it('graph shows project output when isProjectMode is true without --project', async () => {
+      setupContext(merged, graph, testManifest, true);
+      await graphCommand({ json: true });
+
+      const output = JSON.parse(logs[0]);
+      expect(output).toHaveProperty('repos');
+      // Should include remote nodes
+      const nodeIds = output.nodes.map((n: any) => n.id);
+      expect(nodeIds).toContain('canopy:ui-lib');
+    });
+
+    it('lint shows project output when isProjectMode is true without --project', async () => {
+      const lintLocal = [makePlan('broken', { depends_on: ['nonexistent'] })];
+      const lintRemote = [makePlan('remote-broken', { repoAlias: 'canopy', depends_on: ['canopy:missing'] })];
+      const lintMerged = mergeWithRemote(lintLocal, lintRemote);
+      const lintGraph = buildGraph(lintMerged);
+
+      setupContext(lintMerged, lintGraph, testManifest, true);
+      await lintCommand({ json: true });
+
+      const output = JSON.parse(logs[0]);
+      expect(output).toHaveProperty('repos');
+    });
+
+    it('epic shows project output when isProjectMode is true without --project', async () => {
+      setupContext(merged, graph, testManifest, true);
+      await epicCommand({ json: true }, 'v1');
+
+      const output = JSON.parse(logs[0]);
+      expect(output).toHaveProperty('repos');
+    });
+
+    it('chunks shows project output when isProjectMode is true without --project', async () => {
+      setupContext(merged, graph, testManifest, true);
+      await chunksCommand({ json: true });
+
+      const output = JSON.parse(logs[0]);
+      expect(output).toHaveProperty('repos');
+    });
+  });
+
+  // =============================================
+  // No manifest + --project (backward compat)
   // =============================================
 
   describe('no manifest + --project', () => {
-    it('warns to stderr and shows local-only', async () => {
-      setupContext(merged, graph); // no manifest
+    it('warns to stderr and shows local-only when --project without manifest', async () => {
+      setupContext(merged, graph); // no manifest, isProjectMode defaults to false
       await statusCommand({ json: true, project: true });
 
       expect(errors).toContain('No manifest configured — showing local plans only');
       const output = JSON.parse(logs[0]);
-      // Should not have repos array since isProject is false
       expect(output).not.toHaveProperty('repos');
       // Should only have local plans
+      const planIds = output.plans.map((p: any) => p.id);
+      expect(planIds).not.toContain('canopy:ui-lib');
+    });
+
+    it('shows local-only when isProjectMode is false and no --project', async () => {
+      setupContext(merged, graph); // no manifest, isProjectMode defaults to false
+      await statusCommand({ json: true });
+
+      const output = JSON.parse(logs[0]);
+      expect(output).not.toHaveProperty('repos');
       const planIds = output.plans.map((p: any) => p.id);
       expect(planIds).not.toContain('canopy:ui-lib');
     });

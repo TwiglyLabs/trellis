@@ -38,7 +38,35 @@ export function createCachedContext(
   projectDir: string,
   options?: CachedContextOptions,
 ): CachedContextResult {
+  const config = loadConfig(projectDir);
+  const plansDir = join(projectDir, config.plans_dir);
+
+  // Detect project mode BEFORE noCache short-circuit so --no-cache doesn't bypass it
+  let projectManifestPath: string | undefined;
+  if (config.project_root) {
+    const projectRoot = expandTilde(config.project_root);
+    const candidate = join(projectRoot, '.trellis-project');
+    if (existsSync(candidate)) projectManifestPath = candidate;
+  }
+  if (!projectManifestPath && config.manifest) {
+    const candidate = join(projectDir, '.trellis-project');
+    if (existsSync(candidate)) projectManifestPath = candidate;
+  }
+
   if (options?.noCache) {
+    if (projectManifestPath) {
+      // Project mode: still need createProjectContext for multi-repo scanning, but skip cache persistence
+      let cacheDir: string;
+      try {
+        cacheDir = ensureCacheDir(projectDir);
+      } catch {
+        const ctx = createContext(projectDir, { offline: options.offline });
+        return { ctx, persist: async () => {} };
+      }
+      const result = createProjectContext(projectDir, config, plansDir, projectManifestPath, cacheDir);
+      return { ctx: result.ctx, persist: async () => {} };
+    }
+    // createContext re-reads config (minor duplication), but also handles remote plan resolution
     const ctx = createContext(projectDir, { offline: options.offline });
     return { ctx, persist: async () => {} };
   }
@@ -52,27 +80,9 @@ export function createCachedContext(
     return { ctx, persist: async () => {} };
   }
 
-  const config = loadConfig(projectDir);
-  const plansDir = join(projectDir, config.plans_dir);
-
-  // Project mode via project_root: leaf repo pointing to meta-repo
-  if (config.project_root) {
-    const projectRoot = expandTilde(config.project_root);
-    const manifestPath = join(projectRoot, '.trellis-project');
-    if (existsSync(manifestPath)) {
-      return createProjectContext(projectDir, config, plansDir, manifestPath, cacheDir);
-    }
-    // project_root set but .trellis-project not found — fall through to single-repo
-  }
-
-  // Project mode: config has manifest + .trellis-project exists locally (meta-repo case)
-  if (config.manifest) {
-    const manifestPath = join(projectDir, '.trellis-project');
-    if (existsSync(manifestPath)) {
-      return createProjectContext(projectDir, config, plansDir, manifestPath, cacheDir);
-    }
-    // manifest configured but no .trellis-project — fall through to single-repo
-    // (CLI is more lenient than MCP; user can still run `trellis status` without syncing)
+  // Project mode via project_root or manifest + .trellis-project
+  if (projectManifestPath) {
+    return createProjectContext(projectDir, config, plansDir, projectManifestPath, cacheDir);
   }
 
   // Single-repo mode
@@ -99,7 +109,7 @@ export function createCachedContext(
     graph = buildGraph(plans);
   }
 
-  const ctx: TrellisContext = { projectDir, config, plansDir, plans, graph, manifest };
+  const ctx: TrellisContext = { projectDir, config, plansDir, plans, graph, manifest, isProjectMode: false };
 
   return {
     ctx,
@@ -145,7 +155,7 @@ function createProjectContext(
       qualifyIds: false,
     });
     const multi = store.load();
-    const ctx: TrellisContext = { projectDir, config, plansDir, plans: multi.plans, graph: multi.graph };
+    const ctx: TrellisContext = { projectDir, config, plansDir, plans: multi.plans, graph: multi.graph, isProjectMode: false };
     return { ctx, persist: () => store.persist() };
   }
 
@@ -167,6 +177,7 @@ function createProjectContext(
     plans: multi.plans,
     graph: multi.graph,
     manifest,
+    isProjectMode: true,
   };
 
   return {

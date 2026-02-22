@@ -117,4 +117,4 @@ export type { ContextStoreOptions } from './store.ts';
 
 // --- Utilities ---
 export type { ResolvedPlanId } from './utils.ts';
-export { VALID_STATUSES, filterPlans, resolveProjectPlans, buildReposArray, validatePlanId, parseQualifiedId, resolvePlanId, pluralize } from './utils.ts';
+export { VALID_STATUSES, filterPlans, resolveIsProject, buildReposArray, validatePlanId, parseQualifiedId, resolvePlanId, pluralize } from './utils.ts';

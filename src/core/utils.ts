@@ -49,21 +49,19 @@ export function parseQualifiedId(ref: string): { repo?: string; planId: string }
 }
 
 /**
- * Resolve which plans to display based on --project flag.
- * Without --project: local plans only. With --project: all plans from all repos.
- * If --project but no manifest: warn and fall back to local-only.
+ * Determine whether to use project mode for display.
+ * Auto-detects via ctx.isProjectMode; --project flag overrides.
+ * Warns when --project is passed but no manifest is configured.
  */
-export function resolveProjectPlans(
-  plans: Plan[],
-  manifest?: ProjectManifest,
-  project?: boolean,
-): { plans: Plan[]; isProject: boolean } {
-  if (!project) return { plans: plans.filter(p => p.repoAlias == null), isProject: false };
-  if (!manifest) {
+export function resolveIsProject(ctx: { isProjectMode: boolean; manifest?: ProjectManifest }, projectFlag?: boolean): boolean {
+  if (ctx.isProjectMode) return true;
+  if (!projectFlag) return false;
+  // --project flag explicitly passed but context is not in project mode
+  if (!ctx.manifest) {
     console.error('No manifest configured — showing local plans only');
-    return { plans: plans.filter(p => p.repoAlias == null), isProject: false };
+    return false;
   }
-  return { plans, isProject: true };
+  return true;
 }
 
 /**
