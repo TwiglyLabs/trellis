@@ -35,7 +35,7 @@ export type {
 export { PlanFile, SECTION_REQUIREMENTS, STATUS_GATES, toSummary } from './types.ts';
 
 // --- Context ---
-export type { TrellisContext, CreateContextOptions, MultiContext } from './context.ts';
+export type { TrellisContext, CreateContextOptions, MultiContextOptions, MultiContext } from './context.ts';
 export { createContext, refreshContext, createContextAsync, refreshContextAsync, mergeWithRemote, createMultiContext, createMultiContextAsync, attachCompleteness, applyBatch } from './context.ts';
 
 // --- Cached Context ---

@@ -9,6 +9,8 @@ import { access } from 'fs/promises';
 import type { Plan, TrellisConfig, ProjectManifest, RepoSpec, MultiRepoEntry } from './types.ts';
 import type { GraphData } from './graph.ts';
 import type { PlanChangeBatch } from '../features/watch/types.ts';
+import { noopLogger } from '@twiglylabs/log';
+import type { Logger } from '@twiglylabs/log';
 
 export interface TrellisContext {
   readonly projectDir: string;
@@ -22,6 +24,7 @@ export interface TrellisContext {
 
 export interface CreateContextOptions {
   offline?: boolean;
+  logger?: Logger;
 }
 
 /**
@@ -311,14 +314,26 @@ async function resolveRemotePlansAsync(
 }
 
 export async function createContextAsync(projectDir: string, options?: CreateContextOptions): Promise<TrellisContext> {
+  const log = (options?.logger ?? noopLogger).child('trellis');
+
+  log.debug('loading config', { projectDir });
   const config = await loadConfigAsync(projectDir);
+  log.debug('config loaded', { project: config.project, plansDir: config.plans_dir });
+
   const plansDir = join(projectDir, config.plans_dir);
+
+  log.debug('scanning plans', { plansDir });
   const localPlans = await scanPlansAsync(plansDir);
+  log.info('plans scanned', { planCount: localPlans.length, plansDir });
 
   const { remotePlans, manifest } = await resolveRemotePlansAsync(projectDir, config, options);
   const plans = remotePlans.length > 0 ? mergeWithRemote(localPlans, remotePlans, config.project) : localPlans;
   attachCompleteness(plans, config);
+
+  log.debug('building graph', { planCount: plans.length });
   const graph = buildGraph(plans);
+  const edgeCount = [...graph.dependencies.values()].reduce((sum, deps) => sum + deps.length, 0);
+  log.info('graph built', { nodes: graph.plans.size, edges: edgeCount, ready: graph.ready.size, blocked: graph.blocked.size });
 
   return { projectDir, config, plansDir, plans, graph, manifest, isProjectMode: false };
 }
@@ -334,7 +349,13 @@ export async function refreshContextAsync(ctx: TrellisContext, options?: CreateC
   return { ...ctx, plans, graph, manifest: manifest ?? ctx.manifest };
 }
 
-export async function createMultiContextAsync(repos: RepoSpec[]): Promise<MultiContext> {
+export interface MultiContextOptions {
+  logger?: Logger;
+}
+
+export async function createMultiContextAsync(repos: RepoSpec[], options?: MultiContextOptions): Promise<MultiContext> {
+  const log = (options?.logger ?? noopLogger).child('trellis');
+
   const aliases = repos.map(r => r.alias);
   const seen = new Set<string>();
   for (const alias of aliases) {
@@ -343,6 +364,8 @@ export async function createMultiContextAsync(repos: RepoSpec[]): Promise<MultiC
     }
     seen.add(alias);
   }
+
+  log.debug('scanning multi-repo context', { repoCount: repos.length, aliases });
 
   const results = await Promise.allSettled(
     repos.map(async (repo) => {
@@ -360,6 +383,8 @@ export async function createMultiContextAsync(repos: RepoSpec[]): Promise<MultiC
       config = await loadConfigAsync(repo.path);
       resolvedPlansDir = join(repo.path, config.plans_dir);
       plans = await scanPlansAsync(resolvedPlansDir);
+
+      log.debug('repo scanned', { alias: repo.alias, planCount: plans.length, configFound });
 
       return { plans, configFound, resolvedPlansDir, config, alias: repo.alias, path: repo.path };
     }),
@@ -385,6 +410,7 @@ export async function createMultiContextAsync(repos: RepoSpec[]): Promise<MultiC
         ...(config ? { config } : {}),
       });
     } else {
+      log.warn('repo scan failed', { alias: repo.alias, error: result.reason?.message ?? 'Unknown error' });
       repoEntries.push({
         alias: repo.alias,
         path: repo.path,
@@ -395,7 +421,10 @@ export async function createMultiContextAsync(repos: RepoSpec[]): Promise<MultiC
     }
   }
 
+  log.debug('building multi-repo graph', { totalPlans: allPlans.length });
   const graph = buildGraph(allPlans);
+  const edgeCount = [...graph.dependencies.values()].reduce((sum, deps) => sum + deps.length, 0);
+  log.info('multi-repo graph built', { nodes: graph.plans.size, edges: edgeCount, repos: repoEntries.length, ready: graph.ready.size });
 
   return { plans: allPlans, graph, repos: repoEntries };
 }

@@ -18,6 +18,7 @@ export type {
   StatusGate,
   TrellisContext,
   MultiContext,
+  MultiContextOptions,
   RepoSpec,
   MultiRepoEntry,
   GraphData,
