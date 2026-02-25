@@ -123,6 +123,10 @@ export { createFileLock } from './mutex.ts';
 export { ContextStore, computeMtimeHash, computeMtimeHashAsync } from './store.ts';
 export type { ContextStoreOptions } from './store.ts';
 
+// --- Worktree ---
+export type { WorktreeInfo } from './worktree.ts';
+export { detectWorktree, detectWorktreeAsync, applyWorktreeOverride, applyWorktreeOverrideAsync } from './worktree.ts';
+
 // --- Utilities ---
 export type { ResolvedPlanId } from './utils.ts';
 export { VALID_STATUSES, filterPlans, resolveIsProject, buildReposArray, validatePlanId, parseQualifiedId, resolvePlanId, pluralize } from './utils.ts';

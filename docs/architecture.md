@@ -20,6 +20,7 @@ src/
 │   ├── frontmatter.ts      # parseFrontmatter(), updatePlanFile() — YAML read/write
 │   ├── graph.ts            # buildGraph(), detectCycles(), topologicalSort(), pickNext(), computeChunks()
 │   ├── manifest.ts         # Git operations for cross-repo plan fetching
+│   ├── worktree.ts         # Git worktree detection and path override
 │   ├── scanner.ts          # scanPlans(), loadConfig() — filesystem scanning
 │   ├── schema.ts           # detectSections(), readSection(), writeSection(), validateStatusGate()
 │   ├── types.ts            # All type definitions, PlanFile enum, STATUS_GATES
@@ -100,6 +101,15 @@ Handles plan file structure:
 - `detectSections()` — extracts `##` headings, ignoring fenced code blocks
 - `readSection()` / `writeSection()` — offset-based section manipulation
 - `validateStatusGate()` — checks file/section requirements for status transitions
+
+### worktree.ts
+
+Detects git worktrees and overrides manifest repo paths when CWD is a worktree. Key functions:
+
+- `detectWorktree(dir)` — checks if `dir` has a `.git` file (worktree marker), follows `gitdir:` pointer and `commondir` to find the main repo root
+- `applyWorktreeOverride(repos, cwd)` — if CWD is a worktree of a manifest repo, substitutes the worktree path for that repo's canonical path
+
+Both have async variants (`detectWorktreeAsync`, `applyWorktreeOverrideAsync`). Used in `cached-context.ts` and `mcp.ts` after `resolveProjectRepos()` to ensure plans resolve to the worktree path.
 
 ### frontmatter.ts
 

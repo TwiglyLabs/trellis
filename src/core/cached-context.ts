@@ -7,6 +7,7 @@ import { createContext, createContextAsync, mergeWithRemote, attachCompleteness,
 import { ensureCacheDir } from './cache.ts';
 import { ContextStore } from './store.ts';
 import { resolveProjectRepos, resolveProjectReposAsync, expandTilde } from './manifest.ts';
+import { applyWorktreeOverride, applyWorktreeOverrideAsync } from './worktree.ts';
 import { parseManifest } from './manifest.ts';
 import type { TrellisContext, CreateContextOptions } from './context.ts';
 import type { RepoSpec, ProjectManifest } from './types.ts';
@@ -129,7 +130,8 @@ function createProjectContext(
   manifestPath: string,
   cacheDir: string,
 ): CachedContextResult {
-  const resolved = resolveProjectRepos(manifestPath);
+  const rawResolved = resolveProjectRepos(manifestPath);
+  const resolved = applyWorktreeOverride(rawResolved, projectDir);
   const specs: RepoSpec[] = [];
   const warnings: string[] = [];
 
@@ -272,7 +274,8 @@ async function createProjectContextAsync(
   manifestPath: string,
   cacheDir: string,
 ): Promise<CachedContextResult> {
-  const resolved = await resolveProjectReposAsync(manifestPath);
+  const rawResolved = await resolveProjectReposAsync(manifestPath);
+  const resolved = await applyWorktreeOverrideAsync(rawResolved, projectDir);
   const specs: RepoSpec[] = [];
   const warnings: string[] = [];
 

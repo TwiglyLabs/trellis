@@ -157,6 +157,16 @@ To recover, write the missing content and retry:
 
 **Plan IDs are directory names.** When creating plans, the `id` becomes the directory name under `plans/`. Use kebab-case: `my-feature`, not `My Feature`.
 
+## Git Worktree Support
+
+Trellis automatically detects when you're running from a git worktree. In project mode (multi-repo with manifest), if your CWD is a worktree of a manifest repo, trellis resolves plans against the worktree path instead of the canonical repo path. This means:
+
+- `trellis_create` writes plans into the worktree, so they appear in `git status`
+- `trellis status` reads plans from the worktree's branch
+- No manual file moving or cherry-picking needed
+
+This is transparent — no configuration required. Single-repo mode is unaffected (it already uses CWD directly).
+
 ## Plan Granularity
 
 Plans should be implementable in roughly half a context session. Signs a plan is too big:

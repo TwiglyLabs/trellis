@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ContextStore, ensureCacheDir, loadConfig, createFileLock, resolvePlanId, parseQualifiedId, resolveProjectRepos, parseManifest, expandTilde } from './core/index.ts';
+import { ContextStore, ensureCacheDir, loadConfig, createFileLock, resolvePlanId, parseQualifiedId, resolveProjectRepos, parseManifest, expandTilde, applyWorktreeOverride } from './core/index.ts';
 import type { PlanStatus, RepoSpec, MultiRepoEntry, TrellisConfig, ProjectManifest } from './core/types.ts';
 import type { GraphData } from './core/graph.ts';
 import { computeCreate } from './features/create/logic.ts';
@@ -78,11 +78,12 @@ export function loadProjectRepos(projectDir: string): { specs: RepoSpec[]; warni
     throw new Error(`No .trellis-project manifest found in ${absDir}`);
   }
 
-  const resolved = resolveProjectRepos(manifestPath);
-  if (resolved.length === 0) {
+  const rawResolved = resolveProjectRepos(manifestPath);
+  if (rawResolved.length === 0) {
     throw new Error(`No repos with local "path" found in manifest at ${manifestPath}`);
   }
 
+  const resolved = applyWorktreeOverride(rawResolved, absDir);
   const specs: RepoSpec[] = [];
   const warnings: string[] = [];
   for (const repo of resolved) {
