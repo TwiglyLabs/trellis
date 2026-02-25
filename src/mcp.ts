@@ -17,6 +17,7 @@ import { computeShow } from './features/show/logic.ts';
 import { computeGraph } from './features/graph/logic.ts';
 import { computeLint } from './features/lint/logic.ts';
 import { computeBottlenecks } from './features/bottlenecks/logic.ts';
+import { formatStatus, formatShow, formatGraph, formatLint, formatBottlenecks } from './core/format.ts';
 
 const STATUS_VALUES = ['draft', 'not_started', 'in_progress', 'done', 'archived'] as const;
 
@@ -536,7 +537,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // --- trellis_status (read-only) ---
   server.registerTool('trellis_status', {
     title: 'Plan Status',
-    description: 'Get a summary of all plans grouped by status: counts per status, and a flat list of plans with their key fields. Optional tag filter to scope to a single epic.',
+    description: 'Get a summary of all plans grouped by status with next recommendation. Includes In Progress, Ready, Blocked, Draft, and Done sections. Optional tag filter to scope to a single epic.',
     inputSchema: {
       tag: z.string().optional().describe('Filter plans by tag prefix (e.g. "epic:auth")'),
     },
@@ -546,38 +547,19 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       const config = ctx.isMultiRepo
         ? (ctx.repoEntries?.[0]?.config ?? { project: 'multi-repo', plans_dir: 'plans' })
         : ctx.getConfig();
-      const result = computeStatus({
+      const statusResult = computeStatus({
         plans: ctx.plans,
         config,
         graph: ctx.graph,
         filters: { tag, showDone: true, showArchived: true, project: ctx.isMultiRepo },
       });
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-      };
-    } catch (error) {
-      return {
-        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
-        isError: true,
-      };
-    }
-  });
-
-  // --- trellis_ready (read-only) ---
-  server.registerTool('trellis_ready', {
-    title: 'Ready Plans',
-    description: 'Get plans that are ready to work on (not blocked, status is not_started). Includes the next recommendation — the highest-priority plan by forward path depth.',
-    inputSchema: {},
-  }, async () => {
-    try {
-      const ctx = getToolContext();
-      const result = computeReady({
+      const readyResult = computeReady({
         plans: ctx.plans,
         graph: ctx.graph,
-        filters: { project: ctx.isMultiRepo },
+        filters: { tag, project: ctx.isMultiRepo },
       });
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+        content: [{ type: 'text' as const, text: formatStatus(statusResult, readyResult, tag) }],
       };
     } catch (error) {
       return {
@@ -606,7 +588,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         };
       }
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+        content: [{ type: 'text' as const, text: formatShow(result) }],
       };
     } catch (error) {
       return {
@@ -633,7 +615,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         config,
       });
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+        content: [{ type: 'text' as const, text: formatGraph(result) }],
       };
     } catch (error) {
       return {
@@ -666,7 +648,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           options: { strict },
         });
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          content: [{ type: 'text' as const, text: formatLint(result) }],
         };
       }
 
@@ -681,7 +663,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         options: { strict },
       });
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+        content: [{ type: 'text' as const, text: formatLint(result) }],
       };
     } catch (error) {
       return {
@@ -708,7 +690,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         config,
       });
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+        content: [{ type: 'text' as const, text: formatBottlenecks(result) }],
       };
     } catch (error) {
       return {

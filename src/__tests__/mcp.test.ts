@@ -25,7 +25,7 @@ describe('MCP server', () => {
     process.cwd = originalCwd;
   });
 
-  it('creates a server with twelve tools', () => {
+  it('creates a server with eleven tools (trellis_ready removed)', () => {
     const { root } = createFixture([]);
     process.cwd = () => root;
 
@@ -38,12 +38,12 @@ describe('MCP server', () => {
     expect(tools).toContain('trellis_set');
     expect(tools).toContain('trellis_update');
     expect(tools).toContain('trellis_status');
-    expect(tools).toContain('trellis_ready');
+    expect(tools).not.toContain('trellis_ready');
     expect(tools).toContain('trellis_show');
     expect(tools).toContain('trellis_graph');
     expect(tools).toContain('trellis_lint');
     expect(tools).toContain('trellis_bottlenecks');
-    expect(tools).toHaveLength(12);
+    expect(tools).toHaveLength(11);
   });
 
   it('trellis_create creates a plan', async () => {
@@ -427,7 +427,7 @@ describe('MCP server', () => {
   // --- Read tools ---
 
   describe('trellis_status', () => {
-    it('returns plans grouped by status', async () => {
+    it('returns plans grouped by status as text', async () => {
       const { root } = createFixture([
         { id: 'a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nText\n' },
         { id: 'b', title: 'Plan B', status: 'in_progress', body: '\n## Problem\nText\n' },
@@ -440,13 +440,15 @@ describe('MCP server', () => {
       const result = await callTool(server, 'trellis_status', {});
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      expect(output.total).toBe(4);
-      expect(output.byStatus.ready).toHaveLength(1);
-      expect(output.byStatus.ready[0].id).toBe('a');
-      expect(output.byStatus.inProgress).toHaveLength(1);
-      expect(output.byStatus.draft).toHaveLength(1);
-      expect(output.byStatus.done).toHaveLength(1);
+      const text = result.content[0].text;
+      expect(text).toContain('(4 plans)');
+      expect(text).toContain('## Ready (1)');
+      expect(text).toContain('- a: Plan A');
+      expect(text).toContain('## In Progress (1)');
+      expect(text).toContain('- b: Plan B');
+      expect(text).toContain('## Draft (1)');
+      expect(text).toContain('## Done (1)');
+      expect(text).toContain('Next: a');
     });
 
     it('filters by tag', async () => {
@@ -461,11 +463,13 @@ describe('MCP server', () => {
       const result = await callTool(server, 'trellis_status', { tag: 'epic:auth' });
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      expect(output.total).toBe(2);
+      const text = result.content[0].text;
+      expect(text).toContain('(2 plans)');
+      expect(text).toContain('(tag: epic:auth)');
+      expect(text).not.toContain('Plan C');
     });
 
-    it('includes done and archived by default', async () => {
+    it('shows done plans as comma-separated IDs, omits archived', async () => {
       const { root } = createFixture([
         { id: 'a', title: 'Plan A', status: 'done', body: '\n## Problem\nText\n' },
         { id: 'b', title: 'Plan B', status: 'archived', body: '\n## Problem\nText\n' },
@@ -476,50 +480,41 @@ describe('MCP server', () => {
       const result = await callTool(server, 'trellis_status', {});
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      expect(output.byStatus.done).toHaveLength(1);
-      expect(output.byStatus.archived).toHaveLength(1);
+      const text = result.content[0].text;
+      expect(text).toContain('## Done (1)');
+      // Archived omitted entirely from text output
+      expect(text).not.toContain('Archived');
     });
   });
 
-  describe('trellis_ready', () => {
-    it('returns ready plans with next recommendation', async () => {
+  describe('trellis_ready (removed)', () => {
+    it('trellis_ready tool is not registered', () => {
+      const { root } = createFixture([]);
+      process.cwd = () => root;
+
+      const server = createMcpServer();
+      const tools = Object.keys((server as any)._registeredTools);
+      expect(tools).not.toContain('trellis_ready');
+    });
+
+    it('next recommendation is included in trellis_status', async () => {
       const { root } = createFixture([
         { id: 'a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nText\n' },
         { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], body: '\n## Problem\nText\n' },
-        { id: 'c', title: 'Plan C', status: 'draft', body: '\n## Problem\nText\n' },
       ]);
       process.cwd = () => root;
 
       const server = createMcpServer();
-      const result = await callTool(server, 'trellis_ready', {});
+      const result = await callTool(server, 'trellis_status', {});
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      // Only 'a' is ready (b is blocked, c is draft)
-      expect(output.plans).toHaveLength(1);
-      expect(output.plans[0].id).toBe('a');
-      expect(output.next).toBe('a');
-    });
-
-    it('returns empty when nothing is ready', async () => {
-      const { root } = createFixture([
-        { id: 'a', title: 'Plan A', status: 'draft', body: '\n## Problem\nText\n' },
-      ]);
-      process.cwd = () => root;
-
-      const server = createMcpServer();
-      const result = await callTool(server, 'trellis_ready', {});
-
-      expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      expect(output.plans).toHaveLength(0);
-      expect(output.next).toBeNull();
+      const text = result.content[0].text;
+      expect(text).toContain('Next: a');
     });
   });
 
   describe('trellis_show', () => {
-    it('returns full plan detail', async () => {
+    it('returns plan detail as text', async () => {
       const { root } = createFixture([
         { id: 'a', title: 'Plan A', status: 'done', body: '\n## Problem\nText\n' },
         { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], tags: ['epic:auth'], assignee: 'alice', body: '\n## Problem\nB problem\n' },
@@ -530,17 +525,13 @@ describe('MCP server', () => {
       const result = await callTool(server, 'trellis_show', { plan_id: 'b' });
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      expect(output.id).toBe('b');
-      expect(output.title).toBe('Plan B');
-      expect(output.status).toBe('not_started');
-      expect(output.tags).toContain('epic:auth');
-      expect(output.assignee).toBe('alice');
-      expect(output.dependsOn).toHaveLength(1);
-      expect(output.dependsOn[0].id).toBe('a');
-      expect(output.dependsOn[0].satisfied).toBe(true);
-      expect(output.ready).toBe(true);
-      expect(output.blocked).toBe(false);
+      const text = result.content[0].text;
+      expect(text).toContain('# Plan B (b)');
+      expect(text).toContain('Status: not_started (ready)');
+      expect(text).toContain('Tags: epic:auth');
+      expect(text).toContain('Assignee: alice');
+      expect(text).toContain('## Dependencies');
+      expect(text).toContain('✓ a (done)');
     });
 
     it('returns error for nonexistent plan', async () => {
@@ -565,15 +556,14 @@ describe('MCP server', () => {
       const result = await callTool(server, 'trellis_show', { plan_id: 'b' });
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      expect(output.blocked).toBe(true);
-      expect(output.ready).toBe(false);
-      expect(output.dependsOn[0].satisfied).toBe(false);
+      const text = result.content[0].text;
+      expect(text).toContain('(blocked)');
+      expect(text).toContain('○ a (in_progress)');
     });
   });
 
   describe('trellis_graph', () => {
-    it('returns nodes and edges', async () => {
+    it('returns edges as text', async () => {
       const { root } = createFixture([
         { id: 'a', title: 'Plan A', status: 'done', body: '\n## Problem\nText\n' },
         { id: 'b', title: 'Plan B', status: 'not_started', depends_on: ['a'], body: '\n## Problem\nText\n' },
@@ -585,14 +575,13 @@ describe('MCP server', () => {
       const result = await callTool(server, 'trellis_graph', {});
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      expect(output.nodes).toHaveLength(3);
-      expect(output.edges).toHaveLength(1);
-      expect(output.edges[0]).toEqual({ from: 'a', to: 'b' });
-      expect(output.project).toBe('test-project');
+      const text = result.content[0].text;
+      expect(text).toContain('# test-project dependency graph');
+      expect(text).toContain('## Edges');
+      expect(text).toContain('a → b');
     });
 
-    it('returns empty graph for no plans', async () => {
+    it('returns header-only for no plans', async () => {
       const { root } = createFixture([]);
       process.cwd = () => root;
 
@@ -600,9 +589,9 @@ describe('MCP server', () => {
       const result = await callTool(server, 'trellis_graph', {});
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      expect(output.nodes).toHaveLength(0);
-      expect(output.edges).toHaveLength(0);
+      const text = result.content[0].text;
+      expect(text).toContain('dependency graph');
+      expect(text).not.toContain('## Edges');
     });
   });
 
@@ -617,9 +606,8 @@ describe('MCP server', () => {
       const result = await callTool(server, 'trellis_lint', {});
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      expect(output.ok).toBe(true);
-      expect(output.total).toBe(1);
+      const text = result.content[0].text;
+      expect(text).toContain('ok: true');
     });
 
     it('detects missing dependencies', async () => {
@@ -632,10 +620,10 @@ describe('MCP server', () => {
       const result = await callTool(server, 'trellis_lint', {});
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      expect(output.ok).toBe(false);
-      expect(output.errors.length).toBeGreaterThan(0);
-      expect(output.errors.some((e: any) => e.type === 'missing_dependency')).toBe(true);
+      const text = result.content[0].text;
+      expect(text).toContain('ok: false');
+      expect(text).toContain('## Errors');
+      expect(text).toContain('a:');
     });
 
     it('strict mode fails on warnings', async () => {
@@ -648,10 +636,9 @@ describe('MCP server', () => {
       const result = await callTool(server, 'trellis_lint', { strict: true });
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      // Draft orphan plan generates a warning — strict makes ok=false
-      expect(output.warnings.length).toBeGreaterThan(0);
-      expect(output.ok).toBe(false);
+      const text = result.content[0].text;
+      expect(text).toContain('## Warnings');
+      expect(text).toContain('ok: false');
     });
 
     it('detects inconsistency: done plan with incomplete dep', async () => {
@@ -665,14 +652,14 @@ describe('MCP server', () => {
       const result = await callTool(server, 'trellis_lint', {});
 
       expect(result.isError).toBeFalsy();
-      const output = JSON.parse(result.content[0].text);
-      expect(output.ok).toBe(false);
-      expect(output.errors.some((e: any) => e.type === 'inconsistency')).toBe(true);
+      const text = result.content[0].text;
+      expect(text).toContain('ok: false');
+      expect(text).toContain('## Errors');
     });
   });
 
   describe('write-then-read consistency', () => {
-    it('write tool creates plan → immediate read reflects the change', async () => {
+    it('write tool creates plan → immediate status reflects the change', async () => {
       const { root } = createFixture([
         { id: 'a', title: 'Plan A', status: 'not_started', body: '\n## Problem\nText\n' },
       ]);
@@ -681,9 +668,8 @@ describe('MCP server', () => {
       const server = createMcpServer();
 
       // First call: one ready plan
-      const r1 = await callTool(server, 'trellis_ready', {});
-      const out1 = JSON.parse(r1.content[0].text);
-      expect(out1.plans).toHaveLength(1);
+      const r1 = await callTool(server, 'trellis_status', {});
+      expect(r1.content[0].text).toContain('## Ready (1)');
 
       // Create a new plan via write tool (triggers invalidation)
       const createResult = await callTool(server, 'trellis_create', { id: 'b', title: 'Plan B' });
@@ -696,9 +682,8 @@ describe('MCP server', () => {
       expect(updateResult.isError).toBeFalsy();
 
       // Immediate read: should see both plans as ready (no stale data)
-      const r2 = await callTool(server, 'trellis_ready', {});
-      const out2 = JSON.parse(r2.content[0].text);
-      expect(out2.plans).toHaveLength(2);
+      const r2 = await callTool(server, 'trellis_status', {});
+      expect(r2.content[0].text).toContain('## Ready (2)');
     });
 
     it('write tool modifies plan → immediate show reflects the change', async () => {
@@ -800,8 +785,8 @@ describe('MCP server', () => {
       // Subsequent reads should be fast (cached)
       const start = performance.now();
       await callTool(server, 'trellis_status', {});
-      await callTool(server, 'trellis_ready', {});
       await callTool(server, 'trellis_show', { plan_id: 'a' });
+      await callTool(server, 'trellis_graph', {});
       const elapsed = performance.now() - start;
 
       // 3 read calls should complete well under 50ms total with caching
@@ -818,10 +803,9 @@ describe('MCP server', () => {
 
       // Verify initial state
       const r1 = await callTool(server, 'trellis_show', { plan_id: 'test' });
-      const show1 = JSON.parse(r1.content[0].text);
-      expect(show1.title).toBe('Test');
+      expect(r1.content[0].text).toContain('# Test (test)');
 
-      // Update title via set tool
+      // Update description via set tool
       const setResult = await callTool(server, 'trellis_set', {
         plan_id: 'test', field: 'description', value: 'Updated description',
       });
@@ -829,8 +813,7 @@ describe('MCP server', () => {
 
       // Immediate read should reflect the change
       const r2 = await callTool(server, 'trellis_show', { plan_id: 'test' });
-      const show2 = JSON.parse(r2.content[0].text);
-      expect(show2.description).toBe('Updated description');
+      expect(r2.content[0].text).toContain('Updated description');
     });
 
     it('status transition via write tool is immediately visible in status view', async () => {
@@ -843,9 +826,8 @@ describe('MCP server', () => {
 
       // Initially: one ready plan
       const r1 = await callTool(server, 'trellis_status', {});
-      const out1 = JSON.parse(r1.content[0].text);
-      expect(out1.byStatus.ready).toHaveLength(1);
-      expect(out1.byStatus.inProgress).toHaveLength(0);
+      expect(r1.content[0].text).toContain('## Ready (1)');
+      expect(r1.content[0].text).not.toContain('## In Progress');
 
       // Transition to in_progress (force=true to bypass gate checks)
       const updateResult = await callTool(server, 'trellis_update', {
@@ -855,9 +837,8 @@ describe('MCP server', () => {
 
       // Immediately: should show in_progress, not ready
       const r2 = await callTool(server, 'trellis_status', {});
-      const out2 = JSON.parse(r2.content[0].text);
-      expect(out2.byStatus.ready).toHaveLength(0);
-      expect(out2.byStatus.inProgress).toHaveLength(1);
+      expect(r2.content[0].text).not.toContain('## Ready');
+      expect(r2.content[0].text).toContain('## In Progress (1)');
     });
 
     it('multiple sequential writes all reflect in subsequent read', async () => {
@@ -876,8 +857,7 @@ describe('MCP server', () => {
 
       // All 3 should be visible
       const r = await callTool(server, 'trellis_status', {});
-      const out = JSON.parse(r.content[0].text);
-      expect(out.total).toBe(3);
+      expect(r.content[0].text).toContain('(3 plans)');
     });
 
     it('read tools use cached context (no rescan between reads)', async () => {
@@ -893,7 +873,6 @@ describe('MCP server', () => {
 
       // Multiple read calls — none should trigger a rescan
       await callTool(server, 'trellis_status', {});
-      await callTool(server, 'trellis_ready', {});
       await callTool(server, 'trellis_show', { plan_id: 'a' });
       await callTool(server, 'trellis_graph', {});
       await callTool(server, 'trellis_lint', {});

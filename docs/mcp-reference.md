@@ -1,6 +1,6 @@
 # MCP Reference
 
-Trellis exposes eleven tools via the [Model Context Protocol](https://modelcontextprotocol.io/) for AI agent integration. The server runs on stdio transport — six write tools and five read-only query tools.
+Trellis exposes ten tools via the [Model Context Protocol](https://modelcontextprotocol.io/) for AI agent integration. The server runs on stdio transport — six write tools (JSON responses) and four read-only query tools (structured text responses).
 
 ## Starting the Server
 
@@ -266,9 +266,11 @@ The `newly_ready` array lists plans that became ready as a result of this status
 
 ## Read Tools
 
+Read tools return compact structured text (not JSON) optimized for LLM consumption.
+
 ### trellis_status
 
-Get a summary of all plans grouped by status. Returns counts per status and plan summaries in each group.
+Get a summary of all plans grouped by status with next recommendation. Includes In Progress, Ready, Blocked, Draft, and Done sections. Done plans are shown as comma-separated IDs. Archived plans are omitted.
 
 **Input Schema:**
 
@@ -276,61 +278,36 @@ Get a summary of all plans grouped by status. Returns counts per status and plan
 |-----------|------|----------|-------------|
 | `tag` | string | No | Filter plans by tag (e.g., `"epic:auth"`) |
 
-**Example Request:**
-
-```json
-{
-  "tag": "epic:auth"
-}
-```
-
 **Example Response:**
 
-```json
-{
-  "project": "my-project",
-  "total": 12,
-  "chunks": { "total": 3, "overBudget": 0 },
-  "byStatus": {
-    "ready": [{ "id": "login-page", "title": "Login Page", "status": "not_started", "tags": ["epic:auth"] }],
-    "blocked": [{ "id": "user-profile", "title": "User Profile", "status": "not_started", "tags": ["epic:auth"], "waitingOn": ["login-page"] }],
-    "inProgress": [],
-    "draft": [],
-    "done": [],
-    "archived": []
-  }
-}
+```
+# my-project (12 plans) (tag: epic:auth)
+Next: login-page
+
+## In Progress (1)
+- api-redesign: Redesign API layer [alice]
+
+## Ready (2)
+- login-page: Login Page
+- core-types: Core Types
+
+## Blocked (1)
+- user-profile: User Profile (waiting on: login-page)
+
+## Draft (1)
+- v2-planning: Version 2 Planning
+
+## Done (7)
+plan-a, plan-b, plan-c, plan-d, plan-e, plan-f, plan-g
 ```
 
-All statuses (including done and archived) are included in the response.
-
----
-
-### trellis_ready
-
-Get plans that are ready to work on — not blocked, status is `not_started`. Includes the `next` recommendation (highest-priority plan by forward path depth).
-
-**Input Schema:** None.
-
-**Example Response:**
-
-```json
-{
-  "plans": [
-    { "id": "core-types", "title": "Core Types", "status": "not_started", "tags": ["foundation"] },
-    { "id": "login-page", "title": "Login Page", "status": "not_started", "tags": ["epic:auth"] }
-  ],
-  "next": "core-types"
-}
-```
-
-The `next` field picks the plan whose completion unblocks the most downstream work.
+Empty sections are omitted. The `Next` line shows the highest-priority plan by forward path depth.
 
 ---
 
 ### trellis_show
 
-Get full detail for a single plan: metadata, dependencies, dependents, blocking status, and critical path.
+Get detail for a single plan: metadata, dependencies, dependents, and critical path. Body content is not included — use `trellis_read_section` for that.
 
 **Input Schema:**
 
@@ -338,36 +315,26 @@ Get full detail for a single plan: metadata, dependencies, dependents, blocking 
 |-----------|------|----------|-------------|
 | `plan_id` | string | Yes | Plan ID to show |
 
-**Example Request:**
-
-```json
-{
-  "plan_id": "auth-system"
-}
-```
-
 **Example Response:**
 
-```json
-{
-  "id": "auth-system",
-  "filePath": "plans/auth-system/README.md",
-  "title": "Authentication System",
-  "status": "not_started",
-  "blocked": false,
-  "ready": true,
-  "tags": ["epic:auth"],
-  "assignee": "alice",
-  "description": "Add user login",
-  "body": "## Problem\nUsers cannot log in...",
-  "dependsOn": [
-    { "id": "core-types", "status": "done", "satisfied": true }
-  ],
-  "blocks": ["user-profile", "admin-panel"],
-  "criticalPath": ["core-types", "auth-system"],
-  "inputs": null,
-  "outputs": null
-}
+```
+# Authentication System (auth-system)
+Status: not_started (ready)
+Type: feature
+Tags: epic:auth, security
+Assignee: alice
+
+Add user login and session management
+
+## Dependencies
+✓ core-types (done)
+○ database-schema (in_progress)
+
+## Blocks
+user-profile, admin-panel
+
+## Critical Path
+database-schema → auth-system → user-profile
 ```
 
 Returns an error (not exception) if the plan ID is not found.
@@ -376,34 +343,35 @@ Returns an error (not exception) if the plan ID is not found.
 
 ### trellis_graph
 
-Get the full dependency graph as nodes and edges.
+Get the dependency graph as edges and chunks. Nodes are not included (use `trellis_status` for plan metadata).
 
 **Input Schema:** None.
 
 **Example Response:**
 
-```json
-{
-  "project": "my-project",
-  "nodes": [
-    { "id": "core-types", "title": "Core Types", "status": "done", "blocked": false, "ready": false, "dependsOn": [], "tags": ["foundation"] },
-    { "id": "auth-system", "title": "Auth System", "status": "not_started", "blocked": false, "ready": true, "dependsOn": ["core-types"], "tags": ["epic:auth"] }
-  ],
-  "edges": [
-    { "from": "core-types", "to": "auth-system" }
-  ],
-  "chunks": [],
-  "crossChunkEdges": []
-}
+```
+# my-project dependency graph
+
+## Edges
+core-types → auth-system
+auth-system → user-profile
+
+## Chunks
+### chunk-1 (3 plans, 450 lines)
+Plans: core-types, auth-system, user-profile
+Roots: core-types | Leaves: user-profile
+
+## Cross-chunk Edges
+logging (chunk-2) → user-profile (chunk-1)
 ```
 
-Edges point from dependency to dependent (`from` must complete before `to` can start).
+Edges point from dependency to dependent (`from` must complete before `to` can start). Empty sections are omitted.
 
 ---
 
 ### trellis_lint
 
-Validate plans and return issues. Checks for cycles, missing dependencies, frontmatter errors, orphans, inconsistencies, and status gate violations.
+Validate plans and return issues. Checks for cycles, missing dependencies, frontmatter errors, orphans, inconsistencies, and status gate violations. Structural issues are merged into the main Errors/Warnings sections.
 
 **Input Schema:**
 
@@ -411,34 +379,45 @@ Validate plans and return issues. Checks for cycles, missing dependencies, front
 |-----------|------|----------|-------------|
 | `strict` | boolean | No | When true, warnings also cause `ok` to be false |
 
-**Example Request:**
+**Example Response:**
 
-```json
-{
-  "strict": true
-}
 ```
+# Lint (1 errors, 1 warnings)
+
+## Errors
+- broken-plan: Unknown dependency: broken-plan depends on "nonexistent"
+
+## Warnings
+- orphan-plan: Orphaned plan: orphan-plan has no dependents and status is draft
+
+ok: false
+```
+
+### trellis_bottlenecks
+
+Analyze project bottlenecks: blocking factors, stuck plans, staleness, and health summary.
+
+**Input Schema:** None.
 
 **Example Response:**
 
-```json
-{
-  "ok": false,
-  "total": 5,
-  "okCount": 4,
-  "errors": [
-    { "planId": "broken-plan", "type": "missing_dependency", "message": "Unknown dependency: broken-plan depends on \"nonexistent\"" }
-  ],
-  "warnings": [
-    { "planId": "orphan-plan", "type": "orphan", "message": "Orphaned plan: orphan-plan has no dependents and status is draft" }
-  ],
-  "structural": {
-    "errors": [],
-    "warnings": []
-  },
-  "fixed": []
-}
 ```
+# Bottlenecks
+
+## High Blocking
+- api-redesign: blocks 8 transitively (in_progress)
+
+## Stuck
+- plan-auth: 14 days in status
+
+## Stale
+- plan-v1-compat: 30 days in draft
+
+## Health
+15 total, 8 active, 3 blocked, 2 stuck, parallelism: 3
+```
+
+Empty sections are omitted. Health summary is always present.
 
 ---
 

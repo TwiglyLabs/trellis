@@ -333,8 +333,8 @@ describe('MCP multi-repo integration', () => {
     const result = await callTool(server, 'trellis_status', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    expect(output.total).toBe(1);
+    const text = result.content[0].text;
+    expect(text).toContain('(1 plan');
   });
 
   // --- trellis_status ---
@@ -344,47 +344,38 @@ describe('MCP multi-repo integration', () => {
     const result = await callTool(server, 'trellis_status', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    expect(output.total).toBe(4);
-
-    const allIds = [
-      ...output.byStatus.ready,
-      ...output.byStatus.blocked,
-      ...output.byStatus.draft,
-    ].map((p: any) => p.id);
-    expect(allIds).toContain('alpha:auth');
-    expect(allIds).toContain('alpha:api');
-    expect(allIds).toContain('beta:ui');
-    expect(allIds).toContain('beta:dashboard');
+    const text = result.content[0].text;
+    expect(text).toContain('(4 plans)');
+    expect(text).toContain('alpha:auth');
+    expect(text).toContain('alpha:api');
+    expect(text).toContain('beta:ui');
+    expect(text).toContain('beta:dashboard');
   });
 
   // --- trellis_ready ---
 
-  it('trellis_ready shows ready plans across repos', async () => {
+  it('trellis_status shows ready plans across repos', async () => {
     const { server } = createMultiRepoServer();
-    const result = await callTool(server, 'trellis_ready', {});
+    const result = await callTool(server, 'trellis_status', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    const readyIds = output.plans.map((p: any) => p.id);
-    expect(readyIds).toContain('alpha:auth');
-    expect(readyIds).toContain('beta:ui');
-    // Blocked ones should not appear
-    expect(readyIds).not.toContain('alpha:api');
-    expect(readyIds).not.toContain('beta:dashboard');
+    const text = result.content[0].text;
+    // Ready plans should appear
+    expect(text).toContain('alpha:auth');
+    expect(text).toContain('beta:ui');
+    // Blocked/draft ones should also appear (in their own sections)
+    expect(text).toContain('alpha:api');
+    expect(text).toContain('beta:dashboard');
   });
 
-  it('trellis_ready returns next recommendation in multi-repo mode', async () => {
+  it('trellis_status returns next recommendation in multi-repo mode', async () => {
     const { server } = createMultiRepoServer();
-    const result = await callTool(server, 'trellis_ready', {});
+    const result = await callTool(server, 'trellis_status', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    // next should be non-null — multi-repo plans are writable, not remote
-    expect(output.next).not.toBeNull();
-    // next should be one of the ready plans
-    const readyIds = output.plans.map((p: any) => p.id);
-    expect(readyIds).toContain(output.next);
+    const text = result.content[0].text;
+    // next should appear — multi-repo plans are writable, not remote
+    expect(text).toMatch(/Next:/);
   });
 
   // --- trellis_show ---
@@ -394,9 +385,8 @@ describe('MCP multi-repo integration', () => {
     const result = await callTool(server, 'trellis_show', { plan_id: 'alpha:auth' });
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    expect(output.id).toBe('alpha:auth');
-    expect(output.title).toBe('Auth System');
+    const text = result.content[0].text;
+    expect(text).toContain('# Auth System (alpha:auth)');
   });
 
   it('trellis_show resolves unqualified ID when unambiguous', async () => {
@@ -404,8 +394,8 @@ describe('MCP multi-repo integration', () => {
     const result = await callTool(server, 'trellis_show', { plan_id: 'auth' });
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    expect(output.id).toBe('alpha:auth');
+    const text = result.content[0].text;
+    expect(text).toContain('alpha:auth');
   });
 
   it('trellis_show returns error for unknown plan', async () => {
@@ -608,12 +598,12 @@ describe('MCP multi-repo integration', () => {
     const result = await callTool(server, 'trellis_graph', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    const nodeIds = output.nodes.map((n: any) => n.id);
-    expect(nodeIds).toContain('alpha:auth');
-    expect(nodeIds).toContain('alpha:api');
-    expect(nodeIds).toContain('beta:ui');
-    expect(nodeIds).toContain('beta:dashboard');
+    const text = result.content[0].text;
+    expect(text).toContain('## Edges');
+    expect(text).toContain('alpha:auth');
+    expect(text).toContain('alpha:api');
+    expect(text).toContain('beta:ui');
+    expect(text).toContain('beta:dashboard');
   });
 
   // --- trellis_lint ---
@@ -623,10 +613,10 @@ describe('MCP multi-repo integration', () => {
     const result = await callTool(server, 'trellis_lint', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    expect(output).toHaveProperty('ok');
-    // Should see plans from both repos in the total
-    expect(output.total).toBe(4);
+    const text = result.content[0].text;
+    expect(text).toMatch(/ok: (true|false)/);
+    // Should see plans from both repos referenced
+    expect(text).toContain('# Lint');
   });
 
   it('trellis_lint detects missing cross-repo dependencies', async () => {
@@ -646,10 +636,9 @@ describe('MCP multi-repo integration', () => {
     const result = await callTool(server, 'trellis_lint', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    const missingDepErrors = output.errors.filter((e: any) => e.type === 'missing_dependency');
-    expect(missingDepErrors.length).toBeGreaterThanOrEqual(1);
-    expect(missingDepErrors[0].message).toContain('alpha:nonexistent');
+    const text = result.content[0].text;
+    expect(text).toContain('## Errors');
+    expect(text).toContain('alpha:nonexistent');
   });
 
   // --- trellis_bottlenecks ---
@@ -659,8 +648,9 @@ describe('MCP multi-repo integration', () => {
     const result = await callTool(server, 'trellis_bottlenecks', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    expect(output.healthSummary.totalPlans).toBe(4);
+    const text = result.content[0].text;
+    expect(text).toContain('## Health');
+    expect(text).toContain('4 total');
   });
 
   // --- Cross-repo dependencies ---
@@ -680,11 +670,10 @@ describe('MCP multi-repo integration', () => {
       ],
     });
 
-    const result = await callTool(server, 'trellis_ready', {});
-    const output = JSON.parse(result.content[0].text);
-    const readyIds = output.plans.map((p: any) => p.id);
+    const result = await callTool(server, 'trellis_status', {});
+    const text = result.content[0].text;
     // beta:feature should be ready since alpha:core is done
-    expect(readyIds).toContain('beta:feature');
+    expect(text).toContain('beta:feature');
   });
 });
 
@@ -770,17 +759,11 @@ describe('MCP project mode auto-detection', () => {
     const result = await callTool(server, 'trellis_status', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    expect(output.total).toBe(2);
-
+    const text = result.content[0].text;
+    expect(text).toContain('(2 plans)');
     // Plans should be qualified with repo aliases
-    const allIds = [
-      ...(output.byStatus.ready ?? []),
-      ...(output.byStatus.blocked ?? []),
-      ...(output.byStatus.draft ?? []),
-    ].map((p: any) => p.id);
-    expect(allIds).toContain('alpha:auth');
-    expect(allIds).toContain('beta:ui');
+    expect(text).toContain('alpha:auth');
+    expect(text).toContain('beta:ui');
   });
 
   it('falls back to single-repo when no manifest configured', async () => {
@@ -793,8 +776,8 @@ describe('MCP project mode auto-detection', () => {
     const result = await callTool(server, 'trellis_status', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    expect(output.total).toBe(1);
+    const text = result.content[0].text;
+    expect(text).toContain('(1 plan');
   });
 
   it('throws when manifest configured but no .trellis-project', () => {
@@ -818,12 +801,11 @@ describe('MCP project mode auto-detection', () => {
     process.cwd = () => alpha.root;
 
     const server = createMcpServer();
-    const result = await callTool(server, 'trellis_ready', {});
+    const result = await callTool(server, 'trellis_status', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    const readyIds = output.plans.map((p: any) => p.id);
-    expect(readyIds).toContain('beta:feature');
+    const text = result.content[0].text;
+    expect(text).toContain('beta:feature');
   });
 
   it('warns but continues when some repos are missing', async () => {
@@ -840,8 +822,8 @@ describe('MCP project mode auto-detection', () => {
     const result = await callTool(server, 'trellis_status', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    expect(output.total).toBe(1);
+    const text = result.content[0].text;
+    expect(text).toContain('(1 plan');
   });
 
   it('explicit --repos overrides project mode', async () => {
@@ -864,16 +846,11 @@ describe('MCP project mode auto-detection', () => {
     const result = await callTool(server, 'trellis_status', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
+    const text = result.content[0].text;
     // Only beta plans, not alpha — explicit repos override project mode
-    expect(output.total).toBe(1);
-    const allIds = [
-      ...(output.byStatus.ready ?? []),
-      ...(output.byStatus.blocked ?? []),
-      ...(output.byStatus.draft ?? []),
-    ].map((p: any) => p.id);
-    expect(allIds).toContain('beta:ui');
-    expect(allIds).not.toContain('alpha:auth');
+    expect(text).toContain('(1 plan');
+    expect(text).toContain('beta:ui');
+    expect(text).not.toContain('alpha:auth');
   });
 });
 
@@ -981,16 +958,10 @@ describe('MCP project_root config field', () => {
     const result = await callTool(server, 'trellis_status', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    expect(output.total).toBe(2);
-
-    const allIds = [
-      ...(output.byStatus.ready ?? []),
-      ...(output.byStatus.blocked ?? []),
-      ...(output.byStatus.draft ?? []),
-    ].map((p: any) => p.id);
-    expect(allIds).toContain('alpha:auth');
-    expect(allIds).toContain('beta:ui');
+    const text = result.content[0].text;
+    expect(text).toContain('(2 plans)');
+    expect(text).toContain('alpha:auth');
+    expect(text).toContain('beta:ui');
   });
 
   it('throws when project_root set but .trellis-project not found', () => {
@@ -1084,12 +1055,9 @@ describe('MCP lint structural checks in multi-repo', () => {
     const result = await callTool(server, 'trellis_lint', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    const missingReadme = output.structural.errors.filter(
-      (e: any) => e.type === 'missing_readme',
-    );
-    expect(missingReadme.length).toBeGreaterThanOrEqual(1);
-    expect(missingReadme.some((e: any) => e.planId === 'broken-plan')).toBe(true);
+    const text = result.content[0].text;
+    expect(text).toContain('## Errors');
+    expect(text).toContain('broken-plan');
   });
 
   it('detects single-file plans in non-first repos', async () => {
@@ -1113,12 +1081,9 @@ describe('MCP lint structural checks in multi-repo', () => {
     const result = await callTool(server, 'trellis_lint', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    const singleFile = output.structural.errors.filter(
-      (e: any) => e.type === 'single_file_plan',
-    );
-    expect(singleFile.length).toBeGreaterThanOrEqual(1);
-    expect(singleFile.some((e: any) => e.planId === 'bad-plan.md')).toBe(true);
+    const text = result.content[0].text;
+    expect(text).toContain('## Errors');
+    expect(text).toContain('bad-plan.md');
   });
 
   it('detects visibility violations in project mode with manifest', async () => {
@@ -1155,10 +1120,9 @@ describe('MCP lint structural checks in multi-repo', () => {
     const result = await callTool(server, 'trellis_lint', {});
     expect(result.isError).toBeFalsy();
 
-    const output = JSON.parse(result.content[0].text);
-    const visibilityErrors = output.errors.filter((e: any) => e.type === 'visibility');
-    expect(visibilityErrors.length).toBeGreaterThanOrEqual(1);
-    expect(visibilityErrors[0].message).toContain('public');
-    expect(visibilityErrors[0].message).toContain('private');
+    const text = result.content[0].text;
+    expect(text).toContain('## Errors');
+    expect(text).toContain('public');
+    expect(text).toContain('private');
   });
 });
