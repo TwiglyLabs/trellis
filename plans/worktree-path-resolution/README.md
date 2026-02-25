@@ -1,6 +1,6 @@
 ---
 title: Resolve plans to git worktree path instead of canonical repo path
-status: in_progress
+status: done
 description: >-
   In project mode, detect when CWD is a git worktree of a manifest repo and use
   the worktree path for plan reads/writes instead of the manifest's canonical
@@ -12,6 +12,7 @@ tags:
 type: bugfix
 not_started_at: '2026-02-24T23:40:44.804Z'
 started_at: '2026-02-24T23:44:28.073Z'
+completed_at: '2026-02-25T00:20:10.310Z'
 ---
 
 ## Problem
@@ -29,40 +30,73 @@ When building the multi-repo context, detect if `process.cwd()` is a git worktre
 **Detection strategy:**
 1. Read CWD's `.git` — if it's a file (not directory), it's a worktree
 2. Parse the `gitdir:` pointer to find the main repo's `.git` directory
-3. For each manifest repo, compare git toplevel directories
-4. If CWD's main repo matches a manifest repo, use CWD's path instead
+3. Resolve the main repo root from the `commondir` pointer in the worktree's gitdir
+4. For each manifest repo, compare resolved real paths (`fs.realpathSync`) to the main repo root
+5. If CWD's main repo matches a manifest repo, use CWD's path instead
 
-**Scope:** Only the "current repo" gets overridden. Other repos in the manifest keep their canonical paths. This is correct because you're only working in one worktree at a time.
+**Path normalization:** Both the manifest repo path (after `expandTilde()`) and the worktree's main repo path must be normalized with `fs.realpathSync()` before comparison. This handles symlinks and inconsistent trailing slashes.
 
-**Where to apply:** In `resolveProjectRepos()` or in `ContextStore.loadRepo()` — after manifest resolution but before plan scanning.
+**Scope:** Only project mode (multi-repo with manifest) is affected. Single-repo mode already uses `process.cwd()` directly via `createContext()`, so no changes needed there. Only the "current repo" gets overridden — other repos in the manifest keep their canonical paths.
 
+**Where to apply:** Three code paths need the override:
+1. `createProjectContext()` in `cached-context.ts` — CLI sync path
+2. `createProjectContextAsync()` in `cached-context.ts` — CLI async path
+3. `loadProjectRepos()` in `mcp.ts` — MCP server path
+
+All three call `resolveProjectRepos()` / `resolveProjectReposAsync()` and convert the results to `RepoSpec[]`. The override applies after manifest resolution, before `RepoSpec` construction.
+
+**Cache isolation:** Automatic. Cache is keyed by the `projectDir` path parameter, so worktree paths naturally get separate `.trellis/cache/` directories. No special handling needed — just verify in tests.
 ## Steps
 ### 1. Add git worktree detection utility
 
-Create a function in `src/core/` that:
-- Checks if a given path has a `.git` file (not directory)
-- Parses `gitdir: <path>` to find the real `.git` dir
-- Resolves the main repo toplevel from `.git/worktrees/<name>/commondir`
-- Returns `{ isWorktree: boolean, mainRepoPath?: string }`
+Create `src/core/worktree.ts` (and async variant) that exports:
+
+```typescript
+interface WorktreeInfo {
+  isWorktree: boolean;
+  mainRepoPath?: string; // absolute, realpath-normalized
+}
+
+function detectWorktree(dir: string): WorktreeInfo
+function detectWorktreeAsync(dir: string): Promise<WorktreeInfo>
+```
+
+Logic:
+- Check if `path.join(dir, '.git')` is a file (not directory) via `fs.statSync` / `fs.lstatSync`
+- If file, read contents and parse `gitdir: <path>`
+- Follow the gitdir path to find `commondir` file (e.g., `.git/worktrees/<name>/commondir`)
+- Read `commondir`, resolve it relative to the gitdir path to get the main `.git` dir
+- Derive `mainRepoPath` as the parent of the main `.git` dir, normalized with `fs.realpathSync`
+- If any step fails or `.git` is a directory, return `{ isWorktree: false }`
 
 ### 2. Add worktree override to repo resolution
 
-In the code path where manifest repos are resolved to local paths:
-- After resolving canonical paths, detect if CWD is a worktree
-- If CWD's main repo matches a manifest repo's path, substitute CWD
-- Log or note the override for debugging
+Create a helper (in `worktree.ts` or `manifest.ts`):
 
-### 3. Ensure cache isolation
+```typescript
+function applyWorktreeOverride(repos: ResolvedRepo[], cwd: string): ResolvedRepo[]
+```
 
-Worktrees already have independent `.trellis/cache/` dirs. Verify that the path override doesn't break cache keying — the cache key should use the actual resolved path, not the canonical one.
+Logic:
+- Call `detectWorktree(cwd)` to get worktree info
+- If not a worktree, return repos unchanged
+- For each repo, compare `fs.realpathSync(repo.localPath)` to `worktreeInfo.mainRepoPath`
+- If match found, clone the repo entry with `localPath` set to `cwd` and `exists: true`
+- Return modified array
 
-### 4. Add tests
+Apply this override in all three code paths:
+1. `createProjectContext()` in `cached-context.ts` — after `resolveProjectRepos()`, before building `RepoSpec[]`
+2. `createProjectContextAsync()` in `cached-context.ts` — same, using async variant
+3. `loadProjectRepos()` in `mcp.ts` — after `resolveProjectRepos()`, before returning specs
 
-- Unit test for worktree detection (mock `.git` file vs directory)
-- Integration test: create a plan from a worktree context, verify it lands in worktree's plans dir
-- Test that non-worktree repos are unaffected
+### 3. Add tests
 
-### 5. Update documentation
+- **Unit tests for `detectWorktree()`:** mock `.git` file with `gitdir:` content, mock `.git` directory, verify return values
+- **Unit tests for `applyWorktreeOverride()`:** verify substitution when CWD matches a manifest repo, verify no-op when CWD is not a worktree, verify only the matching repo is overridden
+- **Integration test:** create a plan from a worktree context, verify it resolves to the worktree's plans dir and not the canonical path
+- **Verify cache isolation:** confirm that worktree path and canonical path produce independent cache directories
 
-- Note worktree support in docs/for-agents.md
-- Update docs/architecture.md if path resolution logic changes
+### 4. Update documentation
+
+- Note worktree support in `docs/for-agents.md`
+- Update `docs/architecture.md` if path resolution logic changes
