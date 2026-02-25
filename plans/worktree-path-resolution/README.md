@@ -12,6 +12,7 @@ tags:
 type: bugfix
 not_started_at: '2026-02-24T23:40:44.804Z'
 started_at: '2026-02-24T23:44:28.073Z'
+completed_at: '2026-02-25T00:27:11.564Z'
 ---
 
 ## Problem
