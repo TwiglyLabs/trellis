@@ -47,4 +47,4 @@ Plans should be implementable in roughly half a context session. If a plan feels
 - **File-first.** Plan files are the entire state. No hidden databases or config.
 - **Frontmatter-driven.** Metadata lives in the plan file itself. No manifest to sync.
 - **Project-local.** Each project owns its own plans directory.
-- **Read-heavy.** Most usage is `status`, `ready`, `graph`. Writes are `update`.
+- **Read-heavy.** Most usage is `status`, `show`, `graph`. Writes are `update`.

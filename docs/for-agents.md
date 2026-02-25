@@ -42,7 +42,7 @@ See [mcp-reference.md](mcp-reference.md) for full schemas and examples.
 ### Starting Work
 
 ```
-1. trellis ready                              # CLI: see what's available
+1. trellis status                             # CLI: see what's available (includes Next recommendation)
 2. trellis_read_section(plan_id="my-plan")    # MCP: read the full plan
 3. trellis_update(plan_id="my-plan",          # MCP: claim it
                   status="in_progress")
@@ -106,9 +106,7 @@ These CLI commands are useful for querying state (read-only):
 
 | Command | Use For |
 |---------|---------|
-| `trellis status` | See all plans and their state |
-| `trellis ready` | Find what's available to work on |
-| `trellis ready --next` | Get the single highest-priority plan |
+| `trellis status` | See all plans, their state, and next recommendation |
 | `trellis show <id>` | Inspect a plan's details and dependencies |
 | `trellis lint` | Check for structural issues |
 | `trellis epic` | Epic completion status |
