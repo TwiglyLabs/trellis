@@ -12,11 +12,7 @@ tags:
 type: bugfix
 not_started_at: '2026-02-24T23:40:44.804Z'
 started_at: '2026-02-24T23:44:28.073Z'
-<<<<<<< HEAD
 completed_at: '2026-02-25T00:27:11.564Z'
-=======
-completed_at: '2026-02-25T00:20:10.310Z'
->>>>>>> main
 ---
 
 ## Problem

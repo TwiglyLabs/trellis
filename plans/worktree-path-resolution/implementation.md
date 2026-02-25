@@ -1,10 +1,4 @@
 ## Steps
-<<<<<<< HEAD
-
-## Testing
-
-## Done-when
-=======
 ### 1. Create `src/core/worktree.ts`
 
 New file with:
@@ -62,4 +56,3 @@ Test cases:
 - [ ] All new code has both sync and async variants
 - [ ] Unit tests pass for worktree detection and override logic
 - [ ] Integration test passes with a real git worktree
->>>>>>> main
