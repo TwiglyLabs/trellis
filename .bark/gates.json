@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "gates": [
+    { "name": "unit-tests", "command": "npm test" },
+    { "name": "build", "command": "npm run build" }
+  ]
+}
