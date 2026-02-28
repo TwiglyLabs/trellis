@@ -63,11 +63,15 @@ export function parseManifest(content: string): ProjectManifest {
         throw new Error(`Invalid manifest: repo "${alias}" has invalid "tags" (must be string array)`);
       }
     }
+    if (entry.group !== undefined && typeof entry.group !== 'string') {
+      throw new Error(`Invalid manifest: repo "${alias}" has non-string "group"`);
+    }
 
     const metadata = {
       ...(entry.name ? { name: entry.name as string } : {}),
       ...(entry.description ? { description: entry.description as string } : {}),
       ...(entry.tags ? { tags: entry.tags as string[] } : {}),
+      ...(entry.group ? { group: entry.group as string } : {}),
     };
 
     // Entries must have either url+branch+visibility (for git fetch) or path (for local)
@@ -284,6 +288,7 @@ export function resolveProjectRepos(manifestPath: string): ResolvedRepo[] {
       name: entry.name ?? alias,
       description: entry.description ?? '',
       tags: entry.tags ?? [],
+      ...(entry.group ? { group: entry.group } : {}),
       url: entry.url,
       branch: entry.branch,
       visibility: entry.visibility,
@@ -439,6 +444,7 @@ export async function resolveProjectReposAsync(manifestPath: string): Promise<Re
       name: entry.name ?? alias,
       description: entry.description ?? '',
       tags: entry.tags ?? [],
+      ...(entry.group ? { group: entry.group } : {}),
       url: entry.url,
       branch: entry.branch,
       visibility: entry.visibility,

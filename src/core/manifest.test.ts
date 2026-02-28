@@ -162,6 +162,37 @@ repos:
     expect(result.repos.trellis.name).toBeUndefined();
     expect(result.repos.trellis.description).toBeUndefined();
     expect(result.repos.trellis.tags).toBeUndefined();
+    expect(result.repos.trellis.group).toBeUndefined();
+  });
+
+  it('parses repo group field', () => {
+    const result = parseManifest(`
+name: test
+repos:
+  a:
+    url: x
+    branch: main
+    visibility: public
+    group: tooling
+`);
+    expect(result.repos.a.group).toBe('tooling');
+  });
+
+  it('parses repo without group field', () => {
+    const result = parseManifest(`
+name: test
+repos:
+  a:
+    url: x
+    branch: main
+    visibility: public
+`);
+    expect(result.repos.a.group).toBeUndefined();
+  });
+
+  it('throws on non-string group', () => {
+    expect(() => parseManifest('name: test\nrepos:\n  a:\n    url: x\n    branch: main\n    visibility: public\n    group: 123\n'))
+      .toThrow('repo "a" has non-string "group"');
   });
 });
 
@@ -788,6 +819,35 @@ repos:
     expect(results[1].visibility).toBe('private');
     expect(results[1].localPath).toBe(bDir);
     expect(results[1].exists).toBe(true);
+  });
+
+  it('includes group in resolved output', () => {
+    const manifestPath = writeTmpManifest(`
+name: test
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: /tmp
+    group: tooling
+`);
+    const results = resolveProjectRepos(manifestPath);
+    expect(results[0].group).toBe('tooling');
+  });
+
+  it('omits group when not provided', () => {
+    const manifestPath = writeTmpManifest(`
+name: test
+repos:
+  myrepo:
+    url: git@example.com:org/repo.git
+    branch: main
+    visibility: public
+    path: /tmp
+`);
+    const results = resolveProjectRepos(manifestPath);
+    expect(results[0].group).toBeUndefined();
   });
 
   it('resolves path-only entries (no URL)', () => {

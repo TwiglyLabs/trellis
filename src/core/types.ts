@@ -70,6 +70,7 @@ export interface RepoEntry {
   name?: string;
   description?: string;
   tags?: string[];
+  group?: string;
 }
 
 export interface ProjectManifest {
@@ -83,6 +84,7 @@ export interface ResolvedRepo {
   name: string;
   description: string;
   tags: string[];
+  group?: string;
   url: string;
   branch: string;
   visibility: 'public' | 'private';
