@@ -88,6 +88,17 @@ describe('topologicalSort', () => {
       { id: 'r:c', title: 'C', depends_on: ['r:b'] },
     ])).toThrow(/cycle/i);
   });
+
+  it('handles empty array', () => {
+    const sorted = topologicalSort([]);
+    expect(sorted).toHaveLength(0);
+  });
+
+  it('handles single plan', () => {
+    const sorted = topologicalSort([{ id: 'r:solo', title: 'Solo' }]);
+    expect(sorted).toHaveLength(1);
+    expect(sorted[0].id).toBe('r:solo');
+  });
 });
 
 // =============================================
@@ -286,5 +297,97 @@ describe('computeCreateBatch', () => {
       ],
       store,
     })).toThrow(/not found in manifest/);
+  });
+
+  it('handles empty plans array', () => {
+    const { store } = createBatchFixture([
+      { alias: 'repo-a', plans: [] },
+    ]);
+
+    const result = computeCreateBatch({ plans: [], store });
+    expect(result.created).toHaveLength(0);
+    expect(result.skipped).toHaveLength(0);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('handles all plans already exist', () => {
+    const { store } = createBatchFixture([
+      { alias: 'repo-a', plans: [
+        { id: 'plan-1', title: 'Plan 1', status: 'draft' },
+        { id: 'plan-2', title: 'Plan 2', status: 'draft' },
+      ] },
+    ]);
+
+    const result = computeCreateBatch({
+      plans: [
+        { id: 'repo-a:plan-1', title: 'Plan 1' },
+        { id: 'repo-a:plan-2', title: 'Plan 2' },
+      ],
+      store,
+    });
+
+    expect(result.created).toHaveLength(0);
+    expect(result.skipped).toHaveLength(2);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('persists successfully created plans when a later plan fails', () => {
+    const { store, repos } = createBatchFixture([
+      { alias: 'repo-a', plans: [] },
+    ]);
+
+    // Create plan-a first so plan-b will fail with "already exists" when created twice
+    // We simulate failure by having a plan with no title (computeCreate will throw)
+    const result = computeCreateBatch({
+      plans: [
+        { id: 'repo-a:good-plan', title: 'Good Plan' },
+        { id: 'repo-a:bad-plan', title: '' },  // empty title → "title is required"
+      ],
+      store,
+    });
+
+    // good-plan should have been created successfully
+    expect(result.created).toHaveLength(1);
+    expect(result.created[0].id).toBe('repo-a:good-plan');
+    expect(existsSync(join(repos[0].plansDir, 'good-plan', 'README.md'))).toBe(true);
+
+    // bad-plan should be in errors
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].id).toBe('repo-a:bad-plan');
+  });
+
+  it('validates all repo aliases upfront before creating anything', () => {
+    const { store, repos } = createBatchFixture([
+      { alias: 'repo-a', plans: [] },
+    ]);
+
+    // First plan is valid, second targets unknown repo — should throw before creating first
+    expect(() => computeCreateBatch({
+      plans: [
+        { id: 'repo-a:valid-plan', title: 'Valid' },
+        { id: 'nonexistent:plan', title: 'Bad' },
+      ],
+      store,
+    })).toThrow(/not found in manifest/);
+
+    // First plan should NOT have been created (validation is upfront)
+    expect(existsSync(join(repos[0].plansDir, 'valid-plan'))).toBe(false);
+  });
+
+  it('validates all IDs are qualified upfront before creating anything', () => {
+    const { store, repos } = createBatchFixture([
+      { alias: 'repo-a', plans: [] },
+    ]);
+
+    expect(() => computeCreateBatch({
+      plans: [
+        { id: 'repo-a:valid-plan', title: 'Valid' },
+        { id: 'bare-plan', title: 'Bare' },
+      ],
+      store,
+    })).toThrow(/qualified/);
+
+    // First plan should NOT have been created
+    expect(existsSync(join(repos[0].plansDir, 'valid-plan'))).toBe(false);
   });
 });

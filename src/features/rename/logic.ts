@@ -1,6 +1,6 @@
 import { join, dirname } from 'path';
-import { existsSync, renameSync } from 'fs';
-import { validatePlanId, updatePlanFile } from '../../core/index.ts';
+import { existsSync, renameSync, readFileSync } from 'fs';
+import { validatePlanId, updatePlanFile, parseFrontmatter } from '../../core/index.ts';
 import type { GraphData } from '../../core/graph.ts';
 
 export interface RenameResult {
@@ -9,11 +9,19 @@ export interface RenameResult {
   referencesUpdated: string[];
 }
 
+export interface MultiRepoRenameContext {
+  localOldId: string;
+  localNewId: string;
+  repoAlias: string;
+}
+
 export interface ComputeRenameOptions {
   oldId: string;
   newId: string;
   plansDir: string;
   graph: GraphData;
+  /** When provided, enables multi-repo rename with correct dep dequalification. */
+  multiRepo?: MultiRepoRenameContext;
 }
 
 export interface ComputeRenameCallbacks {
@@ -21,9 +29,10 @@ export interface ComputeRenameCallbacks {
 }
 
 export function computeRename(options: ComputeRenameOptions, callbacks: ComputeRenameCallbacks): RenameResult {
-  const { oldId, newId, plansDir, graph } = options;
+  const { oldId, newId, plansDir, graph, multiRepo } = options;
 
-  validatePlanId(newId);
+  const localNewId = multiRepo?.localNewId ?? newId;
+  validatePlanId(localNewId);
 
   const plan = graph.plans.get(oldId);
   if (!plan) throw new Error(`Plan "${oldId}" not found.`);
@@ -31,10 +40,10 @@ export function computeRename(options: ComputeRenameOptions, callbacks: ComputeR
     throw new Error(`Cannot modify remote plan '${oldId}'. Write operations are local only.`);
   }
 
-  const newDir = join(plansDir, newId);
+  const newDir = join(plansDir, localNewId);
 
   if (existsSync(newDir)) {
-    throw new Error(`Plan "${newId}" already exists.`);
+    throw new Error(`Plan "${localNewId}" already exists.`);
   }
 
   const oldDir = dirname(plan.filePath);
@@ -44,7 +53,27 @@ export function computeRename(options: ComputeRenameOptions, callbacks: ComputeR
   const referencesUpdated: string[] = [];
   for (const [id, p] of graph.plans) {
     if (id === oldId) continue;
-    if (p.frontmatter.depends_on?.includes(oldId)) {
+    if (!p.frontmatter.depends_on?.includes(oldId)) continue;
+
+    if (multiRepo) {
+      // Multi-repo: read raw on-disk deps and replace both qualified and unqualified forms
+      const rawContent = readFileSync(p.filePath, 'utf8');
+      const rawParsed = parseFrontmatter(rawContent);
+      if (!rawParsed) continue;
+
+      const rawDeps = rawParsed.frontmatter.depends_on;
+      if (!rawDeps) continue;
+
+      const updatedDeps = rawDeps.map(d => {
+        if (d === oldId) return newId; // qualified match (cross-repo reference)
+        if (d === multiRepo.localOldId) return multiRepo.localNewId; // unqualified match (same-repo)
+        return d;
+      });
+
+      updatePlanFile(p.filePath, { depends_on: updatedDeps });
+      referencesUpdated.push(id);
+    } else {
+      // Single-repo: simple replacement
       const newDeps = p.frontmatter.depends_on.map(d => d === oldId ? newId : d);
       updatePlanFile(join(plansDir, id, 'README.md'), { depends_on: newDeps });
       referencesUpdated.push(id);

@@ -635,6 +635,18 @@ describe('MCP multi-repo integration', () => {
     expect(result.content[0].text).toContain('not found');
   });
 
+  it('trellis_create_batch rejects in single-repo mode', async () => {
+    const { root } = createFixture([]);
+    process.cwd = () => root;
+
+    const server = createMcpServer();
+    const result = await callTool(server, 'trellis_create_batch', {
+      plans: [{ id: 'repo:plan', title: 'Plan' }],
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('multi-repo');
+  });
+
   it('trellis_create_batch dequalifies same-repo deps on disk', async () => {
     const { server, alpha } = createMultiRepoServer();
     await callTool(server, 'trellis_create_batch', {

@@ -21,25 +21,25 @@ interface SetOptions {
 }
 
 export function setCommand(planId: string, field: string, values: string[], options: SetOptions): void {
-  const ctx = resolveCliContext(process.cwd());
-
-  // In multi-repo mode, resolve qualified/unqualified IDs
-  let resolvedId = planId;
-  if (ctx.isMultiRepo) {
-    const parsed = parseQualifiedId(planId);
-    if (parsed.repo) {
-      resolvedId = planId; // already qualified
-    } else {
-      // Try to resolve unqualified ID
-      const resolved = resolvePlanId(ctx.graph, planId);
-      resolvedId = resolved.qualifiedId;
-    }
-  }
-
-  const mode = options.add ? 'add' : options.remove ? 'remove' : 'replace';
-  const value = values.length === 1 ? values[0] : values;
-
   try {
+    const ctx = resolveCliContext(process.cwd());
+
+    // In multi-repo mode, resolve qualified/unqualified IDs
+    let resolvedId = planId;
+    if (ctx.isMultiRepo) {
+      const parsed = parseQualifiedId(planId);
+      if (parsed.repo) {
+        resolvedId = planId; // already qualified
+      } else {
+        // Try to resolve unqualified ID
+        const resolved = resolvePlanId(ctx.graph, planId);
+        resolvedId = resolved.qualifiedId;
+      }
+    }
+
+    const mode = options.add ? 'add' : options.remove ? 'remove' : 'replace';
+    const value = values.length === 1 ? values[0] : values;
+
     const result = computeSet(
       { planId: resolvedId, field, value, mode, graph: ctx.graph },
     );

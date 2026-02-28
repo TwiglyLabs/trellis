@@ -29,7 +29,20 @@ export function createBatchCommand(file: string, options: CreateBatchOptions): v
       throw new Error('Batch file must contain a "plans" array.');
     }
 
-    const plans: BatchPlanSpec[] = parsed.plans;
+    const plans: BatchPlanSpec[] = [];
+    for (let i = 0; i < parsed.plans.length; i++) {
+      const entry = parsed.plans[i];
+      if (!entry || typeof entry !== 'object') {
+        throw new Error(`Plan at index ${i}: must be an object.`);
+      }
+      if (!entry.id || typeof entry.id !== 'string') {
+        throw new Error(`Plan at index ${i}: missing or non-string "id".`);
+      }
+      if (!entry.title || typeof entry.title !== 'string') {
+        throw new Error(`Plan "${entry.id ?? i}": missing or non-string "title".`);
+      }
+      plans.push(entry as BatchPlanSpec);
+    }
 
     const ctx = resolveCliContext(process.cwd());
     if (!ctx.isMultiRepo || !ctx.store) {

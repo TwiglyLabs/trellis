@@ -36,21 +36,21 @@ function prompt(question: string, defaultVal: string): Promise<string> {
 }
 
 export async function updateCommand(planId: string, status: string, options?: UpdateOptions): Promise<void> {
-  let ctx = resolveCliContext(process.cwd());
-
-  // In multi-repo mode, resolve qualified/unqualified IDs
-  let resolvedId = planId;
-  if (ctx.isMultiRepo) {
-    const parsed = parseQualifiedId(planId);
-    if (parsed.repo) {
-      resolvedId = planId; // already qualified
-    } else {
-      const resolved = resolvePlanId(ctx.graph, planId);
-      resolvedId = resolved.qualifiedId;
-    }
-  }
-
   try {
+    let ctx = resolveCliContext(process.cwd());
+
+    // In multi-repo mode, resolve qualified/unqualified IDs
+    let resolvedId = planId;
+    if (ctx.isMultiRepo) {
+      const parsed = parseQualifiedId(planId);
+      if (parsed.repo) {
+        resolvedId = planId; // already qualified
+      } else {
+        const resolved = resolvePlanId(ctx.graph, planId);
+        resolvedId = resolved.qualifiedId;
+      }
+    }
+
     const result = computeUpdate(
       { planId: resolvedId, status: status as PlanStatus, graph: ctx.graph, force: options?.force },
     );

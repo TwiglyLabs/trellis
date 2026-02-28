@@ -86,11 +86,26 @@ export function computeCreateBatch(options: BatchCreateOptions): BatchResult {
   const { plans, store, dryRun } = options;
   const ctx = store.get();
 
-  // 1. Build universe: existing plan IDs + batch plan IDs
+  // 1. Validate all plan IDs are qualified and repo aliases exist — before creating anything
+  for (const plan of plans) {
+    const parsed = parseQualifiedId(plan.id);
+    if (!parsed.repo) {
+      throw new Error(`Batch plan ID must be qualified (repo:plan-id): "${plan.id}"`);
+    }
+    const entry = ctx.repos.find(r => r.alias === parsed.repo);
+    if (!entry) {
+      throw new Error(`Repo "${parsed.repo}" not found in manifest. Add it to .trellis-project.`);
+    }
+    if (!entry.plansDir) {
+      throw new Error(`Repo "${parsed.repo}" has no plans directory.`);
+    }
+  }
+
+  // 2. Build universe: existing plan IDs + batch plan IDs
   const universe = new Set<string>(ctx.graph.plans.keys());
   for (const plan of plans) universe.add(plan.id);
 
-  // 2. Separate existing plans (skip) from new plans
+  // 3. Separate existing plans (skip) from new plans
   const toCreate: BatchPlanSpec[] = [];
   const result: BatchResult = { created: [], skipped: [], errors: [] };
   if (dryRun) result.wouldCreate = [];
@@ -103,7 +118,7 @@ export function computeCreateBatch(options: BatchCreateOptions): BatchResult {
     }
   }
 
-  // 3. Validate all deps exist in universe
+  // 4. Validate all deps exist in universe
   for (const plan of toCreate) {
     for (const dep of plan.depends_on ?? []) {
       if (!universe.has(dep)) {
@@ -112,31 +127,20 @@ export function computeCreateBatch(options: BatchCreateOptions): BatchResult {
     }
   }
 
-  // 4. Topo-sort new plans
+  // 5. Topo-sort new plans
   const sorted = topologicalSort(toCreate);
 
-  // 5. Create in order
+  // 6. Create in order
   for (const plan of sorted) {
     const parsed = parseQualifiedId(plan.id);
-    if (!parsed.repo) {
-      throw new Error(`Batch plan ID must be qualified (repo:plan-id): "${plan.id}"`);
-    }
 
     if (dryRun) {
       result.wouldCreate!.push({ id: plan.id });
       continue;
     }
 
-    // Resolve target plans dir and repo path from store context
-    const entry = ctx.repos.find(r => r.alias === parsed.repo);
-    if (!entry) {
-      throw new Error(`Repo "${parsed.repo}" not found in manifest. Add it to .trellis-project.`);
-    }
-    if (!entry.plansDir) {
-      throw new Error(`Repo "${parsed.repo}" has no plans directory.`);
-    }
-
-    const dequalifiedDeps = dequalifyDepsForWrite(plan.depends_on, parsed.repo);
+    const entry = ctx.repos.find(r => r.alias === parsed.repo!)!;
+    const dequalifiedDeps = dequalifyDepsForWrite(plan.depends_on, parsed.repo!);
 
     try {
       const createResult = computeCreate({
@@ -148,14 +152,14 @@ export function computeCreateBatch(options: BatchCreateOptions): BatchResult {
           tags: plan.tags,
           type: plan.type,
         },
-        plansDir: entry.plansDir,
+        plansDir: entry.plansDir!,
         graph: ctx.graph,
         projectDir: entry.path,
         skipDepValidation: true,
       });
 
       result.created.push({ id: plan.id, filePath: createResult.filePath });
-      store.invalidate(parsed.repo);
+      store.invalidate(parsed.repo!);
     } catch (error) {
       result.errors.push({
         id: plan.id,

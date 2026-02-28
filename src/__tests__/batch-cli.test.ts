@@ -198,4 +198,54 @@ describe('trellis create-batch CLI', () => {
     expect(output.created).toHaveLength(1);
     expect(output.created[0].id).toBe('repo-a:plan-a');
   });
+
+  it('errors on non-existent file', () => {
+    const { repos } = createBatchCliFixture([
+      { alias: 'repo-a', plans: [] },
+    ]);
+
+    process.cwd = () => repos[0].root;
+    createBatchCommand('/nonexistent/path/batch.yaml', {});
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('errors on plan entry missing title', () => {
+    const { metaRoot, repos } = createBatchCliFixture([
+      { alias: 'repo-a', plans: [] },
+    ]);
+
+    const batchFile = join(metaRoot, 'bad.yaml');
+    writeFileSync(batchFile, [
+      'plans:',
+      '  - id: repo-a:plan-a',
+      '    description: No title here',
+    ].join('\n'));
+
+    process.cwd = () => repos[0].root;
+    createBatchCommand(batchFile, {});
+
+    expect(process.exitCode).toBe(1);
+    const errorCalls = (console.error as any).mock.calls;
+    expect(errorCalls.some((c: string[]) => c[0]?.includes('title'))).toBe(true);
+  });
+
+  it('errors on plan entry missing id', () => {
+    const { metaRoot, repos } = createBatchCliFixture([
+      { alias: 'repo-a', plans: [] },
+    ]);
+
+    const batchFile = join(metaRoot, 'bad.yaml');
+    writeFileSync(batchFile, [
+      'plans:',
+      '  - title: No ID',
+    ].join('\n'));
+
+    process.cwd = () => repos[0].root;
+    createBatchCommand(batchFile, {});
+
+    expect(process.exitCode).toBe(1);
+    const errorCalls = (console.error as any).mock.calls;
+    expect(errorCalls.some((c: string[]) => c[0]?.includes('id'))).toBe(true);
+  });
 });
