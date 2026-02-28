@@ -6,6 +6,7 @@ tags:
 type: feature
 not_started_at: '2026-02-28T17:57:57.140Z'
 started_at: '2026-02-28T18:08:53.783Z'
+completed_at: '2026-02-28T18:36:24.170Z'
 ---
 
 ## Problem
