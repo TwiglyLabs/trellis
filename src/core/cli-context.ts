@@ -16,6 +16,8 @@ export interface CliContext {
   config: TrellisConfig;
   projectDir: string;
   repoEntries?: MultiRepoEntry[];
+  /** The ContextStore instance, available in multi-repo mode for batch operations. */
+  store?: ContextStore;
 }
 
 /**
@@ -89,6 +91,7 @@ function buildMultiRepoCliContext(
     isMultiRepo: true,
     graph: multi.graph,
     repoEntries: multi.repos,
+    store,
     getPlansDir(alias?: string): string {
       if (!alias) throw new Error('Alias required in multi-repo mode.');
       const entry = multi.repos.find(r => r.alias === alias);
