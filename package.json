@@ -23,10 +23,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "node build.mjs && tsc -p tsconfig.lib.json",
+    "build": "node build.mjs && tsc -p tsconfig.lib.json 2>&1 | bark convert tsc --gate build",
     "build:prod": "node build.mjs --minify && tsc -p tsconfig.lib.json",
     "publish:local": "npm run build && npm publish --registry http://localhost:4873",
-    "test": "vitest run",
+    "test": "vitest run --reporter=verbose --reporter=json --outputFile=.bark/.vitest-raw.json; bark convert vitest .bark/.vitest-raw.json --gate unit-tests",
     "dev": "vitest",
     "test:dist": "npm run build && vitest run tests/dist-integration.test.ts"
   },
