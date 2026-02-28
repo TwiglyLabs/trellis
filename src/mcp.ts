@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ContextStore, ensureCacheDir, loadConfig, createFileLock, resolvePlanId, parseQualifiedId, resolveProjectRepos, parseManifest, expandTilde, applyWorktreeOverride } from './core/index.ts';
+import { ContextStore, ensureCacheDir, loadConfig, createFileLock, resolvePlanId, parseQualifiedId, dequalifyDepsForWrite, resolveProjectRepos, parseManifest, expandTilde, applyWorktreeOverride } from './core/index.ts';
 import type { PlanStatus, RepoSpec, MultiRepoEntry, TrellisConfig, ProjectManifest } from './core/types.ts';
 import type { GraphData } from './core/graph.ts';
 import { computeCreate } from './features/create/logic.ts';
@@ -241,14 +241,14 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         getPlansDir(alias?: string): string {
           if (!alias) throw new Error('Alias required in multi-repo mode.');
           const entry = multi.repos.find(r => r.alias === alias);
-          if (!entry) throw new Error(`Unknown repo alias "${alias}".`);
+          if (!entry) throw new Error(`Repo "${alias}" not found in manifest. Add it to .trellis-project.`);
           if (!entry.plansDir) throw new Error(`Repo "${alias}" has no plans directory.`);
           return entry.plansDir;
         },
         getConfig(alias?: string): TrellisConfig {
           if (!alias) throw new Error('Alias required in multi-repo mode.');
           const entry = multi.repos.find(r => r.alias === alias);
-          if (!entry) throw new Error(`Unknown repo alias "${alias}".`);
+          if (!entry) throw new Error(`Repo "${alias}" not found in manifest. Add it to .trellis-project.`);
           if (!entry.config) throw new Error(`Repo "${alias}" has no config.`);
           return entry.config;
         },
@@ -328,6 +328,14 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         localId = parsed.planId;
         writeAlias = parsed.repo;
       } else {
+        // Single-repo mode — reject qualified IDs with guidance
+        const parsed = parseQualifiedId(id);
+        if (parsed.repo) {
+          throw new Error(
+            'Cross-repo operations require a .trellis-project manifest. '
+            + 'Set project_root in .trellis/config to point to your meta-repo.',
+          );
+        }
         plansDir = ctx.getPlansDir();
         projectDir = ctx.projectDir;
         localId = id;
@@ -337,8 +345,22 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         ? ctx.getConfig(parseQualifiedId(id).repo)
         : ctx.getConfig();
       const resolvedType = planType ?? config.default_plan_type;
+
+      // In multi-repo: validate deps against qualified graph, then dequalify for disk
+      let depsForDisk = depends_on;
+      let skipDepValidation = false;
+      if (writeAlias && depends_on?.length) {
+        for (const dep of depends_on) {
+          if (!ctx.graph.plans.has(dep)) {
+            throw new Error(`Dependency "${dep}" not found.`);
+          }
+        }
+        depsForDisk = dequalifyDepsForWrite(depends_on, writeAlias);
+        skipDepValidation = true;
+      }
+
       const result = computeCreate(
-        { id: localId, opts: { title, description, depends_on, tags, type: resolvedType }, plansDir, graph: ctx.graph, projectDir },
+        { id: localId, opts: { title, description, depends_on: depsForDisk, tags, type: resolvedType }, plansDir, graph: ctx.graph, projectDir, skipDepValidation },
       );
       afterWrite(writeAlias);
       return {

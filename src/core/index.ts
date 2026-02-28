@@ -129,4 +129,4 @@ export { detectWorktree, detectWorktreeAsync, applyWorktreeOverride, applyWorktr
 
 // --- Utilities ---
 export type { ResolvedPlanId } from './utils.ts';
-export { VALID_STATUSES, filterPlans, resolveIsProject, buildReposArray, validatePlanId, parseQualifiedId, resolvePlanId, pluralize } from './utils.ts';
+export { VALID_STATUSES, filterPlans, resolveIsProject, buildReposArray, validatePlanId, parseQualifiedId, dequalifyDepsForWrite, resolvePlanId, pluralize } from './utils.ts';

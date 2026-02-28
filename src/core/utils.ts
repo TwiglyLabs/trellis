@@ -49,6 +49,22 @@ export function parseQualifiedId(ref: string): { repo?: string; planId: string }
 }
 
 /**
+ * Dequalify deps for writing to disk. Same-repo deps get stripped to bare IDs;
+ * cross-repo deps stay qualified. Inverse of qualifyPlan() at read time.
+ */
+export function dequalifyDepsForWrite(
+  deps: string[] | undefined,
+  targetAlias: string,
+): string[] | undefined {
+  if (!deps) return undefined;
+  return deps.map(dep => {
+    const parsed = parseQualifiedId(dep);
+    if (parsed.repo === targetAlias) return parsed.planId;
+    return dep;
+  });
+}
+
+/**
  * Determine whether to use project mode for display.
  * Auto-detects via ctx.isProjectMode; --project flag overrides.
  * Warns when --project is passed but no manifest is configured.

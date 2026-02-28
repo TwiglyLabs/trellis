@@ -17,6 +17,8 @@ export interface ComputeCreateOptions {
   plansDir: string;
   graph: GraphData;
   projectDir?: string;
+  /** Skip depends_on validation (caller already validated against qualified IDs) */
+  skipDepValidation?: boolean;
 }
 
 export function computeCreate(options: ComputeCreateOptions): CreateResult {
@@ -34,8 +36,8 @@ export function computeCreate(options: ComputeCreateOptions): CreateResult {
     throw new Error(`Plan "${id}" already exists.`);
   }
 
-  // Validate depends_on references
-  if (opts.depends_on?.length) {
+  // Validate depends_on references (skip if caller already validated qualified IDs)
+  if (opts.depends_on?.length && !options.skipDepValidation) {
     for (const dep of opts.depends_on) {
       if (!graph.plans.has(dep)) {
         throw new Error(`Dependency "${dep}" not found.`);

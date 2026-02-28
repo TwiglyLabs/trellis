@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { createMcpServer, parseReposFlag, loadProjectRepos } from '../mcp.ts';
-import { resolvePlanId, buildGraph, createMultiContext } from '../core/index.ts';
+import { resolvePlanId, buildGraph, createMultiContext, dequalifyDepsForWrite } from '../core/index.ts';
 import { createFixture } from './helpers.ts';
 import type { Plan } from '../core/types.ts';
 
@@ -285,6 +285,43 @@ describe('resolvePlanId', () => {
 });
 
 // =============================================
+// dequalifyDepsForWrite
+// =============================================
+
+describe('dequalifyDepsForWrite', () => {
+  it('strips same-repo qualification', () => {
+    const result = dequalifyDepsForWrite(['infra-terraform:tf-gcp-foundation'], 'infra-terraform');
+    expect(result).toEqual(['tf-gcp-foundation']);
+  });
+
+  it('preserves cross-repo qualification', () => {
+    const result = dequalifyDepsForWrite(['acorn-cloud:cloud-api'], 'infra-terraform');
+    expect(result).toEqual(['acorn-cloud:cloud-api']);
+  });
+
+  it('preserves already-unqualified deps', () => {
+    const result = dequalifyDepsForWrite(['tf-gcp-foundation'], 'infra-terraform');
+    expect(result).toEqual(['tf-gcp-foundation']);
+  });
+
+  it('handles mixed deps', () => {
+    const result = dequalifyDepsForWrite(
+      ['infra-terraform:tf-gcp-foundation', 'acorn-cloud:cloud-api', 'local-plan'],
+      'infra-terraform',
+    );
+    expect(result).toEqual(['tf-gcp-foundation', 'acorn-cloud:cloud-api', 'local-plan']);
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(dequalifyDepsForWrite([], 'infra-terraform')).toEqual([]);
+  });
+
+  it('returns undefined for undefined input', () => {
+    expect(dequalifyDepsForWrite(undefined, 'infra-terraform')).toBeUndefined();
+  });
+});
+
+// =============================================
 // MCP multi-repo integration
 // =============================================
 
@@ -335,6 +372,20 @@ describe('MCP multi-repo integration', () => {
 
     const text = result.content[0].text;
     expect(text).toContain('(1 plan');
+  });
+
+  it('single-repo mode rejects qualified ID with manifest guidance', async () => {
+    const { root } = createFixture([]);
+    process.cwd = () => root;
+
+    const server = createMcpServer();
+    const result = await callTool(server, 'trellis_create', {
+      id: 'some-repo:new-plan',
+      title: 'New Plan',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('project_root');
+    expect(result.content[0].text).toContain('.trellis-project');
   });
 
   // --- trellis_status ---
@@ -468,6 +519,25 @@ describe('MCP multi-repo integration', () => {
     expect(existsSync(join(planDir, 'README.md'))).toBe(true);
   });
 
+  it('trellis_create dequalifies same-repo deps on disk', async () => {
+    const { server, alpha } = createMultiRepoServer();
+    // alpha:auth already exists in the fixture
+    const result = await callTool(server, 'trellis_create', {
+      id: 'alpha:new-plan',
+      title: 'New Plan',
+      depends_on: ['alpha:auth', 'beta:ui'],
+    });
+    expect(result.isError).toBeFalsy();
+
+    // Read the on-disk frontmatter
+    const readme = readFileSync(join(alpha.plansDir, 'new-plan', 'README.md'), 'utf8');
+    // Same-repo dep (alpha:auth) should be stored as 'auth' (dequalified)
+    // Cross-repo dep (beta:ui) should be preserved (YAML quotes colons)
+    expect(readme).toContain('- auth');
+    expect(readme).toMatch(/beta:ui/);
+    expect(readme).not.toMatch(/alpha:auth/);
+  });
+
   it('trellis_create rejects unqualified ID in multi-repo mode', async () => {
     const { server } = createMultiRepoServer();
     const result = await callTool(server, 'trellis_create', {
@@ -478,14 +548,15 @@ describe('MCP multi-repo integration', () => {
     expect(result.content[0].text).toContain('qualified');
   });
 
-  it('trellis_create rejects unknown alias', async () => {
+  it('trellis_create rejects unknown alias with manifest guidance', async () => {
     const { server } = createMultiRepoServer();
     const result = await callTool(server, 'trellis_create', {
       id: 'unknown:new-plan',
       title: 'New Plan',
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Unknown repo alias');
+    expect(result.content[0].text).toContain('not found in manifest');
+    expect(result.content[0].text).toContain('.trellis-project');
   });
 
   it('trellis_create does not create files in wrong repo', async () => {
