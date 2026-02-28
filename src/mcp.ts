@@ -8,6 +8,7 @@ import { ContextStore, ensureCacheDir, loadConfig, createFileLock, resolvePlanId
 import type { PlanStatus, RepoSpec, MultiRepoEntry, TrellisConfig, ProjectManifest } from './core/types.ts';
 import type { GraphData } from './core/graph.ts';
 import { computeCreate } from './features/create/logic.ts';
+import { computeCreateBatch } from './features/create/batch.ts';
 import { computeWriteSection, computeWriteSections, computeReadSection } from './features/sections/logic.ts';
 import { computeSet } from './features/set/logic.ts';
 import { computeUpdate } from './features/update/logic.ts';
@@ -367,6 +368,50 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         content: [{
           type: 'text' as const,
           text: JSON.stringify({ id: ctx.isMultiRepo ? id : result.id, filePath: result.filePath }, null, 2),
+        }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
+        isError: true,
+      };
+    }
+  });
+
+  // --- trellis_create_batch ---
+  server.registerTool('trellis_create_batch', {
+    title: 'Batch Create Plans',
+    description: 'Create multiple plans in one operation with dependency validation and topological ordering. Plans are created in dependency order across repos. Same-repo deps are dequalified on disk.',
+    inputSchema: {
+      plans: z.array(z.object({
+        id: z.string().describe('Qualified plan ID (repo:plan-id)'),
+        title: z.string().describe('Plan title'),
+        type: z.string().optional().describe('Template type'),
+        depends_on: z.array(z.string()).optional().describe('Dependency plan IDs'),
+        tags: z.array(z.string()).optional().describe('Freeform tags'),
+        description: z.string().optional().describe('One-line description'),
+      })).min(1).describe('Plans to create'),
+      dry_run: z.boolean().optional().describe('Validate without creating files'),
+    },
+  }, async ({ plans, dry_run }) => {
+    try {
+      if (!isMultiRepo) {
+        throw new Error(
+          'create-batch requires multi-repo mode. '
+          + 'Set project_root in .trellis/config to point to your meta-repo.',
+        );
+      }
+
+      const result = computeCreateBatch({
+        plans,
+        store,
+        dryRun: dry_run,
+      });
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify(result, null, 2),
         }],
       };
     } catch (error) {

@@ -43,7 +43,8 @@ describe('MCP server', () => {
     expect(tools).toContain('trellis_graph');
     expect(tools).toContain('trellis_lint');
     expect(tools).toContain('trellis_bottlenecks');
-    expect(tools).toHaveLength(11);
+    expect(tools).toContain('trellis_create_batch');
+    expect(tools).toHaveLength(12);
   });
 
   it('trellis_create creates a plan', async () => {

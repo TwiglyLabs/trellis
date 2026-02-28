@@ -570,6 +570,86 @@ describe('MCP multi-repo integration', () => {
     expect(existsSync(join(beta.plansDir, 'isolated-plan'))).toBe(false);
   });
 
+  // --- trellis_create_batch ---
+
+  it('trellis_create_batch creates plans across repos', async () => {
+    const { server, alpha, beta } = createMultiRepoServer();
+    const result = await callTool(server, 'trellis_create_batch', {
+      plans: [
+        { id: 'alpha:new-a', title: 'New A' },
+        { id: 'beta:new-b', title: 'New B', depends_on: ['alpha:new-a'] },
+      ],
+    });
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    expect(output.created).toHaveLength(2);
+    expect(output.created[0].id).toBe('alpha:new-a');
+    expect(output.created[1].id).toBe('beta:new-b');
+
+    expect(existsSync(join(alpha.plansDir, 'new-a', 'README.md'))).toBe(true);
+    expect(existsSync(join(beta.plansDir, 'new-b', 'README.md'))).toBe(true);
+  });
+
+  it('trellis_create_batch skips existing plans', async () => {
+    const { server } = createMultiRepoServer();
+    const result = await callTool(server, 'trellis_create_batch', {
+      plans: [
+        { id: 'alpha:auth', title: 'Auth' },  // already exists
+        { id: 'alpha:brand-new', title: 'Brand New' },
+      ],
+    });
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    expect(output.created).toHaveLength(1);
+    expect(output.created[0].id).toBe('alpha:brand-new');
+    expect(output.skipped).toHaveLength(1);
+    expect(output.skipped[0].id).toBe('alpha:auth');
+  });
+
+  it('trellis_create_batch dry-run validates without writing', async () => {
+    const { server, alpha } = createMultiRepoServer();
+    const result = await callTool(server, 'trellis_create_batch', {
+      plans: [
+        { id: 'alpha:dry-plan', title: 'Dry Plan' },
+      ],
+      dry_run: true,
+    });
+    expect(result.isError).toBeFalsy();
+
+    const output = JSON.parse(result.content[0].text);
+    expect(output.wouldCreate).toHaveLength(1);
+    expect(output.created).toHaveLength(0);
+    expect(existsSync(join(alpha.plansDir, 'dry-plan'))).toBe(false);
+  });
+
+  it('trellis_create_batch returns error for invalid deps', async () => {
+    const { server } = createMultiRepoServer();
+    const result = await callTool(server, 'trellis_create_batch', {
+      plans: [
+        { id: 'alpha:plan', title: 'Plan', depends_on: ['alpha:missing'] },
+      ],
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('not found');
+  });
+
+  it('trellis_create_batch dequalifies same-repo deps on disk', async () => {
+    const { server, alpha } = createMultiRepoServer();
+    await callTool(server, 'trellis_create_batch', {
+      plans: [
+        { id: 'alpha:base', title: 'Base' },
+        { id: 'alpha:derived', title: 'Derived', depends_on: ['alpha:base', 'beta:ui'] },
+      ],
+    });
+
+    const readme = readFileSync(join(alpha.plansDir, 'derived', 'README.md'), 'utf8');
+    expect(readme).toContain('- base');
+    expect(readme).not.toMatch(/alpha:base/);
+    expect(readme).toMatch(/beta:ui/);
+  });
+
   // --- trellis_write_section ---
 
   it('trellis_write_section writes to correct repo', async () => {
