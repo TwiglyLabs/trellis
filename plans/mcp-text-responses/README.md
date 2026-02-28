@@ -1,6 +1,6 @@
 ---
 title: Convert MCP read tools to structured text responses
-status: in_progress
+status: done
 description: >-
   Replace JSON responses with compact structured text for all read-only MCP
   tools. Merge trellis_ready into trellis_status. Strip redundant data from

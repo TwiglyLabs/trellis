@@ -1,6 +1,6 @@
 ---
 title: Add optional group field to RepoEntry manifest schema
-status: in_progress
+status: done
 tags:
   - 'epic:canopy-grouping'
 type: feature
