@@ -1,5 +1,5 @@
 {
-  "name": "trellis",
+  "name": "@twiglylabs/trellis",
   "version": "0.1.0",
   "description": "Lightweight CLI for managing plans with dependencies",
   "type": "module",
@@ -25,13 +25,14 @@
   "scripts": {
     "build": "node build.mjs && tsc -p tsconfig.lib.json",
     "build:prod": "node build.mjs --minify && tsc -p tsconfig.lib.json",
+    "publish:local": "npm run build && npm publish --registry http://localhost:4873",
     "test": "vitest run",
     "dev": "vitest",
     "test:dist": "npm run build && vitest run tests/dist-integration.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
-    "@twiglylabs/log": "file:../log",
+    "@twiglylabs/log": "^0.1.0",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "gray-matter": "^4.0.3",
