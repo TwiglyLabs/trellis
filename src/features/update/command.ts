@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { createInterface } from 'readline';
 import type { Command } from 'commander';
-import { createContext } from '../../core/index.ts';
+import { resolveCliContext, resolvePlanId, parseQualifiedId } from '../../core/index.ts';
 import type { PlanStatus } from '../../core/types.ts';
 import { padRight, computeColumnWidth } from '../../core/utils.ts';
 import { computeUpdate } from './logic.ts';
@@ -15,7 +15,7 @@ export function register(program: Command): void {
     .option('--json', 'Output as JSON')
     .option('--force', 'Bypass status gate validation')
     .option('-y, --yes', 'Skip retro prompts on done transition')
-    .addHelpText('after', '\nExamples:\n  $ trellis update core-types in_progress\n  $ trellis update impl/parser done\n  $ trellis update core-types done --json\n  $ trellis update core-types in_progress --force')
+    .addHelpText('after', '\nExamples:\n  $ trellis update core-types in_progress\n  $ trellis update impl/parser done\n  $ trellis update core-types done --json\n  $ trellis update core-types in_progress --force\n  $ trellis update repo:core-types in_progress')
     .action((planId, status, options) => updateCommand(planId, status, options));
 }
 
@@ -36,11 +36,23 @@ function prompt(question: string, defaultVal: string): Promise<string> {
 }
 
 export async function updateCommand(planId: string, status: string, options?: UpdateOptions): Promise<void> {
-  let ctx = createContext(process.cwd());
+  let ctx = resolveCliContext(process.cwd());
+
+  // In multi-repo mode, resolve qualified/unqualified IDs
+  let resolvedId = planId;
+  if (ctx.isMultiRepo) {
+    const parsed = parseQualifiedId(planId);
+    if (parsed.repo) {
+      resolvedId = planId; // already qualified
+    } else {
+      const resolved = resolvePlanId(ctx.graph, planId);
+      resolvedId = resolved.qualifiedId;
+    }
+  }
 
   try {
     const result = computeUpdate(
-      { planId, status: status as PlanStatus, graph: ctx.graph, force: options?.force },
+      { planId: resolvedId, status: status as PlanStatus, graph: ctx.graph, force: options?.force },
     );
 
     if (options?.json) {
@@ -62,7 +74,7 @@ export async function updateCommand(planId: string, status: string, options?: Up
     console.log(`${chalk.green('✓')} ${planId} → ${result.newStatus}`);
 
     if (result.newlyReady.length > 0) {
-      ctx = createContext(process.cwd());
+      ctx = resolveCliContext(process.cwd());
       const idWidth = computeColumnWidth(result.newlyReady);
       console.log(`\n  Now ready:`);
       for (const id of result.newlyReady) {
@@ -79,19 +91,19 @@ export async function updateCommand(planId: string, status: string, options?: Up
       const sessionsRaw = await prompt('  Sessions', '');
       const deviationRaw = await prompt('  Deviation (none/minor/major)', '');
 
-      ctx = createContext(process.cwd());
+      ctx = resolveCliContext(process.cwd());
       if (sessionsRaw) {
         const num = Number(sessionsRaw);
         if (Number.isInteger(num) && num >= 1) {
           computeSet(
-            { planId, field: 'sessions', value: String(num), mode: 'replace', graph: ctx.graph },
+            { planId: resolvedId, field: 'sessions', value: String(num), mode: 'replace', graph: ctx.graph },
           );
         }
       }
       if (deviationRaw && ['none', 'minor', 'major'].includes(deviationRaw)) {
-        ctx = createContext(process.cwd());
+        ctx = resolveCliContext(process.cwd());
         computeSet(
-          { planId, field: 'deviation', value: deviationRaw, mode: 'replace', graph: ctx.graph },
+          { planId: resolvedId, field: 'deviation', value: deviationRaw, mode: 'replace', graph: ctx.graph },
         );
       }
     }

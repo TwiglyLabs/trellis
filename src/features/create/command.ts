@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import { createContext } from '../../core/index.ts';
+import { resolveCliContext, parseQualifiedId, dequalifyDepsForWrite } from '../../core/index.ts';
 import { computeCreate } from './logic.ts';
 
 export function register(program: Command): void {
@@ -13,7 +13,7 @@ export function register(program: Command): void {
     .option('--tags <tags...>', 'Freeform tags')
     .option('-d, --description <desc>', 'One-line description')
     .option('--json', 'Output as JSON')
-    .addHelpText('after', '\nExamples:\n  $ trellis create my-plan --title "My Plan"\n  $ trellis create my-plan --title "Plan" --type bugfix\n  $ trellis create my-plan --title "Plan" --depends-on core-types --tags foundation')
+    .addHelpText('after', '\nExamples:\n  $ trellis create my-plan --title "My Plan"\n  $ trellis create my-plan --title "Plan" --type bugfix\n  $ trellis create my-plan --title "Plan" --depends-on core-types --tags foundation\n  $ trellis create infra-terraform:tf-gke --title "GKE Cluster"')
     .action((id, options) => createCommand(id, options));
 }
 
@@ -28,14 +28,57 @@ interface CreateOptions {
 
 export function createCommand(id: string, options: CreateOptions): void {
   const projectDir = process.cwd();
-  const ctx = createContext(projectDir);
+  const ctx = resolveCliContext(projectDir);
+  const parsed = parseQualifiedId(id);
 
   // Resolve type: explicit flag > config default > undefined
   const type = options.type ?? ctx.config.default_plan_type;
 
   try {
-    const result = computeCreate(
-      {
+    let result;
+    let displayId = id;
+
+    if (parsed.repo) {
+      // Cross-repo create via qualified ID
+      if (!ctx.isMultiRepo) {
+        throw new Error(
+          'Cross-repo operations require a .trellis-project manifest. '
+          + 'Set project_root in .trellis/config to point to your meta-repo.',
+        );
+      }
+      const plansDir = ctx.getPlansDir(parsed.repo);
+      const repoPath = ctx.getRepoPath(parsed.repo);
+
+      // Validate deps against qualified graph, then dequalify for disk
+      let depsForDisk = options.dependsOn;
+      let skipDepValidation = false;
+      if (options.dependsOn?.length) {
+        for (const dep of options.dependsOn) {
+          if (!ctx.graph.plans.has(dep)) {
+            throw new Error(`Dependency "${dep}" not found.`);
+          }
+        }
+        depsForDisk = dequalifyDepsForWrite(options.dependsOn, parsed.repo);
+        skipDepValidation = true;
+      }
+
+      result = computeCreate({
+        id: parsed.planId,
+        opts: {
+          title: options.title,
+          description: options.description,
+          depends_on: depsForDisk,
+          tags: options.tags,
+          type,
+        },
+        plansDir,
+        graph: ctx.graph,
+        projectDir: repoPath ?? projectDir,
+        skipDepValidation,
+      });
+    } else {
+      // Local create (unchanged behavior)
+      result = computeCreate({
         id,
         opts: {
           title: options.title,
@@ -44,18 +87,18 @@ export function createCommand(id: string, options: CreateOptions): void {
           tags: options.tags,
           type,
         },
-        plansDir: ctx.plansDir,
+        plansDir: ctx.getPlansDir(),
         graph: ctx.graph,
         projectDir,
-      },
-    );
+      });
+    }
 
     if (options.json) {
-      console.log(JSON.stringify({ id: result.id, filePath: result.filePath }, null, 2));
+      console.log(JSON.stringify({ id: displayId, filePath: result.filePath }, null, 2));
       return;
     }
 
-    console.log(`${chalk.green('✓')} Created plan ${id}`);
+    console.log(`${chalk.green('✓')} Created plan ${displayId}`);
     console.log(`  ${result.filePath}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

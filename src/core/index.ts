@@ -127,6 +127,10 @@ export type { ContextStoreOptions } from './store.ts';
 export type { WorktreeInfo } from './worktree.ts';
 export { detectWorktree, detectWorktreeAsync, applyWorktreeOverride, applyWorktreeOverrideAsync } from './worktree.ts';
 
+// --- CLI Context ---
+export type { CliContext } from './cli-context.ts';
+export { resolveCliContext } from './cli-context.ts';
+
 // --- Utilities ---
 export type { ResolvedPlanId } from './utils.ts';
 export { VALID_STATUSES, filterPlans, resolveIsProject, buildReposArray, validatePlanId, parseQualifiedId, dequalifyDepsForWrite, resolvePlanId, pluralize } from './utils.ts';
