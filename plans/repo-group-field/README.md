@@ -1,10 +1,11 @@
 ---
 title: Add optional group field to RepoEntry manifest schema
-status: not_started
+status: in_progress
 tags:
   - 'epic:canopy-grouping'
 type: feature
 not_started_at: '2026-02-28T17:57:57.140Z'
+started_at: '2026-02-28T18:08:53.783Z'
 ---
 
 ## Problem
