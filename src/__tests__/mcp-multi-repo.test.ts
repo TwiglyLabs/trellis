@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync, realpathSync, mkdtempSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
+import { execFileSync } from 'child_process';
 import { createMcpServer, parseReposFlag, loadProjectRepos } from '../mcp.ts';
 import { resolvePlanId, buildGraph, createMultiContext, dequalifyDepsForWrite } from '../core/index.ts';
 import { createFixture } from './helpers.ts';
@@ -1175,6 +1177,102 @@ describe('MCP project_root config field', () => {
     expect(result.isError).toBeFalsy();
     const output = JSON.parse(result.content[0].text);
     expect(output.value).toBe('Updated from alpha');
+  });
+});
+
+// =============================================
+// Worktree + project_root: MCP writes go to worktree, not source repo
+// =============================================
+
+describe('MCP project_root with git worktree', () => {
+  let originalCwd: () => string;
+
+  beforeEach(() => {
+    originalCwd = process.cwd;
+  });
+
+  afterEach(() => {
+    process.cwd = originalCwd;
+  });
+
+  function makeGitRepo(dir: string): void {
+    execFileSync('git', ['init', '--initial-branch=main'], { cwd: dir, stdio: 'pipe' });
+    execFileSync('git', ['add', '.'], { cwd: dir, stdio: 'pipe' });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'init'], { cwd: dir, stdio: 'pipe' });
+  }
+
+  it('resolves repo to worktree path, not source repo, when CWD is a worktree', async () => {
+    // Create alpha as a real git repo with plans
+    const alpha = createFixture([
+      { id: 'auth', title: 'Auth', status: 'not_started', body: '\n## Problem\nAuth\n\n## Approach\nJWT\n' },
+    ]);
+    makeGitRepo(alpha.root);
+
+    // Create a worktree of alpha
+    const worktreeDir = join(realpathSync(mkdtempSync(join(tmpdir(), 'trellis-wt-test-'))), 'wt');
+    execFileSync('git', ['worktree', 'add', '-b', 'feature', worktreeDir], { cwd: alpha.root, stdio: 'pipe' });
+
+    // Create meta-repo with .trellis-project pointing to alpha's MAIN repo path
+    const metaRoot = mkdtempSync(join(tmpdir(), 'trellis-meta-'));
+    writeFileSync(
+      join(metaRoot, '.trellis-project'),
+      ['name: test-project', 'repos:', `  alpha:`, `    path: ${alpha.root}`].join('\n'),
+    );
+
+    // Configure the worktree with project_root pointing to meta-repo
+    writeFileSync(
+      join(worktreeDir, '.trellis', 'config'),
+      `project: alpha\nplans_dir: plans\nproject_root: ${metaRoot}\n`,
+    );
+
+    // MCP starts from the worktree
+    process.cwd = () => worktreeDir;
+
+    const server = createMcpServer();
+
+    // The key assertion: the resolved repo path should be the worktree, not alpha.root
+    // We verify this by writing to a plan and checking which directory gets the write
+    const writeResult = await callTool(server, 'trellis_set', {
+      plan_id: 'auth',
+      field: 'description',
+      value: 'Written from worktree',
+    });
+    expect(writeResult.isError).toBeFalsy();
+
+    // The write should have gone to the worktree
+    const worktreeContent = readFileSync(join(worktreeDir, 'plans', 'auth', 'README.md'), 'utf8');
+    expect(worktreeContent).toContain('Written from worktree');
+
+    // The source repo should be UNCHANGED
+    const sourceContent = readFileSync(join(alpha.root, 'plans', 'auth', 'README.md'), 'utf8');
+    expect(sourceContent).not.toContain('Written from worktree');
+  });
+
+  it('loadProjectRepos with worktreeCwd overrides matching repo', () => {
+    // Create alpha as a real git repo
+    const alpha = createFixture([
+      { id: 'task', title: 'Task', status: 'draft', body: '\n## Problem\nTask\n' },
+    ]);
+    makeGitRepo(alpha.root);
+
+    // Create worktree
+    const worktreeDir = join(realpathSync(mkdtempSync(join(tmpdir(), 'trellis-wt-test-'))), 'wt');
+    execFileSync('git', ['worktree', 'add', '-b', 'feat', worktreeDir], { cwd: alpha.root, stdio: 'pipe' });
+
+    // Create meta-repo with manifest
+    const metaRoot = mkdtempSync(join(tmpdir(), 'trellis-meta-'));
+    writeFileSync(
+      join(metaRoot, '.trellis-project'),
+      ['name: test-project', 'repos:', `  alpha:`, `    path: ${alpha.root}`].join('\n'),
+    );
+
+    // Without worktreeCwd: resolves to source repo
+    const withoutOverride = loadProjectRepos(metaRoot);
+    expect(withoutOverride.specs[0].path).toBe(alpha.root);
+
+    // With worktreeCwd: resolves to worktree
+    const withOverride = loadProjectRepos(metaRoot, worktreeDir);
+    expect(withOverride.specs[0].path).toBe(worktreeDir);
   });
 });
 

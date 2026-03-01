@@ -71,8 +71,13 @@ export function parseReposFlag(input: string): RepoSpec[] {
  * Load RepoSpec[] from a .trellis-project manifest, using entries that have a `path` field.
  * Missing repos are collected in the returned `warnings` array rather than throwing,
  * so callers can continue with available repos and report missing ones.
+ *
+ * @param projectDir - Directory containing .trellis-project manifest
+ * @param worktreeCwd - CWD for worktree detection (defaults to projectDir). When the
+ *   manifest lives in a meta-repo but the MCP was started from a worktree, pass the
+ *   actual CWD so the worktree override resolves correctly.
  */
-export function loadProjectRepos(projectDir: string): { specs: RepoSpec[]; warnings: string[] } {
+export function loadProjectRepos(projectDir: string, worktreeCwd?: string): { specs: RepoSpec[]; warnings: string[] } {
   const absDir = isAbsolute(projectDir) ? projectDir : resolve(projectDir);
   const manifestPath = join(absDir, '.trellis-project');
 
@@ -85,7 +90,7 @@ export function loadProjectRepos(projectDir: string): { specs: RepoSpec[]; warni
     throw new Error(`No repos with local "path" found in manifest at ${manifestPath}`);
   }
 
-  const resolved = applyWorktreeOverride(rawResolved, absDir);
+  const resolved = applyWorktreeOverride(rawResolved, worktreeCwd ?? absDir);
   const specs: RepoSpec[] = [];
   const warnings: string[] = [];
   for (const repo of resolved) {
@@ -155,7 +160,7 @@ function buildStore(options?: McpServerOptions): { store: ContextStore; isMultiR
     const projectRoot = expandTilde(config.project_root);
     const manifestPath = join(projectRoot, '.trellis-project');
     if (existsSync(manifestPath)) {
-      const { specs, warnings } = loadProjectRepos(projectRoot);
+      const { specs, warnings } = loadProjectRepos(projectRoot, projectDir);
       for (const w of warnings) {
         process.stderr.write(`[trellis] warning: ${w}\n`);
       }
