@@ -370,4 +370,4 @@ Start the MCP (Model Context Protocol) server on stdio for Claude Code integrati
 trellis mcp
 ```
 
-See [mcp-reference.md](mcp-reference.md) for tool documentation.
+See [mcp-integration.md](mcp-integration.md) for tool documentation.

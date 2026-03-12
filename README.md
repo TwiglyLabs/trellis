@@ -1,54 +1,58 @@
 # Trellis
 
-Lightweight CLI for managing plans with dependencies. Trellis scans a `plans/` directory, reads YAML frontmatter from markdown files, builds a dependency graph, and answers "what can I work on next?"
+Lightweight CLI for managing plans with dependencies.
 
-No manifest file. The plan files ARE the source of truth.
+## What it does
 
-## Install
+Trellis turns a directory of markdown files into a dependency-aware plan graph. Each plan is a directory containing a `README.md` with YAML frontmatter that declares its title, status, and dependencies. Trellis scans these files, builds a directed acyclic graph from `depends_on` edges, and answers the question "what can I work on right now?"
 
-Requires Node.js >= 20.
+The core problem Trellis solves is execution order for multi-step work. When building software with AI agents, a session has a limited context window. Work needs to be decomposed into discrete plans, and those plans need to execute in the right order — foundations before features, interfaces before consumers. Trellis makes that dependency structure explicit and machine-readable, so both humans and agents always know what's ready, what's blocked, and what to work on next.
+
+Trellis also exposes an MCP server so AI agents can read and update plans directly during a session, without touching files manually. Plans are the agent's work queue, and Trellis is the queue manager.
+
+## Key concepts
+
+**Plan** — A directory under `plans/` containing a `README.md` with YAML frontmatter. The directory name is the plan ID. Plans hold the problem statement, approach, implementation steps, and done criteria for a discrete piece of work.
+
+**Dependency** — A `depends_on` edge in a plan's frontmatter. A plan is not ready until all plans it depends on have status `done`.
+
+**DAG** — The directed acyclic graph Trellis builds from all `depends_on` edges. The graph determines execution order, identifies blocked plans, and computes the critical path.
+
+**Status** — A plan's lifecycle stage: `draft`, `not_started`, `in_progress`, `done`, or `archived`. Status transitions are gated — Trellis enforces that required sections exist before a plan can advance.
+
+**Epic** — A grouping of related plans via `epic:<name>` tags. `trellis epic` shows completion progress per epic.
+
+## Quick start
 
 ```bash
+# Install
 npm install -g trellis
-```
 
-Or build from source:
-
-```bash
-git clone https://github.com/twiglylabs/trellis.git && cd trellis
-npm install
-npm run build
-npm link
-```
-
-## Quick Start
-
-```bash
-# 1. Initialize trellis in your project
+# Initialize Trellis in your project
 trellis init
 
-# 2. Create a plan
+# Create a plan
 trellis create my-feature --title "Build the thing"
 
-# 3. Check what's ready to work on
+# See what's ready to work on
 trellis ready
 
-# 4. Start working
+# Start working on a plan
 trellis update my-feature in_progress
 
-# 5. See the full dashboard
+# See the full dashboard
 trellis status
 
-# 6. Mark it done
+# Mark it done
 trellis update my-feature done
 
-# 7. Visualize the dependency graph
+# Visualize the dependency graph
 trellis graph
 ```
 
-## How It Works
+## How it works
 
-Each plan is a directory under `plans/` containing a `README.md` with YAML frontmatter:
+Plans are markdown directories with YAML frontmatter defining their dependencies:
 
 ```yaml
 ---
@@ -68,9 +72,13 @@ What needs solving.
 How we'll solve it.
 ```
 
-Trellis scans these files, builds a DAG from `depends_on` edges, and uses status + dependency state to determine what's ready, blocked, or in progress.
+Trellis scans the `plans/` directory, parses frontmatter from each plan's `README.md`, and builds a DAG from the `depends_on` edges. It uses the graph to determine which plans are ready (all dependencies done), blocked (unfinished dependencies), or in progress.
 
-## Commands
+Status transitions are gated: advancing a plan to `not_started` requires `implementation.md` with `Steps`, `Testing`, and `Done-when` sections. Advancing to `done` requires `outputs.md` if the plan has dependents. These gates ensure plans are properly specified before work begins.
+
+The plan files themselves are the source of truth. There is no separate manifest or database.
+
+## CLI reference
 
 | Command | Description |
 |---------|-------------|
@@ -84,19 +92,23 @@ Trellis scans these files, builds a DAG from `depends_on` edges, and uses status
 | `trellis epic [name]` | Epic completion status |
 | `trellis chunks` | Identify reviewable subgraphs |
 | `trellis create <id>` | Scaffold a new plan directory |
+| `trellis create-batch <file>` | Create multiple plans from a YAML batch file |
 | `trellis set <id> <field> [values]` | Update frontmatter fields |
 | `trellis rename <old> <new>` | Rename plan and update references |
 | `trellis archive <id>` | Archive a plan |
 | `trellis fetch` | Fetch plan state from project repos |
+| `trellis sync` | Fetch and cache remote plan state in parallel |
+| `trellis recent` | Show recently modified plans |
+| `trellis bottlenecks` | Show blocking factors, stuck plans, and queue pressure |
 | `trellis metrics` | Cycle time and session data for done plans |
-| `trellis setup-hooks` | Install Claude Code hooks + git pre-commit |
+| `trellis setup-hooks` | Install Claude Code hooks and git pre-commit hook |
 | `trellis mcp` | Start MCP server for Claude Code integration |
 
 See [docs/cli-reference.md](docs/cli-reference.md) for full flag and usage details.
 
-## MCP Integration
+## MCP integration
 
-Trellis includes an MCP server for AI agent integration. Add it to your project's `.mcp.json`:
+Trellis exposes an MCP server for AI agent integration. Add it to your project's `.mcp.json`:
 
 ```json
 {
@@ -109,16 +121,28 @@ Trellis includes an MCP server for AI agent integration. Add it to your project'
 }
 ```
 
-See [docs/mcp-reference.md](docs/mcp-reference.md) for tool schemas and [docs/for-agents.md](docs/for-agents.md) for agent workflows.
+Agents can create plans, read and write plan sections, update status, and query the graph — all without touching files directly. Claude Code hooks block direct file edits to maintain frontmatter integrity.
+
+See [docs/mcp-integration.md](docs/mcp-integration.md) for tool schemas, agent workflows, and common pitfalls.
 
 ## Documentation
 
-- [CLI Reference](docs/cli-reference.md) — every command, flag, and example
-- [Plan Schema](docs/plan-schema.md) — plan structure, frontmatter fields, status gates
-- [MCP Reference](docs/mcp-reference.md) — MCP tool schemas and examples
-- [Architecture](docs/architecture.md) — codebase layout and development guide
-- [For Agents](docs/for-agents.md) — agent-oriented setup and workflow guide
+- [Architecture](docs/architecture.md)
+- [CLI Reference](docs/cli-reference.md)
+- [MCP Integration](docs/mcp-integration.md)
+- [Plan Schema](docs/plan-schema.md)
+- [Development](docs/development.md)
 
-## License
+## Part of the TwiglyLabs toolchain
 
-MIT
+Trellis is one of five tools built to enable AI-driven software development:
+
+| Tool | Role |
+|------|------|
+| [Canopy](https://github.com/twiglylabs/canopy) | Workspace dashboard |
+| [Trellis](https://github.com/twiglylabs/trellis) | Plan management |
+| [Grove](https://github.com/twiglylabs/grove) | Local environments |
+| [Bark](https://github.com/twiglylabs/bark) | Quality gates |
+| [SAP](https://github.com/twiglylabs/sap) | Session analytics |
+
+Each tool works independently but they compose into a complete workflow.
